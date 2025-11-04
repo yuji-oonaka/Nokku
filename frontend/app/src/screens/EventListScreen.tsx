@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 // APIのURL
 const API_URL = 'http://10.0.2.2';
@@ -31,35 +32,42 @@ const EventListScreen: React.FC<Props> = ({ authToken }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 画面が読み込まれた時に一度だけ実行される処理
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        setLoading(true);
-        // GETリクエストを認証ヘッダー付きで送信
-        const response = await fetch(`${API_URL}/api/events`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`, // 認証トークン
-          },
-        });
+  useFocusEffect(
+    useCallback(() => {
+      // この外側の関数は「同期的」です
 
-        if (!response.ok) {
-          throw new Error('イベントの取得に失敗しました');
+      const fetchEvents = async () => {
+        // この内側の関数で「非同期」処理を行います
+        try {
+          setLoading(true);
+          const response = await fetch(`${API_URL}/api/events`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('イベントの取得に失敗しました');
+          }
+
+          const data = (await response.json()) as Event[];
+          setEvents(data);
+        } catch (error: any) {
+          Alert.alert('エラー', error.message);
+        } finally {
+          setLoading(false);
         }
+      };
 
-        const data = (await response.json()) as Event[];
-        setEvents(data);
-      } catch (error: any) {
-        Alert.alert('エラー', error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+      // 同期関数の中で、非同期関数を呼び出す
+      fetchEvents();
 
-    fetchEvents();
-  }, [authToken]); // authTokenが変わった時も再実行
+      // (オプション：画面から離れた時のクリーンアップ処理)
+      // return () => {};
+    }, [authToken]), // 依存配列は useCallback の方に書きます
+  );
 
   // リストの各アイテムをどう表示するかの定義
   const renderItem = ({ item }: { item: Event }) => (
