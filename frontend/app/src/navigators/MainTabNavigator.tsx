@@ -4,9 +4,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 // スクリーンをインポート
 import EventListScreen from '../screens/EventListScreen';
-import ProductListScreen from '../screens/ProductListScreen';
 import EventCreateScreen from '../screens/EventCreateScreen';
 import ProductCreateScreen from '../screens/ProductCreateScreen';
+import ProductStackNavigator from './ProductStackNavigator';
 
 // App.tsx から渡される Props を定義
 interface Props {
@@ -39,32 +39,58 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
     ),
   };
 
+  const LogoutButton = () => (
+    <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+      <Text style={styles.logoutButtonText}>ログアウト</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <Tab.Navigator screenOptions={screenOptions}>
       {/* 1. イベント一覧タブ */}
-      <Tab.Screen name="Events" options={{ title: 'イベント一覧' }}>
-        {/*
-          EventListScreen に authToken を渡すため、
-          component={} ではなく、children を使ってコンポーネントをレンダリングします
-        */}
+      <Tab.Screen
+        name="Events"
+        options={{
+          title: 'イベント一覧',
+          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+        }}
+      >
         {() => <EventListScreen authToken={authToken} />}
       </Tab.Screen>
 
       {/* 2. グッズ一覧タブ */}
-      <Tab.Screen name="Products" options={{ title: 'グッズ一覧' }}>
-        {() => <ProductListScreen authToken={authToken} />}
+      <Tab.Screen
+        name="Products"
+        options={{
+          title: 'グッズ',
+          headerShown: false, // 👈 スタック側がヘッダーを持つため、タブのヘッダーは非表示
+        }}
+      >
+        {/* 👈 3. ProductListScreen から ProductStackNavigator に差し替え */}
+        {() => <ProductStackNavigator authToken={authToken} />}
       </Tab.Screen>
 
       {/* 3. イベント作成タブ */}
-      <Tab.Screen name="CreateEvent" options={{ title: 'イベント作成' }}>
+      <Tab.Screen
+        name="CreateEvent"
+        options={{
+          title: 'イベント作成',
+          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+        }}
+      >
         {() => <EventCreateScreen authToken={authToken} />}
       </Tab.Screen>
 
       {/* 4. グッズ作成タブ */}
-      <Tab.Screen name="CreateProduct" options={{ title: 'グッズ作成' }}>
+      <Tab.Screen
+        name="CreateProduct"
+        options={{
+          title: 'グッズ作成',
+          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+        }}
+      >
         {() => <ProductCreateScreen authToken={authToken} />}
       </Tab.Screen>
-
     </Tab.Navigator>
   );
 };

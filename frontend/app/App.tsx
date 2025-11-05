@@ -12,7 +12,9 @@ import { NavigationContainer } from '@react-navigation/native'; // ナビゲー�
 // 作成した「部品」をインポート
 import AuthScreen from './src/screens/AuthScreen';
 import MainTabNavigator from './src/navigators/MainTabNavigator';
+import { StripeProvider } from '@stripe/stripe-react-native';
 
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Qgcy2LcIj5T4QhV0jVJkodwrPUsAMcX7zJxrqd6BzQXsRymODECYjSU8cmVsschRoLK6EVSuFu6MgGgLmtBvY3d00o7lGExMI';
 const API_URL = 'http://10.0.2.2';
 
 function App(): React.JSX.Element {
@@ -101,16 +103,18 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <NavigationContainer>
-        {/* authToken と userInfo が存在するか？ (ログイン済みか？) */}
-        {userInfo && authToken ? (
-          // ログイン済み：メインのタブナビゲーターを表示
-          <MainTabNavigator authToken={authToken} onLogout={handleLogout} />
-        ) : (
-          // 未ログイン：認証フォームを表示
-          <AuthScreen onAuthSuccess={handleAuthSuccess} />
-        )}
-      </NavigationContainer>
+      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+        <NavigationContainer>
+          {/* authToken と userInfo が存在するか？ (ログイン済みか？) */}
+          {userInfo && authToken ? (
+            // ログイン済み：メインのタブナビゲーターを表示
+            <MainTabNavigator authToken={authToken} onLogout={handleLogout} />
+          ) : (
+            // 未ログイン：認証フォームを表示
+            <AuthScreen onAuthSuccess={handleAuthSuccess} />
+          )}
+        </NavigationContainer>
+      </StripeProvider>
     </SafeAreaView>
   );
 }

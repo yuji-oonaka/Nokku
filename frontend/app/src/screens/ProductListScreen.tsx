@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -8,8 +7,12 @@ import {
   ActivityIndicator,
   Alert,
   Image, // 商品画像用に Image を追加
+  TouchableOpacity,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {useFocusEffect, useNavigation} from '@react-navigation/native'; // 👈 2. useNavigation をインポート
+import {StackNavigationProp} from '@react-navigation/stack'; // 👈 3. 型定義をインポート
+import {ProductStackParamList} from '../navigators/ProductStackNavigator'; // 👈 4. 作成したスタックの型をインポート
 
 const API_URL = 'http://10.0.2.2';
 
@@ -27,9 +30,15 @@ interface Props {
   authToken: string; // 認証済みトークン
 }
 
+type ProductListNavigationProp = StackNavigationProp<
+  ProductStackParamList,
+  'ProductList'
+>;
+
 const ProductListScreen: React.FC<Props> = ({ authToken }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<ProductListNavigationProp>();
 
   useFocusEffect(
     useCallback(() => {
@@ -62,20 +71,35 @@ const ProductListScreen: React.FC<Props> = ({ authToken }) => {
     }, [authToken]) // 依存配列は useCallback の方に書きます
   );
 
+  const handleProductPress = (product: Product) => {
+    // PaymentScreenに必要な情報だけを渡す
+    navigation.navigate('Payment', {
+      product: {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+      },
+    });
+  };
+
   // リストの各アイテム
   const renderItem = ({ item }: { item: Product }) => (
-    <View style={styles.productItem}>
-      {/* 画像URLがあれば表示 */}
-      {item.image_url && (
-        <Image source={{ uri: item.image_url }} style={styles.productImage} />
-      )}
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        <Text style={styles.productDescription}>{item.description}</Text>
-        <Text style={styles.productPrice}>¥{item.price.toLocaleString()}</Text>
-        <Text style={styles.productStock}>在庫: {item.stock}</Text>
+    // 👈 8. アイテム全体を TouchableOpacity で囲む
+    <TouchableOpacity onPress={() => handleProductPress(item)}>
+      <View style={styles.productItem}>
+        {item.image_url && (
+          <Image source={{ uri: item.image_url }} style={styles.productImage} />
+        )}
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>{item.name}</Text>
+          <Text style={styles.productDescription}>{item.description}</Text>
+          <Text style={styles.productPrice}>
+            ¥{item.price.toLocaleString()}
+          </Text>
+          <Text style={styles.productStock}>在庫: {item.stock}</Text>
+        </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

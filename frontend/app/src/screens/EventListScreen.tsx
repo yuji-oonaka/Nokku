@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -8,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
 // APIのURL

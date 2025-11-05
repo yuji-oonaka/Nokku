@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   ActivityIndicator,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 
 const API_URL = 'http://10.0.2.2';
