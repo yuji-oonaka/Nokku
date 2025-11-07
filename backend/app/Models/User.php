@@ -24,6 +24,13 @@ class User extends Authenticatable
         'role',         // 権限 (もしあれば)
     ];
     // ↑↑↑ このブロックを追記・または編集 ↑↑↑
+    /**
+     * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
+     */
+    public function userTickets()
+    {
+        return $this->hasMany(UserTicket::class);
+    }
 
     /**
      * The attributes that should be hidden for serialization.
