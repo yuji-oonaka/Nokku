@@ -15,8 +15,14 @@ class Event extends Model
         'description',
         'venue',
         'event_date',
-        'price',
-        'total_tickets',
         'artist_id',
     ];
+
+    /**
+     * このイベントが持つ券種（TicketType）を取得 (1対多)
+     */
+    public function ticketTypes()
+    {
+        return $this->hasMany(TicketType::class);
+    }
 }

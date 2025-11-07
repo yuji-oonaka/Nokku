@@ -3,10 +3,10 @@ import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 // スクリーンをインポート
-import EventListScreen from '../screens/EventListScreen';
 import EventCreateScreen from '../screens/EventCreateScreen';
 import ProductCreateScreen from '../screens/ProductCreateScreen';
 import ProductStackNavigator from './ProductStackNavigator';
+import EventStackNavigator from './EventStackNavigator';
 
 // App.tsx から渡される Props を定義
 interface Props {
@@ -52,10 +52,10 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         name="Events"
         options={{
           title: 'イベント一覧',
-          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+          headerShown: false,
         }}
       >
-        {() => <EventListScreen authToken={authToken} />}
+        {() => <EventStackNavigator authToken={authToken} />}
       </Tab.Screen>
 
       {/* 2. グッズ一覧タブ */}

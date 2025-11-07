@@ -5,7 +5,7 @@ import {
   TextInput,
   Button,
   Alert,
-  ScrollView, // フォームが長くなるため ScrollView を使用
+  ScrollView,
   ActivityIndicator,
   View,
 } from 'react-native';
@@ -16,30 +16,20 @@ const API_URL = 'http://10.0.2.2';
 
 interface Props {
   authToken: string;
-  // イベント作成成功時に、イベントリストを再読み込みさせるためのコールバック
 }
 
-const EventCreateScreen: React.FC<Props> = ({ authToken}) => {
+const EventCreateScreen: React.FC<Props> = ({ authToken }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [venue, setVenue] = useState('');
   const [eventDate, setEventDate] = useState(''); // YYYY-MM-DD HH:MM:SS 形式
-  const [price, setPrice] = useState('');
-  const [totalTickets, setTotalTickets] = useState('');
   const navigation = useNavigation();
 
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    // フロント側での簡易バリデーション
-    if (
-      !title ||
-      !description ||
-      !venue ||
-      !eventDate ||
-      !price ||
-      !totalTickets
-    ) {
+    // フロント側での簡易バリデーション (priceとtotalTicketsを削除)
+    if (!title || !description || !venue || !eventDate) {
       Alert.alert('エラー', 'すべての項目を入力してください');
       return;
     }
@@ -52,13 +42,12 @@ const EventCreateScreen: React.FC<Props> = ({ authToken}) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
+        // body から price と total_tickets を削除
         body: JSON.stringify({
           title: title,
           description: description,
           venue: venue,
-          event_date: eventDate, // '2025-12-24 18:00:00'
-          price: parseInt(price, 10), // 文字列を数値に変換
-          total_tickets: parseInt(totalTickets, 10),
+          event_date: eventDate,
         }),
       });
 
@@ -85,8 +74,7 @@ const EventCreateScreen: React.FC<Props> = ({ authToken}) => {
       setDescription('');
       setVenue('');
       setEventDate('');
-      setPrice('');
-      setTotalTickets('');
+
       //「Events」タブに自動で画面遷移する
       navigation.navigate('Events');
     } catch (error: any) {
@@ -126,25 +114,7 @@ const EventCreateScreen: React.FC<Props> = ({ authToken}) => {
           placeholderTextColor="#888"
         />
 
-        <Text style={styles.label}>チケット価格 (円)</Text>
-        <TextInput
-          style={styles.input}
-          value={price}
-          onChangeText={setPrice}
-          placeholder="例: 5000"
-          placeholderTextColor="#888"
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.label}>チケット総数</Text>
-        <TextInput
-          style={styles.input}
-          value={totalTickets}
-          onChangeText={setTotalTickets}
-          placeholder="例: 1000"
-          placeholderTextColor="#888"
-          keyboardType="numeric"
-        />
+        {/* --- チケット価格 と チケット総数 のフォームは削除 --- */}
 
         <Text style={styles.label}>イベント詳細</Text>
         <TextInput

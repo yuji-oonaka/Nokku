@@ -1,26 +1,27 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  SafeAreaView,
   StyleSheet,
   Text,
   View,
-  FlatList, // リスト表示用のコンポーネント
+  FlatList,
   ActivityIndicator,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { EventStackParamList } from '../navigators/EventStackNavigator';
 
 // APIのURL
 const API_URL = 'http://10.0.2.2';
 
-// Eventの型を定義 (TypeScript)
 interface Event {
   id: number;
   title: string;
   description: string;
   venue: string;
   event_date: string;
-  price: number;
 }
 
 // ★注意★: このコンポーネントは、App.tsxから 'authToken' を受け取る前提です
@@ -31,6 +32,7 @@ interface Props {
 const EventListScreen: React.FC<Props> = ({ authToken }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<EventListNavigationProp>();
 
   useFocusEffect(
     useCallback(() => {
@@ -69,17 +71,25 @@ const EventListScreen: React.FC<Props> = ({ authToken }) => {
     }, [authToken]), // 依存配列は useCallback の方に書きます
   );
 
+  // 👈 イベントタップ時の処理
+  const handleEventPress = (event: Event) => {
+    navigation.navigate('EventDetail', {
+      event: event,
+    });
+  };
+
   // リストの各アイテムをどう表示するかの定義
   const renderItem = ({ item }: { item: Event }) => (
-    <View style={styles.eventItem}>
-      <Text style={styles.eventTitle}>{item.title}</Text>
-      <Text style={styles.eventVenue}>{item.venue}</Text>
-      <Text style={styles.eventDate}>
-        {/* 日時を読みやすい形式にフォーマット */}
-        {new Date(item.event_date).toLocaleString('ja-JP')}
-      </Text>
-      <Text style={styles.eventPrice}>¥{item.price.toLocaleString()}</Text>
-    </View>
+    // 👈 TouchableOpacity で囲む
+    <TouchableOpacity onPress={() => handleEventPress(item)}>
+      <View style={styles.eventItem}>
+        <Text style={styles.eventTitle}>{item.title}</Text>
+        <Text style={styles.eventVenue}>{item.venue}</Text>
+        <Text style={styles.eventDate}>
+          {new Date(item.event_date).toLocaleString('ja-JP')}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 
   return (

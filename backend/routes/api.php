@@ -26,9 +26,11 @@ Route::middleware('firebase.auth')->group(function () {
     
     // --- イベント・グッズ (Sprint 2 & 3) ---
     Route::apiResource('events', EventController::class);
+    Route::get('/events/{event}/ticket-types', [EventController::class, 'getTicketTypes']);
     Route::apiResource('products', ProductController::class);
 
     // ↓↓↓ 2. 決済用のルートを追記 ↓↓↓
     Route::post('/create-payment-intent', [PaymentController::class, 'createPaymentIntent']);
-
+    Route::post('/create-ticket-payment-intent', [PaymentController::class, 'createTicketPaymentIntent']);
+    Route::post('/confirm-ticket-purchase', [PaymentController::class, 'confirmTicketPurchase']);
 });

@@ -4,6 +4,8 @@ import {
   StatusBar,
   ActivityIndicator,
   View,
+  LogBox,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import auth from '@react-native-firebase/auth';
@@ -30,37 +32,48 @@ function App(): React.JSX.Element {
    */
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(async user => {
-      if (user) {
-        // ユーザーがログインしている場合 (リロード時など)
-        try {
-          const idToken = await user.getIdToken();
-          const response = await fetch(`${API_URL}/api/login`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${idToken}`,
-            },
-          });
-          if (!response.ok) {
-            throw new Error('自動ログインでのユーザー情報取得に失敗');
+      
+      // ↓↓↓ このロジックを修正します ↓↓↓
+
+      // 1. アプリ起動時のチェック（initializing が true の時）だけ実行
+      if (initializing) {
+        if (user) {
+          // 以前のセッションが残っていた場合、DBからユーザー情報を取得
+          try {
+            const idToken = await user.getIdToken();
+            const response = await fetch(`${API_URL}/api/login`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+            });
+            if (!response.ok) {
+              throw new Error('自動ログインでのユーザー情報取得に失敗');
+            }
+            const data = await response.json();
+            setUserInfo(data.user);
+            setAuthToken(idToken);
+          } catch (error) {
+            // DBにいない/トークン無効なら強制ログアウト
+            console.error(error);
+            await auth().signOut();
+            setUserInfo(null);
+            setAuthToken(null);
           }
-          const data = await response.json();
-          setUserInfo(data.user);
-          setAuthToken(idToken);
-        } catch (error) {
-          // トークンが無効 or ユーザーがDBにいない場合、ログアウトさせる
-          console.error(error);
-          await auth().signOut();
+        }
+        // 起動時チェック完了
+        setInitializing(false);
+
+      } else {
+        // 2. 起動時以外（＝手動ログアウト時）
+        if (!user) {
+          // ユーザーが null になったら（ログアウト）、状態をクリア
           setUserInfo(null);
           setAuthToken(null);
         }
-      } else {
-        // ユーザーがログアウトしている場合
-        setUserInfo(null);
-        setAuthToken(null);
-      }
-      if (initializing) {
-        setInitializing(false); // チェック完了
+        // （手動ログイン/登録時は AuthScreen の onAuthSuccess が
+        // 　状態をセットするので、ここでは何もしない）
       }
     });
     return subscriber; // cleanup
