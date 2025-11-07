@@ -7,6 +7,7 @@ import EventCreateScreen from '../screens/EventCreateScreen';
 import ProductCreateScreen from '../screens/ProductCreateScreen';
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
+import MyTicketsScreen from '../screens/MyTicketsScreen';
 
 // App.tsx から渡される Props を定義
 interface Props {
@@ -90,6 +91,17 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         }}
       >
         {() => <ProductCreateScreen authToken={authToken} />}
+      </Tab.Screen>
+
+      {/* ↓↓↓ 5. マイチケットタブを追記 ↓↓↓ */}
+      <Tab.Screen
+        name="MyTickets"
+        options={{
+          title: 'マイチケット',
+          headerRight: LogoutButton,
+        }}
+      >
+        {() => <MyTicketsScreen authToken={authToken} />}
       </Tab.Screen>
     </Tab.Navigator>
   );

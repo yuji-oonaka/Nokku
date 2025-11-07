@@ -19,4 +19,20 @@ class UserTicket extends Model
         'qr_code_id',
         'is_used',
     ];
+
+    /**
+     * このチケットが属するイベント（Event）を取得 (多対1)
+     */
+    public function event()
+    {
+        return $this->belongsTo(Event::class);
+    }
+
+    /**
+     * このチケットの券種（TicketType）を取得 (多対1)
+     */
+    public function ticketType()
+    {
+        return $this->belongsTo(TicketType::class);
+    }
 }
