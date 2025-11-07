@@ -20,8 +20,6 @@ return new class extends Migration
             $table->text('description'); // イベント詳細
             $table->string('venue'); // 開催場所
             $table->dateTime('event_date'); // 開催日時
-            $table->unsignedInteger('price'); // チケット価格 (例: 5000円)
-            $table->unsignedInteger('total_tickets'); // チケット総数
 
             // usersテーブルのidと関連付ける (外部キー)
             // 'role'が'artist'のユーザーIDが入ることを想定

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event; // 忘れずにEventモデルを use
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth; // ログインユーザー情報取得のため use
+use App\Models\TicketType;
 
 class EventController extends Controller
 {
@@ -39,8 +40,6 @@ class EventController extends Controller
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
             'event_date' => 'required|date',
-            'price' => 'required|integer|min:0',
-            'total_tickets' => 'required|integer|min:1',
         ]);
 
         // バリデーション済みデータに、作成者(アーティスト)のIDを追加
@@ -55,12 +54,28 @@ class EventController extends Controller
     }
 
     /**
-     * 特定のイベント詳細を取得 (show)
-     * (今回はまだ実装しないので、中身は空のまま)
+     * 特定のイベントに関連する券種一覧を取得
      */
-    public function show(string $id)
+    public function getTicketTypes(Event $event)
     {
-        //
+        // ルートモデルバインディング (/{event}/) により、
+        // Laravelが自動で $event を見つけてくれる
+
+        // $event に紐づく TicketType をすべて取得
+        $ticketTypes = $event->ticketTypes()->get();
+        // (※ 'ticketTypes' というリレーションシップは後で Event.php に定義します)
+
+        return response()->json($ticketTypes);
+    }
+
+    /**
+     * 特定のイベント詳細を取得 (show)
+     * (これは apiResource によって自動で定義されています)
+     */
+    public function show(Event $event) // 👈 string $id から Event $event に変更
+    {
+        // イベント単体の詳細を返す
+        return response()->json($event);
     }
 
     /**
