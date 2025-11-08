@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\UserTicketController;
 use App\Http\Controllers\Api\TicketTypeController;
+use App\Http\Controllers\Api\PostController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,4 +39,6 @@ Route::middleware('firebase.auth')->group(function () {
     Route::get('/my-tickets', [UserTicketController::class, 'index']);
     Route::apiResource('ticket-types', TicketTypeController::class);
     Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']);
+    
+    Route::apiResource('posts', PostController::class)->only(['index', 'store']);
 });
