@@ -24,4 +24,45 @@ class UserTicketController extends Controller
 
         return response()->json($myTickets);
     }
+
+    /**
+     * QRコードをスキャンしてチケットを使用済みにする
+     */
+    public function scanTicket(Request $request)
+    {
+        // 1. バリデーション
+        $validated = $request->validate([
+            'qr_code_id' => 'required|string|exists:user_tickets,qr_code_id',
+        ]);
+
+        // 2. 認証済みユーザーの取得（スキャン実行者）
+        $scannerUser = Auth::user();
+
+        // 3. 権限チェック (管理者またはアーティストのみがスキャン可能)
+        // ※引き継ぎ書では権限分離は後回しだが、API保護のため最低限のチェックは推奨
+        if ($scannerUser->role !== 'admin' && $scannerUser->role !== 'artist') {
+             return response()->json(['message' => '権限がありません。'], 403);
+        }
+
+        // 4. チケットの検索
+        $ticket = UserTicket::where('qr_code_id', $validated['qr_code_id'])->firstOrFail();
+
+        // 5. 使用済みかチェック
+        if ($ticket->is_used) {
+            return response()->json([
+                'message' => 'このチケットは既に使用済みです。',
+                'ticket' => $ticket->load('event', 'ticketType') // 参考までにチケット情報も返す
+            ], 409); // 409 Conflict (競合)
+        }
+
+        // 6. チケットを使用済みに更新
+        $ticket->is_used = true;
+        $ticket->save();
+
+        // 7. 成功レスポンス
+        return response()->json([
+            'message' => 'チケットを正常に使用済みにしました。',
+            'ticket' => $ticket->load('event', 'ticketType')
+        ], 200);
+    }
 }

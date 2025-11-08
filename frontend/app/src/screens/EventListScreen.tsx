@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -9,13 +8,14 @@ import {
   Alert,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
 
-// APIのURL
 const API_URL = 'http://10.0.2.2';
 
+// 型定義 (クリーンアップ済み)
 interface Event {
   id: number;
   title: string;
@@ -24,20 +24,25 @@ interface Event {
   event_date: string;
 }
 
-// ★注意★: このコンポーネントは、App.tsxから 'authToken' を受け取る前提です
 interface Props {
-  authToken: string; // 認証済みトークン
+  authToken: string;
 }
+
+type EventListNavigationProp = StackNavigationProp<
+  EventStackParamList,
+  'EventList'
+>;
 
 const EventListScreen: React.FC<Props> = ({ authToken }) => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<EventListNavigationProp>();
 
+  // ↓↓↓ 💥💥💥 ここがエラーの原因でした 💥💥💥 ↓↓↓
+  // 画面フォーカス時にイベントを取得 (正しい useFocusEffect)
   useFocusEffect(
     useCallback(() => {
       // この外側の関数は「同期的」です
-
       const fetchEvents = async () => {
         // この内側の関数で「非同期」処理を行います
         try {
@@ -49,11 +54,9 @@ const EventListScreen: React.FC<Props> = ({ authToken }) => {
               Authorization: `Bearer ${authToken}`,
             },
           });
-
           if (!response.ok) {
             throw new Error('イベントの取得に失敗しました');
           }
-
           const data = (await response.json()) as Event[];
           setEvents(data);
         } catch (error: any) {
@@ -62,25 +65,20 @@ const EventListScreen: React.FC<Props> = ({ authToken }) => {
           setLoading(false);
         }
       };
-
-      // 同期関数の中で、非同期関数を呼び出す
-      fetchEvents();
-
-      // (オプション：画面から離れた時のクリーンアップ処理)
-      // return () => {};
+      fetchEvents(); // 同期関数の中で、非同期関数を呼び出す
     }, [authToken]), // 依存配列は useCallback の方に書きます
   );
+  // ↑↑↑ 修正ここまで ↑↑↑
 
-  // 👈 イベントタップ時の処理
+  // イベントタップ時の処理
   const handleEventPress = (event: Event) => {
     navigation.navigate('EventDetail', {
       event: event,
     });
   };
 
-  // リストの各アイテムをどう表示するかの定義
+  // リストの各アイテム
   const renderItem = ({ item }: { item: Event }) => (
-    // 👈 TouchableOpacity で囲む
     <TouchableOpacity onPress={() => handleEventPress(item)}>
       <View style={styles.eventItem}>
         <Text style={styles.eventTitle}>{item.title}</Text>
@@ -111,11 +109,7 @@ const EventListScreen: React.FC<Props> = ({ authToken }) => {
 
 // --- スタイルシート ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
-    padding: 10,
-  },
+  container: { flex: 1, backgroundColor: '#121212', padding: 10 },
   eventItem: {
     backgroundColor: '#222',
     padding: 15,
@@ -127,23 +121,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  eventVenue: {
-    fontSize: 16,
-    color: '#BBBBBB',
-    marginTop: 5,
-  },
-  eventDate: {
-    fontSize: 14,
-    color: '#888888',
-    marginTop: 5,
-  },
-  eventPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4CAF50', // 価格は緑色
-    marginTop: 10,
-    textAlign: 'right',
-  },
+  eventVenue: { fontSize: 16, color: '#BBBBBB', marginTop: 5 },
+  eventDate: { fontSize: 14, color: '#888888', marginTop: 5 },
   emptyText: {
     color: '#FFFFFF',
     textAlign: 'center',

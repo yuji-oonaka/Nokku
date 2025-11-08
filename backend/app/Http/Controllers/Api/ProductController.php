@@ -73,10 +73,20 @@ class ProductController extends Controller
 
     /**
      * グッズを削除 (destroy)
-     * (今回はまだ実装しないので、中身は空のまま)
      */
-    public function destroy(string $id)
+    public function destroy(Product $product) // 👈 string $id から Product $product に変更
     {
-        //
+        $user = Auth::user();
+
+        // 1. 権限チェック
+        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'このグッズを削除する権限がありません'], 403);
+        }
+
+        // 2. 削除処理
+        $product->delete();
+
+        // 3. 成功レスポンス
+        return response()->json(null, 204); // 204 No Content
     }
 }
