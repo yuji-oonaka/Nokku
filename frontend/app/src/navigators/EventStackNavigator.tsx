@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // スクリーンをインポート
 import EventListScreen from '../screens/EventListScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
+import TicketTypeCreateScreen from '../screens/TicketTypeCreateScreen';
 
 // Eventの型定義（EventDetailScreenに渡すため）
 // （EventListScreenの型定義と一致させます）
@@ -16,10 +17,13 @@ interface Event {
   // price カラムはクリーンアップで削除済み
 }
 
-// スタックで管理する画面の型定義
+// スタックで管理する画面の定義
 export type EventStackParamList = {
-  EventList: undefined; // EventList画面はパラメータ不要
-  EventDetail: { event: Event }; // EventDetail画面はイベント情報が必要
+  EventList: undefined;
+  EventDetail: {event: Event};
+  // ↓↓↓ 2. TicketTypeCreate画面の定義を追加 ↓↓↓
+  // (event_id を渡す)
+  TicketTypeCreate: {event_id: number}; 
 };
 
 // スタックナビゲーターを作成
@@ -53,6 +57,11 @@ const EventStackNavigator: React.FC<Props> = ({ authToken }) => {
       {/* 2. 積み重なる画面 (イベント詳細) */}
       <Stack.Screen name="EventDetail" options={{ title: 'イベント詳細' }}>
         {() => <EventDetailScreen authToken={authToken} />}
+      </Stack.Screen>
+
+      {/* ↓↓↓ 3. 券種作成画面をスタックに追加 ↓↓↓ */}
+      <Stack.Screen name="TicketTypeCreate" options={{ title: '券種を作成' }}>
+        {() => <TicketTypeCreateScreen authToken={authToken} />}
       </Stack.Screen>
     </Stack.Navigator>
   );

@@ -8,6 +8,7 @@ import ProductCreateScreen from '../screens/ProductCreateScreen';
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
 import MyTicketsScreen from '../screens/MyTicketsScreen';
+import ScannerScreen from '../screens/ScannerScreen';
 
 // App.tsx から渡される Props を定義
 interface Props {
@@ -76,7 +77,7 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         name="CreateEvent"
         options={{
           title: 'イベント作成',
-          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+          headerRight: () => <LogoutButton />, // 👈 ログアウトボタンを個別に追加
         }}
       >
         {() => <EventCreateScreen authToken={authToken} />}
@@ -87,7 +88,7 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         name="CreateProduct"
         options={{
           title: 'グッズ作成',
-          headerRight: LogoutButton, // 👈 ログアウトボタンを個別に追加
+          headerRight: () => <LogoutButton />, // 👈 ログアウトボタンを個別に追加
         }}
       >
         {() => <ProductCreateScreen authToken={authToken} />}
@@ -98,11 +99,19 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         name="MyTickets"
         options={{
           title: 'マイチケット',
-          headerRight: LogoutButton,
+          headerRight: () => <LogoutButton />,
         }}
       >
         {() => <MyTicketsScreen authToken={authToken} />}
       </Tab.Screen>
+      <Tab.Screen
+        name="Scan"
+        component={ScannerScreen}
+        options={{
+          title: 'QRスキャン',
+          // tabBarIcon: ... (アイコンは後で設定)
+        }}
+      />
     </Tab.Navigator>
   );
 };

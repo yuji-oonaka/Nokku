@@ -89,10 +89,22 @@ class EventController extends Controller
 
     /**
      * イベントを削除 (destroy)
-     * (今回はまだ実装しないので、中身は空のまま)
      */
-    public function destroy(string $id)
+    public function destroy(Event $event) // 👈 string $id から Event $event に変更
     {
-        //
+        $user = Auth::user();
+
+        // 1. 権限チェック
+        // (ログイン中のユーザーが主催者か、または管理者か)
+        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'このイベントを削除する権限がありません'], 403);
+        }
+
+        // 2. 削除処理
+        // (関連する TicketType や UserTicket も DB設定(onDelete('cascade'))により自動で削除されます)
+        $event->delete();
+
+        // 3. 成功レスポンス (中身は空でOK)
+        return response()->json(null, 204); // 204 No Content
     }
 }
