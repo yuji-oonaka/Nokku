@@ -8,14 +8,14 @@ import {
   Alert,
   Image,
   TouchableOpacity,
-  Button, // 👈 1. Button をインポート
+  Button,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-
-const API_URL = 'http://10.0.2.2';
+// ↓↓↓ ProductStackNavigator のインポートパスはご自身の環境に合わせてください
+import { ProductStackParamList } from '../navigation/ProductStackNavigator';
+import api from '../services/api'; // 1. api.ts をインポート
 
 // 型定義
 interface Product {
@@ -26,46 +26,36 @@ interface Product {
   stock: number;
   image_url: string | null;
 }
-interface Props {
-  authToken: string;
-}
+
+// 2. Props (authToken) を削除
 type ProductListNavigationProp = StackNavigationProp<
   ProductStackParamList,
   'ProductList'
 >;
 
-const ProductListScreen: React.FC<Props> = ({ authToken }) => {
+const ProductListScreen: React.FC = () => {
+  // 3. Props を削除
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<ProductListNavigationProp>();
 
-  // ↓↓↓ 2. fetchProducts関数を useCallback で「外」に定義 ↓↓↓
+  // 4. fetchProducts を api.ts 使用に書き換え
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/products`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-      if (!response.ok) {
-        throw new Error('グッズの取得に失敗しました');
-      }
-      const data = (await response.json()) as Product[];
-      setProducts(data);
+      const response = await api.get('/products');
+      setProducts(response.data);
     } catch (error: any) {
-      Alert.alert('エラー', error.message);
+      Alert.alert('エラー', 'グッズの取得に失敗しました');
     } finally {
       setLoading(false);
     }
-  }, [authToken]);
+  }, []); // 👈 authToken への依存も削除
 
   useFocusEffect(
     useCallback(() => {
-      fetchProducts(); // フォーカス時に実行
-    }, [fetchProducts]), // 依存配列
+      fetchProducts();
+    }, [fetchProducts]),
   );
 
   // グッズタップ時 (決済画面へ)
@@ -79,7 +69,7 @@ const ProductListScreen: React.FC<Props> = ({ authToken }) => {
     });
   };
 
-  // ↓↓↓ 4. グッズ削除処理メソッドを丸ごと追記 ↓↓↓
+  // 5. handleDeleteProduct を api.ts 使用に書き換え
   const handleDeleteProduct = async (product: Product) => {
     Alert.alert('グッズの削除', `「${product.name}」を本当に削除しますか？`, [
       { text: 'キャンセル', style: 'cancel' },
@@ -88,36 +78,32 @@ const ProductListScreen: React.FC<Props> = ({ authToken }) => {
         style: 'destructive',
         onPress: async () => {
           try {
-            const response = await fetch(
-              `${API_URL}/api/products/${product.id}`,
-              {
-                method: 'DELETE',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${authToken}`,
-                },
-              },
-            );
-            if (!response.ok) {
-              if (response.status === 403) {
-                throw new Error('このグッズを削除する権限がありません');
-              }
-              throw new Error('グッズの削除に失敗しました');
-            }
+            await api.delete(`/products/${product.id}`);
+
             Alert.alert('削除完了', `「${product.name}」を削除しました。`);
-            // ★重要★ リストを即時更新
-            fetchProducts();
+            fetchProducts(); // リストを即時更新
           } catch (error: any) {
-            Alert.alert('エラー', error.message);
+            if (error.response && error.response.status === 403) {
+              Alert.alert('エラー', 'このグッズを削除する権限がありません');
+            } else {
+              Alert.alert('エラー', 'グッズの削除に失敗しました');
+            }
           }
         },
       },
     ]);
   };
 
+  // 6. ★★★ 新規 ★★★
+  // グッズ編集ハンドラ
+  const handleEditProduct = (product: Product) => {
+    navigation.navigate('ProductEdit', { productId: product.id });
+  };
+  // ★★★ ここまで ★★★
+
   // リストの各アイテム
   const renderItem = ({ item }: { item: Product }) => (
-    // 👈 5. 削除ボタンが押された時に詳細遷移しないようロジックを修正
+    // ここにあった問題の // コメントは削除されています
     <TouchableOpacity onPress={() => handleProductPress(item)}>
       <View style={styles.productItem}>
         {item.image_url && (
@@ -132,17 +118,28 @@ const ProductListScreen: React.FC<Props> = ({ authToken }) => {
           <Text style={styles.productStock}>在庫: {item.stock}</Text>
         </View>
 
-        {/* ↓↓↓ 6. 削除ボタンを追記 ↓↓↓ */}
-        <View style={styles.deleteButtonContainer}>
+        {/* 7. ★★★ 編集ボタンを追加 ★★★ */}
+        <View style={styles.adminButtonContainer}>
           <Button
-            title="削除"
-            color="#FF3B30"
+            title="編集"
+            color="#0A84FF"
             onPress={e => {
-              e.stopPropagation(); // 👈 親のタップ(詳細遷移)を無効化
-              handleDeleteProduct(item);
+              e.stopPropagation();
+              handleEditProduct(item);
             }}
           />
+          <View style={{ marginLeft: 5 }}>
+            <Button
+              title="削除"
+              color="#FF3B30"
+              onPress={e => {
+                e.stopPropagation();
+                handleDeleteProduct(item);
+              }}
+            />
+          </View>
         </View>
+        {/* ★★★ ここまで ★★★ */}
       </View>
     </TouchableOpacity>
   );
@@ -166,20 +163,20 @@ const ProductListScreen: React.FC<Props> = ({ authToken }) => {
 
 // --- スタイルシート ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 10 },
+  // 8. ★★★ テーマカラーを他の画面と統一 ★★★
+  container: { flex: 1, backgroundColor: '#000000', padding: 10 }, // #121212 -> #000000
   productItem: {
-    backgroundColor: '#222',
+    backgroundColor: '#1C1C1E', // #222 -> #1C1C1E
     borderRadius: 8,
     marginVertical: 8,
     flexDirection: 'row',
     overflow: 'hidden',
-    alignItems: 'center', // 👈 ボタンを中央揃え
+    alignItems: 'center',
   },
   productImage: { width: 100, height: 100, backgroundColor: '#333' },
   productInfo: {
     flex: 1,
     padding: 15,
-    marginRight: 10, // 👈 ボタンとの余白
   },
   productName: { fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' },
   productDescription: { fontSize: 14, color: '#BBBBBB', marginTop: 5 },
@@ -190,9 +187,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   productStock: { fontSize: 14, color: '#888888', marginTop: 5 },
-  deleteButtonContainer: {
-    // 👈 削除ボタン用
-    paddingRight: 15,
+  adminButtonContainer: {
+    // 9. ★★★ 修正 (横並びにする) ★★★
+    flexDirection: 'row', // 横並び
+    paddingRight: 10,
+    alignItems: 'center',
   },
   emptyText: {
     color: '#FFFFFF',

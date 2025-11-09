@@ -55,20 +55,43 @@ class ProductController extends Controller
 
     /**
      * 特定のグッズ詳細を取得 (show)
-     * (今回はまだ実装しないので、中身は空のまま)
      */
-    public function show(string $id)
+    public function show(Product $product) // ★ 修正： string $id から Product $product に変更
     {
-        //
+        // ★ 実装： 権限チェック
+        $user = Auth::user();
+        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'グッズを閲覧する権限がありません'], 403);
+        }
+        
+        return response()->json($product);
     }
 
     /**
      * グッズ情報を更新 (update)
-     * (今回はまだ実装しないので、中身は空のまま)
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Product $product) // ★ 修正： string $id から Product $product に変更
     {
-        //
+        // ★ 実装： 権限チェック
+        $user = Auth::user();
+        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'グッズの編集権限がありません'], 403);
+        }
+
+        // ★ 実装： バリデーション (store と同じ)
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'required|string',
+            'price' => 'required|integer|min:0',
+            'stock' => 'required|integer|min:0',
+            'image_url' => 'nullable|string|url',
+        ]);
+
+        // ★ 実装： データ更新
+        $product->update($validatedData);
+
+        // ★ 実装： 更新後のデータを返す
+        return response()->json($product);
     }
 
     /**

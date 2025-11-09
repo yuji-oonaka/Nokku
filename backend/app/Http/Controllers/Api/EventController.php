@@ -70,21 +70,36 @@ class EventController extends Controller
 
     /**
      * 特定のイベント詳細を取得 (show)
-     * (これは apiResource によって自動で定義されています)
      */
-    public function show(Event $event) // 👈 string $id から Event $event に変更
+    public function show(Event $event) 
     {
-        // イベント単体の詳細を返す
+        // 権限チェックは削除する
         return response()->json($event);
     }
-
     /**
      * イベント情報を更新 (update)
-     * (今回はまだ実装しないので、中身は空のまま)
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Event $event) // ★ 修正： string $id から Event $event に変更
     {
-        //
+        // ★ 実装： destroy メソッドと同様の権限チェック
+        $user = Auth::user();
+        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'イベントの編集権限がありません'], 403);
+        }
+
+        // ★ 実装： バリデーション (store と同じルールを適用)
+        $validatedData = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'required|string',
+            'venue' => 'required|string|max:255',
+            'event_date' => 'required|date',
+        ]);
+
+        // ★ 実装： データを更新
+        $event->update($validatedData);
+
+        // ★ 実装： 更新後のイベント情報を返す
+        return response()->json($event);
     }
 
     /**

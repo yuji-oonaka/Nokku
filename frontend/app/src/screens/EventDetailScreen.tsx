@@ -14,13 +14,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useRoute,
   useNavigation,
-  useFocusEffect, // 👈 1. useFocusEffect をインポート
+  useFocusEffect,
+  RouteProp, // 1. RouteProp をインポート
 } from '@react-navigation/native';
 import { useStripe } from '@stripe/stripe-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { EventStackParamList } from '../navigators/EventStackNavigator';
-
-const API_URL = 'http://10.0.2.2';
+// 2. EventStackParamList のパスは、ご自身の環境に合わせてください
+import { EventStackParamList } from '../navigation/EventStackNavigator';
+import api from '../services/api'; // 3. ★ api.ts をインポート
 
 // 型定義 (Event)
 interface Event {
@@ -29,6 +30,8 @@ interface Event {
   description: string;
   venue: string;
   event_date: string;
+  // ★ artist_id を追加 (編集ボタンの表示制御用)
+  artist_id: number;
 }
 
 // 型定義 (TicketType)
@@ -41,9 +44,14 @@ interface TicketType {
   seating_type: 'random' | 'free';
 }
 
-interface Props {
-  authToken: string;
+// 4. ★ ユーザー情報の型 (簡易版)
+interface User {
+  id: number;
+  role: 'user' | 'artist' | 'admin';
 }
+
+// 5. ★ route.params の型を正しく定義
+type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
 // ナビゲーションの型
 type EventDetailNavigationProp = StackNavigationProp<
@@ -51,77 +59,78 @@ type EventDetailNavigationProp = StackNavigationProp<
   'EventDetail'
 >;
 
-const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
+// 6. ★ Props を削除 (authToken は不要)
+const EventDetailScreen = () => {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const navigation = useNavigation<EventDetailNavigationProp>();
-  const route = useRoute();
+  const route = useRoute<EventDetailScreenRouteProp>();
 
-  const { event } = route.params as { event: Event };
+  // 7. ★ eventId を route.params から取得
+  const { eventId } = route.params;
 
+  // 8. ★ event と user の state を追加
+  const [event, setEvent] = useState<Event | null>(null);
+  const [user, setUser] = useState<User | null>(null); // ログインユーザー情報
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [loading, setLoading] = useState(true);
   const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
 
-  // ↓↓↓ 2. fetchTicketTypes関数を useCallback で「外」に定義 ↓↓↓
-  const fetchTicketTypes = useCallback(async () => {
+  // 9. ★ データをすべて取得する関数 (リファクタリング)
+  const fetchData = useCallback(async () => {
+    // 1. ★ eventId のチェックを setLoading(true) より先に行う
+    if (!eventId) {
+      Alert.alert('エラー', 'イベントIDが指定されていません。', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+      setLoading(false); // ★ eventId が無くてもローディングを解除
+      return;
+    }
+
+    // 2. ★ setLoading(true) を try の「外」に移動
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await fetch(
-        `${API_URL}/api/events/${event.id}/ticket-types`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-        },
-      );
-      if (!response.ok) {
-        throw new Error('チケット情報の取得に失敗しました');
-      }
-      const data = (await response.json()) as TicketType[];
-      setTickets(data);
+      const [eventResponse, ticketsResponse, userResponse] = await Promise.all([
+        api.get(`/events/${eventId}`), // イベント詳細
+        api.get(`/events/${eventId}/ticket-types`), // 券種一覧
+        api.get('/profile'), // ログインユーザー情報
+      ]);
+
+      setEvent(eventResponse.data);
+      setTickets(ticketsResponse.data);
+      setUser(userResponse.data);
     } catch (error: any) {
-      Alert.alert('エラー', error.message);
+      console.error('データ取得エラー:', error);
+      Alert.alert('エラー', 'データの取得に失敗しました。', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+      // ★ catch に入った場合でも、finally で setLoading(false) が呼ばれる
     } finally {
       setLoading(false);
     }
-  }, [event.id, authToken]);
+  }, [eventId, navigation]);
 
+  // 11. ★ useFocusEffect で fetchData を呼ぶ
   useFocusEffect(
     useCallback(() => {
-      const fetchData = async () => {
-        await fetchTicketTypes(); // ← awaitできる
-      };
-      fetchData(); // ← 非同期関数を呼び出す
-    }, [fetchTicketTypes]),
+      fetchData();
+    }, [fetchData]),
   );
 
-  // ★ チケット購入処理 (変更なし)
+  // ★ チケット購入処理 (リファクタリング)
   const handleBuyTicket = async (ticket: TicketType) => {
     setBuyingTicketId(ticket.id);
     let paymentIntentClientSecret: string | null = null;
     try {
-      // 1. 決済IDリクエスト
-      const response = await fetch(
-        `${API_URL}/api/create-ticket-payment-intent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({
-            ticket_id: ticket.id,
-            quantity: 1,
-          }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || '決済の準備に失敗しました');
+      // 1. 決済IDリクエスト (api.post)
+      const response = await api.post('/create-ticket-payment-intent', {
+        ticket_id: ticket.id,
+        quantity: 1,
+      });
+
+      paymentIntentClientSecret = response.data.clientSecret;
+      if (!paymentIntentClientSecret) {
+        throw new Error('決済の準備に失敗しました');
       }
-      paymentIntentClientSecret = data.clientSecret;
 
       // 2. Stripe初期化
       const { error: initError } = await initPaymentSheet({
@@ -145,130 +154,104 @@ const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
         return;
       }
 
-      // 4. 決済成功 → 購入確定API呼び出し
+      // 4. 決済成功 → 購入確定API呼び出し (api.post)
       setBuyingTicketId(null);
       Alert.alert(
         '決済完了',
         '決済が完了しました。チケットを確定しています...',
       );
-      const confirmResponse = await fetch(
-        `${API_URL}/api/confirm-ticket-purchase`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({
-            ticket_type_id: ticket.id,
-            quantity: 1,
-            stripe_payment_id: paymentIntentClientSecret,
-          }),
-        },
-      );
-      const confirmData = await confirmResponse.json();
-      if (!confirmResponse.ok) {
-        throw new Error(
-          confirmData.message || 'チケットの確定に失敗しました。',
-        );
-      }
+      const confirmResponse = await api.post('/confirm-ticket-purchase', {
+        ticket_type_id: ticket.id,
+        quantity: 1,
+        stripe_payment_id: paymentIntentClientSecret,
+      });
+
       Alert.alert(
         '購入確定！',
-        `「${ticket.name}」のチケット（${confirmData.tickets[0].seat_number}）を購入しました！`,
+        `「${ticket.name}」のチケット（${confirmResponse.data.tickets[0].seat_number}）を購入しました！`,
       );
-      navigation.goBack();
+      // マイチケット画面に遷移する方が親切かも？
+      navigation.navigate('MyPageStack', { screen: 'MyTickets' });
     } catch (error: any) {
-      Alert.alert('エラー', error.message);
+      let message = '不明なエラーが発生しました。';
+      if (error.response) {
+        message = error.response.data.message || '決済に失敗しました。';
+      } else if (error.message) {
+        message = error.message;
+      }
+      Alert.alert('エラー', message);
       setBuyingTicketId(null);
     }
   };
 
-  // 👈 イベント削除処理 (変更なし)
+  // ★ イベント削除処理 (リファクタリング)
   const handleDeleteEvent = async () => {
-    Alert.alert(
-      'イベントの削除',
-      `「${event.title}」を本当に削除しますか？\n（関連する券種や購入済みチケットもすべて削除されます）`,
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除する',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/api/events/${event.id}`,
-                {
-                  method: 'DELETE',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${authToken}`,
-                  },
-                },
-              );
-              if (!response.ok) {
-                if (response.status === 403) {
-                  throw new Error('このイベントを削除する権限がありません');
-                }
-                throw new Error('イベントの削除に失敗しました');
-              }
-              Alert.alert('削除完了', `「${event.title}」を削除しました。`);
-              navigation.navigate('EventList');
-            } catch (error: any) {
-              Alert.alert('エラー', error.message);
-            }
-          },
+    if (!event) return;
+    Alert.alert('イベントの削除', `「${event.title}」を本当に削除しますか？`, [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除する',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // 12. ★ api.delete を使用
+            await api.delete(`/events/${event.id}`);
+            Alert.alert('削除完了', `「${event.title}」を削除しました。`);
+            navigation.navigate('EventList'); // EventList に戻る
+          } catch (error: any) {
+            Alert.alert(
+              'エラー',
+              error.response?.data?.message || 'イベントの削除に失敗しました',
+            );
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  // 👈 「券種を追加」ボタンの処理 (変更なし)
+  // ★ 「券種を追加」ボタンの処理 (リファクタリング)
   const handleAddTicketType = () => {
+    if (!event) return;
     navigation.navigate('TicketTypeCreate', {
       event_id: event.id,
     });
   };
 
-  // 👈 券種（S席など）を削除する処理
+  // ★ 券種削除処理 (リファクタリング)
   const handleDeleteTicketType = async (ticketType: TicketType) => {
     if (buyingTicketId !== null) return;
-    Alert.alert(
-      '券種の削除',
-      `「${ticketType.name}」を本当に削除しますか？\n（この券種の購入済みチケットもすべて削除されます）`,
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除する',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(
-                `${API_URL}/api/ticket-types/${ticketType.id}`,
-                {
-                  method: 'DELETE',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${authToken}`,
-                  },
-                },
-              );
-              if (!response.ok) {
-                if (response.status === 403) {
-                  throw new Error('この券種を削除する権限がありません');
-                }
-                throw new Error('券種の削除に失敗しました');
-              }
-              Alert.alert('削除完了', `「${ticketType.name}」を削除しました。`);
-              // ★ リストを即時更新 ( 'fetchTicketTypes' がスコープ内にあるため呼び出せる)
-              fetchTicketTypes();
-            } catch (error: any) {
-              Alert.alert('エラー', error.message);
-            }
-          },
+    Alert.alert('券種の削除', `「${ticketType.name}」を本当に削除しますか？`, [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除する',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // 13. ★ api.delete を使用
+            await api.delete(`/ticket-types/${ticketType.id}`);
+            Alert.alert('削除完了', `「${ticketType.name}」を削除しました。`);
+            // ★ リストを即時更新 (fetchData を呼び出す)
+            fetchData();
+          } catch (error: any) {
+            Alert.alert(
+              'エラー',
+              error.response?.data?.message || '券種の削除に失敗しました',
+            );
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
+
+  // 14. ★★★ イベント編集ボタン（今回のタスク） ★★★
+  const handleEditEvent = () => {
+    if (!event) return;
+    navigation.navigate('EventEdit', { eventId: event.id });
+  };
+
+  // 15. ★ アーティスト/管理者かどうかの判定
+  const isOwnerOrAdmin =
+    user && event && (user.id === event.artist_id || user.role === 'admin');
 
   // リストの各アイテム (変更なし)
   const renderTicketItem = ({ item }: { item: TicketType }) => (
@@ -278,12 +261,15 @@ const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
         <Text style={styles.ticketPrice}>¥{item.price.toLocaleString()}</Text>
       </View>
       <View style={styles.buttonGroup}>
-        <Button
-          title="削除"
-          color="#FF3B30"
-          onPress={() => handleDeleteTicketType(item)}
-          disabled={buyingTicketId !== null}
-        />
+        {/* 16. ★ 権限がある場合のみ削除ボタンを表示 */}
+        {isOwnerOrAdmin && (
+          <Button
+            title="削除"
+            color="#FF3B30"
+            onPress={() => handleDeleteTicketType(item)}
+            disabled={buyingTicketId !== null}
+          />
+        )}
         <View style={{ width: 10 }} />
         <Button
           title={buyingTicketId === item.id ? '処理中...' : '購入する'}
@@ -294,6 +280,21 @@ const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
     </View>
   );
 
+  // 17. ★ 早期リターン (ローディングまたはイベントデータなし)
+  if (loading || !event) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.container,
+          { justifyContent: 'center', alignItems: 'center' },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </SafeAreaView>
+    );
+  }
+
+  // 18. ★ メインのJSX (リファクタリング)
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
@@ -305,15 +306,18 @@ const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
           </Text>
           <Text style={styles.description}>{event.description}</Text>
         </View>
+
         <View style={styles.ticketHeaderContainer}>
           <Text style={styles.ticketHeader}>チケットを選択</Text>
-          <TouchableOpacity onPress={handleAddTicketType}>
-            <Text style={styles.addButton}>＋ 券種を追加</Text>
-          </TouchableOpacity>
+          {/* 19. ★ 権限がある場合のみ「券種を追加」を表示 */}
+          {isOwnerOrAdmin && (
+            <TouchableOpacity onPress={handleAddTicketType}>
+              <Text style={styles.addButton}>＋ 券種を追加</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        {loading ? (
-          <ActivityIndicator size="large" color="#FFFFFF" />
-        ) : tickets.length === 0 ? (
+
+        {tickets.length === 0 ? (
           <Text style={styles.emptyText}>
             このイベントにはまだ券種が登録されていません。
           </Text>
@@ -325,23 +329,34 @@ const EventDetailScreen: React.FC<Props> = ({ authToken }) => {
             scrollEnabled={false}
           />
         )}
-        <View style={styles.deleteButtonContainer}>
-          <Button
-            title="このイベントを削除"
-            color="#FF3B30"
-            onPress={handleDeleteEvent}
-          />
-        </View>
+
+        {/* 20. ★ 管理者用ボタンコンテナ (編集と削除) */}
+        {isOwnerOrAdmin && (
+          <View style={styles.adminButtonContainer}>
+            <Button
+              title="イベントを編集する"
+              onPress={handleEditEvent} // 編集ボタン
+              color="#0A84FF" // 青
+            />
+            <View style={{ marginTop: 10 }}>
+              <Button
+                title="イベントを削除する"
+                onPress={handleDeleteEvent} // 削除ボタン
+                color="#FF3B30" // 赤
+              />
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-// --- スタイルシート (変更なし) ---
+// --- スタイルシート (adminButtonContainer を追加) ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1, backgroundColor: '#000000' }, // 背景を黒に変更
   detailCard: {
-    backgroundColor: '#222',
+    backgroundColor: '#1C1C1E', // ダークモード
     padding: 20,
     margin: 15,
     borderRadius: 8,
@@ -370,7 +385,7 @@ const styles = StyleSheet.create({
   },
   addButton: { fontSize: 16, color: '#0A84FF', fontWeight: 'bold' },
   ticketItem: {
-    backgroundColor: '#222',
+    backgroundColor: '#1C1C1E', // ダークモード
     padding: 20,
     marginHorizontal: 15,
     marginVertical: 5,
@@ -383,18 +398,22 @@ const styles = StyleSheet.create({
   ticketPrice: { fontSize: 16, color: '#4CAF50', marginTop: 5 },
   buttonGroup: { flexDirection: 'row' },
   emptyText: {
-    color: '#FFFFFF',
+    color: '#888888', // 少し暗く
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
     paddingHorizontal: 15,
   },
-  deleteButtonContainer: {
+  // 21. ★ 新しい管理者ボタンコンテナのスタイル
+  adminButtonContainer: {
     margin: 15,
     marginTop: 30,
     borderTopWidth: 1,
-    borderTopColor: '#555',
+    borderTopColor: '#333', // 区切り線
     paddingTop: 20,
+    backgroundColor: '#1C1C1E',
+    padding: 15,
+    borderRadius: 8,
   },
 });
 
