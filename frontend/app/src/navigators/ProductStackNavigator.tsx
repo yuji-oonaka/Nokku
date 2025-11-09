@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // スクリーンをインポート
 import ProductListScreen from '../screens/ProductListScreen';
 import PaymentScreen from '../screens/PaymentScreen';
+import ProductEditScreen from '../screens/ProductEditScreen';
 
 // Productの型（PaymentScreenに渡すため）
 interface Product {
@@ -53,6 +54,13 @@ const ProductStackNavigator: React.FC<Props> = ({ authToken }) => {
       <Stack.Screen name="Payment" options={{ title: '購入手続き' }}>
         {() => <PaymentScreen authToken={authToken} />}
       </Stack.Screen>
+
+      {/* 3. グッズ編集画面 */}
+      <Stack.Screen
+        name="ProductEdit"
+        component={ProductEditScreen}
+        options={{ title: 'グッズ編集' }}
+      />
     </Stack.Navigator>
   );
 };

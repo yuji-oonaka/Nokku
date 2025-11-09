@@ -2,13 +2,11 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-// スクリーンをインポート
-import EventCreateScreen from '../screens/EventCreateScreen';
-import ProductCreateScreen from '../screens/ProductCreateScreen';
+// スクリーンとスタックをインポート
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
-import MyTicketsScreen from '../screens/MyTicketsScreen';
-import ScannerScreen from '../screens/ScannerScreen';
+import TimelineScreen from '../screens/TimelineScreen';
+import MyPageStackNavigator from './MyPageStackNavigator'; // マイページスタック
 
 // App.tsx から渡される Props を定義
 interface Props {
@@ -34,6 +32,7 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
     headerTitleStyle: {
       color: '#FFFFFF',
     },
+    // ★ヘッダー右側のログアウトボタン (共通設定)
     headerRight: () => (
       <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
         <Text style={styles.logoutButtonText}>ログアウト</Text>
@@ -41,20 +40,14 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
     ),
   };
 
-  const LogoutButton = () => (
-    <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-      <Text style={styles.logoutButtonText}>ログアウト</Text>
-    </TouchableOpacity>
-  );
-
   return (
     <Tab.Navigator screenOptions={screenOptions}>
       {/* 1. イベント一覧タブ */}
       <Tab.Screen
-        name="Events"
+        name="EventsStack" // 名前を "Events" -> "EventsStack" に変更（被り防止）
         options={{
-          title: 'イベント一覧',
-          headerShown: false,
+          title: 'イベント',
+          headerShown: false, // スタック側がヘッダーを持つため
         }}
       >
         {() => <EventStackNavigator authToken={authToken} />}
@@ -62,56 +55,38 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
 
       {/* 2. グッズ一覧タブ */}
       <Tab.Screen
-        name="Products"
+        name="ProductsStack" // 名前を "Products" -> "ProductsStack" に変更
         options={{
           title: 'グッズ',
-          headerShown: false, // 👈 スタック側がヘッダーを持つため、タブのヘッダーは非表示
+          headerShown: false, // スタック側がヘッダーを持つため
         }}
       >
-        {/* 👈 3. ProductListScreen から ProductStackNavigator に差し替え */}
         {() => <ProductStackNavigator authToken={authToken} />}
       </Tab.Screen>
 
-      {/* 3. イベント作成タブ */}
+      {/* 3. タイムラインタブ */}
       <Tab.Screen
-        name="CreateEvent"
+        name="Timeline"
+        component={TimelineScreen}
         options={{
-          title: 'イベント作成',
-          headerRight: () => <LogoutButton />, // 👈 ログアウトボタンを個別に追加
-        }}
-      >
-        {() => <EventCreateScreen authToken={authToken} />}
-      </Tab.Screen>
-
-      {/* 4. グッズ作成タブ */}
-      <Tab.Screen
-        name="CreateProduct"
-        options={{
-          title: 'グッズ作成',
-          headerRight: () => <LogoutButton />, // 👈 ログアウトボタンを個別に追加
-        }}
-      >
-        {() => <ProductCreateScreen authToken={authToken} />}
-      </Tab.Screen>
-
-      {/* ↓↓↓ 5. マイチケットタブを追記 ↓↓↓ */}
-      <Tab.Screen
-        name="MyTickets"
-        options={{
-          title: 'マイチケット',
-          headerRight: () => <LogoutButton />,
-        }}
-      >
-        {() => <MyTicketsScreen authToken={authToken} />}
-      </Tab.Screen>
-      <Tab.Screen
-        name="Scan"
-        component={ScannerScreen}
-        options={{
-          title: 'QRスキャン',
-          // tabBarIcon: ... (アイコンは後で設定)
+          title: 'タイムライン',
+          // ログアウトボタンは screenOptions から自動で適用
         }}
       />
+
+      {/* 4. マイページタブ (★新設) */}
+      <Tab.Screen
+        name="MyPageStack" // 名前を "MyPageStack" に設定
+        options={{
+          title: 'マイページ',
+          headerShown: false, // MyPageStackNavigator がヘッダーを持つため
+        }}
+      >
+        {/* authToken と onLogout をそのまま渡す */}
+        {() => (
+          <MyPageStackNavigator authToken={authToken} onLogout={onLogout} />
+        )}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 };

@@ -56,17 +56,44 @@ class TicketTypeController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(TicketType $ticketType) // ★ 修正： string $id から TicketType $ticketType に変更
     {
-        // (今回は実装しない)
+        // ★ 実装： 権限チェック (destroy と同じ)
+        $user = Auth::user();
+        $event = $ticketType->event; // 親イベントを取得
+        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'この券種を閲覧する権限がありません'], 403);
+        }
+        
+        return response()->json($ticketType);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, TicketType $ticketType) // ★ 修正： string $id から TicketType $ticketType に変更
     {
-        // (今回は実装しない)
+        // ★ 実装： 権限チェック (destroy と同じ)
+        $user = Auth::user();
+        $event = $ticketType->event; // 親イベントを取得
+        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'この券種を編集する権限がありません'], 403);
+        }
+
+        // ★ 実装： バリデーション (store とほぼ同じ)
+        // ※ event_id は更新対象外（券種が別のイベントに移動することはない）
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:255',
+            'price' => 'required|integer|min:0',
+            'capacity' => 'required|integer|min:1',
+            'seating_type' => 'required|in:random,free',
+        ]);
+
+        // ★ 実装： データ更新
+        $ticketType->update($validatedData);
+
+        // ★ 実装： 更新後のデータを返す
+        return response()->json($ticketType);
     }
 
     /**
