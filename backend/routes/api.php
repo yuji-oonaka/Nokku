@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\TicketTypeController;
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ImageUploadController;
+use App\Http\Controllers\Api\InquiryController;
+use App\Http\Controllers\Api\ArtistController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -50,4 +52,16 @@ Route::middleware('firebase.auth')->group(function () {
 
     // 2. ↓↓↓ (お問い合わせ) ↓↓↓
     Route::post('/inquiries', [InquiryController::class, 'store']);
+
+    // アーティスト一覧を取得 (role が 'artist' のユーザー)
+    Route::get('/artists', [ArtistController::class, 'index']);
+
+    // 特定のアーティストをフォローする
+    Route::post('/artists/{artist}/follow', [ArtistController::class, 'follow']);
+
+    // 特定のアーティストをアンフォローする
+    Route::delete('/artists/{artist}/unfollow', [ArtistController::class, 'unfollow']);
+
+    // (将来用: 特定のアーティストの詳細ページ)
+    // Route::get('/artists/{artist}', [ArtistController::class, 'show']);
 });

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
@@ -36,6 +37,32 @@ class User extends Authenticatable
     public function posts(): HasMany // 2. メソッド追加
     {
         return $this->hasMany(Post::class);
+    }
+
+    /**
+     * このユーザーがフォローしているアーティスト (多対多)
+     */
+    public function following(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,     // 関連するモデル (User)
+            'follows',       // 中間テーブル名
+            'user_id',       // 中間テーブルの「自分」の外部キー
+            'artist_id'    // 中間テーブルの「相手」の外部キー
+        );
+    }
+
+    /**
+     * このアーティストをフォローしているユーザー (ファン) (多対多)
+     */
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'follows',
+            'artist_id',   // 「自分」の外部キー (自分がアーティスト側)
+            'user_id'      // 「相手」の外部キー (相手がファン側)
+        );
     }
 
     /**

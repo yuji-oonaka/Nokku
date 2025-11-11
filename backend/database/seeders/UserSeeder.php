@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use App\Models\User; // 1. User モデルを use
-use Illuminate\Support\Facades\Hash; // 2. Hash を use
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
@@ -14,27 +14,38 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // 3. ★ 一般ユーザー (user@nokku.com) を作成
+        // 1. 一般ユーザー (変更なし)
         User::firstOrCreate(
-            ['email' => 'user@nokku.com'], // この email が存在しなかったら
-            [ // 以下のデータで作成する
+            ['email' => 'user@nokku.com'],
+            [
                 'name' => '一般ユーザー',
                 'password' => Hash::make('password'),
                 'role' => 'user',
-                'firebase_uid' => 'USER_PLACEHOLDER_UID', // ログインには本物のUIDが必要
+                'firebase_uid' => 'USER_PLACEHOLDER_UID',
             ]
         );
 
-        // 4. ★ 管理者/アーティスト (admin@nokku.com) を作成
+        // 2. 管理者 (変更なし)
         User::firstOrCreate(
-            ['email' => 'admin@nokku.com'], // この email が存在しなかったら
-            [ // 以下のデータで作成する
-                'name' => '管理者アーティスト',
+            ['email' => 'admin@nokku.com'],
+            [
+                'name' => '管理者',
                 'password' => Hash::make('password'),
                 'role' => 'admin',
-                // ログインには本物のUIDが必要だが、seed時にはプレースホルダを入れる
-                'firebase_uid' => 'ADMIN_PLACEHOLDER_UID', 
+                'firebase_uid' => 'ADMIN_PLACEHOLDER_UID',
             ]
         );
+
+        // 3. ★↓↓↓ テストアーティストを追加 ↓↓↓
+        User::firstOrCreate(
+            ['email' => 'artist@nokku.com'],
+            [
+                'name' => 'テストアーティスト',
+                'password' => Hash::make('password'),
+                'role' => 'artist', // 👈 ロールを 'artist' に設定
+                'firebase_uid' => 'ARTIST_PLACEHOLDER_UID', // 仮のUID
+            ]
+        );
+        // ↑↑↑ ★ ここまで追加 ★ ↑↑↑
     }
 }

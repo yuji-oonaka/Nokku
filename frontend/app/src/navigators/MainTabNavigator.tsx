@@ -10,6 +10,7 @@ import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
 import TimelineScreen from '../screens/TimelineScreen';
 import MyPageStackNavigator from './MyPageStackNavigator';
+import ArtistListScreen from '../screens/ArtistListScreen';
 
 // (Props, Tab の定義は変更なし)
 interface Props {
@@ -80,6 +81,16 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
             }}
           />
         );
+      } else if (route.name === 'Search') {
+        return (
+          <Image
+            source={require('../assets/images/search_icon.png')}
+            style={{
+              width: size,
+              height: size,
+            }}
+          />
+        );
       } else if (route.name === 'MyPageStack') {
         // ★ マイページアイコンをカスタム画像に変更
         return (
@@ -127,7 +138,16 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
         name="Timeline"
         component={TimelineScreen}
         options={{
-          title: 'タイムライン',
+          title: 'お知らせ',
+        }}
+      />
+
+      <Tab.Screen
+        name="Search"
+        component={ArtistListScreen}
+        options={{
+          title: '探す',
+          // ヘッダー右側のログアウトボタン (共通設定から適用)
         }}
       />
 
