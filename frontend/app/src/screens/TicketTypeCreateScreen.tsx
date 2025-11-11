@@ -1,95 +1,93 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
+  View,
   Text,
   TextInput,
   Button,
+  StyleSheet,
   Alert,
-  ScrollView,
   ActivityIndicator,
-  View,
+  SafeAreaView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { Picker } from '@react-native-picker/picker';
+import api from '../services/api'; // 1. ★ api.ts をインポート
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+// 2. ★ EventStackNavigator の型定義をインポート
+import { EventStackParamList } from '../navigation/EventStackNavigator';
 
-const API_URL = 'http://10.0.2.2';
+// 3. ★ Props (authToken) を削除
+// interface Props {
+//   authToken: string;
+// }
 
-interface Props {
-  authToken: string;
-}
+// 4. ★ route.params から event_id を受け取るための型定義
+type TicketTypeCreateRouteProp = RouteProp<
+  EventStackParamList,
+  'TicketTypeCreate'
+>;
 
-// EventDetailScreenから渡されるパラメータの型
-type RouteParams = {
-  event_id: number;
-};
-
-const TicketTypeCreateScreen: React.FC<Props> = ({ authToken }) => {
+const TicketTypeCreateScreen: React.FC = () => {
+  // 5. ★ Props を削除
   const navigation = useNavigation();
-  const route = useRoute();
+  const route = useRoute<TicketTypeCreateRouteProp>();
 
-  // 前の画面から 'event_id' を受け取る
-  const { event_id } = route.params as RouteParams;
+  // 6. ★ route.params から event_id を取得
+  const event_id = route.params?.event_id;
 
-  // フォーム用の状態
-  const [name, setName] = useState(''); // S席, A席...
+  const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [capacity, setCapacity] = useState('');
-  const [seatingType, setSeatingType] = useState<'random' | 'free'>('random'); // デフォルトは 'random'
+  // seating_type は 'random' か 'free' ですが、
+  // ここでは簡略化のため 'random' に固定します（後でUIを追加できます）
 
   const [loading, setLoading] = useState(false);
 
+  // 7. ★ handleSubmit を api.ts を使うように修正
   const handleSubmit = async () => {
-    if (!name || !price || !capacity) {
-      Alert.alert('エラー', 'すべての項目を入力してください');
+    const priceNum = parseInt(price, 10);
+    const capacityNum = parseInt(capacity, 10);
+
+    if (!name || isNaN(priceNum) || isNaN(capacityNum) || !event_id) {
+      Alert.alert('エラー', 'すべての項目を正しく入力してください。');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/ticket-types`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          event_id: event_id, // 👈 渡された event_id を使う
-          name: name,
-          price: parseInt(price, 10),
-          capacity: parseInt(capacity, 10),
-          seating_type: seatingType,
-        }),
+      // 8. ★ api.post('/ticket-types') を呼び出す
+      await api.post('/ticket-types', {
+        event_id: event_id, // 必須
+        name: name,
+        price: priceNum,
+        capacity: capacityNum,
+        seating_type: 'random', // デフォルト（または 'free'）
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        let errorMsg = data.message || '券種の作成に失敗しました';
-        if (response.status === 403) {
-          errorMsg = '権限エラー: このイベントの券種を作成できません。';
-        }
-        throw new Error(errorMsg);
-      }
-
-      // 成功
-      Alert.alert('成功', `券種「${data.name}」が作成されました！`);
-
-      // 成功したら前の画面（イベント詳細）に戻る
-      navigation.goBack();
+      Alert.alert('成功', '新しい券種を作成しました。');
+      navigation.goBack(); // イベント詳細画面に戻る
     } catch (error: any) {
-      Alert.alert('作成エラー', error.message);
+      console.error('券種作成エラー:', error);
+      let message = '券種の作成に失敗しました。';
+      if (error.response && error.response.data.message) {
+        message = error.response.data.message;
+      }
+      Alert.alert('エラー', message);
     } finally {
       setLoading(false);
     }
   };
 
+  if (!event_id) {
+    // event_id が渡されていない（あり得ないが念のため）
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.label}>エラー: イベントIDがありません。</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <Text style={styles.header}>新しい券種を作成</Text>
-        <Text style={styles.subHeader}>Event ID: {event_id} に追加</Text>
-
+      <View style={styles.form}>
         <Text style={styles.label}>券種名</Text>
         <TextInput
           style={styles.input}
@@ -104,104 +102,65 @@ const TicketTypeCreateScreen: React.FC<Props> = ({ authToken }) => {
           style={styles.input}
           value={price}
           onChangeText={setPrice}
-          placeholder="例: 8000"
-          placeholderTextColor="#888"
+          placeholder="8000"
           keyboardType="numeric"
+          placeholderTextColor="#888"
         />
 
-        <Text style={styles.label}>販売枚数（キャパシティ）</Text>
+        <Text style={styles.label}>キャパシティ（席数）</Text>
         <TextInput
           style={styles.input}
           value={capacity}
           onChangeText={setCapacity}
-          placeholder="例: 100"
-          placeholderTextColor="#888"
+          placeholder="100"
           keyboardType="numeric"
+          placeholderTextColor="#888"
         />
 
-        <Text style={styles.label}>座席タイプ</Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={seatingType}
-            style={styles.picker}
-            onValueChange={itemValue =>
-              setSeatingType(itemValue as 'random' | 'free')
-            }
-            dropdownIconColor="#FFFFFF"
-          >
-            <Picker.Item
-              label="ランダム指定席 (例: S席-1)"
-              value="random"
-              color="#FFFFFF"
-            />
-            <Picker.Item
-              label="自由席 (例: 自由席-1)"
-              value="free"
-              color="#FFFFFF"
-            />
-          </Picker>
-        </View>
+        {/* TODO: seating_type (ランダム/自由席) を選択するUI (Picker) を追加 */}
 
-        <View style={styles.buttonContainer}>
-          {loading ? (
-            <ActivityIndicator size="large" color="#007AFF" />
-          ) : (
-            <Button title="この券種を作成" onPress={handleSubmit} />
-          )}
-        </View>
-      </ScrollView>
+        {loading ? (
+          <ActivityIndicator size="large" style={styles.buttonSpacing} />
+        ) : (
+          <View style={styles.buttonSpacing}>
+            <Button title="券種を作成" onPress={handleSubmit} />
+          </View>
+        )}
+      </View>
     </SafeAreaView>
   );
 };
 
-// --- スタイルシート ---
+// (スタイルは ProductCreateScreen と共通)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
+  },
+  form: {
     padding: 20,
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 5,
-  },
-  subHeader: {
-    fontSize: 16,
-    color: '#888888',
-    marginBottom: 20,
+    backgroundColor: '#1C1C1E',
+    margin: 15,
+    borderRadius: 8,
   },
   label: {
     fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
     color: '#FFFFFF',
-    marginBottom: 5,
-    marginTop: 10,
   },
   input: {
-    height: 50,
-    borderColor: '#555',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    color: '#FFFFFF',
-    backgroundColor: '#333',
+    borderColor: '#333',
+    borderRadius: 5,
+    padding: 10,
     fontSize: 16,
-  },
-  pickerContainer: {
-    borderColor: '#555',
-    borderWidth: 1,
-    borderRadius: 8,
-    backgroundColor: '#333',
-    marginBottom: 15,
-  },
-  picker: {
-    height: 50,
+    backgroundColor: '#333333',
     color: '#FFFFFF',
+    marginBottom: 20,
   },
-  buttonContainer: {
+  buttonSpacing: {
     marginTop: 20,
-    marginBottom: 40,
   },
 });
 
