@@ -87,6 +87,14 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             >
               <Text style={styles.menuButtonText}>購入済みチケット一覧</Text>
             </TouchableOpacity>
+
+            {/* ↓↓↓ 4. お問い合わせボタン ↓↓↓ */}
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => navigation.navigate('Inquiry')}
+            >
+              <Text style={styles.menuButtonText}>運営へのお問い合わせ</Text>
+            </TouchableOpacity>
           </View>
         )}
         {/* ★★★ ここまで ★★★ */}

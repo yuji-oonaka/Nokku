@@ -11,6 +11,7 @@ import ProductCreateScreen from '../screens/ProductCreateScreen';
 import PostCreateScreen from '../screens/PostCreateScreen';
 import ScannerScreen from '../screens/ScannerScreen';
 import GateScannerScreen from '../screens/GateScannerScreen';
+import InquiryScreen from '../screens/InquiryScreen';
 
 // App.tsx / MainTabNavigator から渡される Props
 interface Props {
@@ -124,6 +125,15 @@ const MyPageStackNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         options={{
           title: '自動入場ゲート',
           headerShown: false, // 4. ★ 全画面UIのためヘッダーを非表示
+        }}
+      />
+
+      {/* ↓↓↓ 2. お問い合わせ画面 ↓↓↓ */}
+      <Stack.Screen
+        name="Inquiry"
+        component={InquiryScreen}
+        options={{
+          title: 'お問い合わせ',
         }}
       />
     </Stack.Navigator>

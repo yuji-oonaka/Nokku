@@ -47,4 +47,7 @@ Route::middleware('firebase.auth')->group(function () {
     Route::put('/profile', [UserController::class, 'update']);
 
     Route::post('/upload-image', [ImageUploadController::class, 'store']);
+
+    // 2. ↓↓↓ (お問い合わせ) ↓↓↓
+    Route::post('/inquiries', [InquiryController::class, 'store']);
 });
