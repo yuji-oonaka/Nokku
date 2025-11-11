@@ -1,59 +1,70 @@
 import React from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// 1. ★ 'stack' をインポート (native-stack ではない)
+import { createStackNavigator } from '@react-navigation/stack';
+import { TouchableOpacity, Text, StyleSheet } from 'react-native'; // ログアウトボタン用
 
 // スクリーンをインポート
 import ProductListScreen from '../screens/ProductListScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import ProductEditScreen from '../screens/ProductEditScreen';
 
-// Productの型（PaymentScreenに渡すため）
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-}
-
-// スタックで管理する画面の定義
+// 2. ★ ProductStackParamList の型定義を修正
 export type ProductStackParamList = {
-  ProductList: undefined; // ProductList画面はパラメータ不要
-  Payment: { product: Product }; // Payment画面は商品情報が必要
+  ProductList: undefined;
+  Payment: { product: { id: number; name: string; price: number } }; // PaymentScreen が受け取る型
+  ProductEdit: { productId: number }; // ProductEditScreen が受け取る型
 };
 
 // スタックナビゲーターを作成
-const Stack = createNativeStackNavigator<ProductStackParamList>();
+const Stack = createStackNavigator<ProductStackParamList>();
 
 // MainTabNavigatorから渡されるProps
 interface Props {
-  authToken: string;
+  // 3. ★ authToken は不要になったので削除
+  // authToken: string;
+  onLogout: () => void; // ログアウト処理の関数
 }
 
-const ProductStackNavigator: React.FC<Props> = ({ authToken }) => {
+// 4. ★ LogoutButton をここで定義
+const LogoutButton = ({ onLogout }: { onLogout: () => void }) => (
+  <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+    <Text style={styles.logoutButtonText}>ログアウト</Text>
+  </TouchableOpacity>
+);
+
+// 5. ★ Props から authToken を削除
+const ProductStackNavigator: React.FC<Props> = ({ onLogout }) => {
   // ダークモード用のヘッダースタイル
   const screenOptions = {
     headerStyle: {
-      backgroundColor: '#1C1C1E', // ヘッダーの背景色
+      backgroundColor: '#1C1C1E',
     },
     headerTitleStyle: {
-      color: '#FFFFFF', // ヘッダーの文字色
+      color: '#FFFFFF',
     },
-    headerTintColor: '#0A84FF', // 戻るボタンの色
+    headerTintColor: '#0A84FF',
   };
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       {/* 1. 一番下の画面 (グッズ一覧) */}
-      <Stack.Screen name="ProductList" options={{ headerShown: false }}>
-        {/*
-          ProductListScreen に authToken を渡すため、
-          component={} ではなく、children を使ってレンダリングします
-        */}
-        {() => <ProductListScreen authToken={authToken} />}
-      </Stack.Screen>
+      <Stack.Screen
+        name="ProductList"
+        // 6. ★ 'component' prop を使うように修正
+        component={ProductListScreen}
+        options={{
+          title: 'グッズ一覧',
+          headerRight: () => <LogoutButton onLogout={onLogout} />,
+        }}
+        // 7. ★レンダープロップ {() => ...} を削除
+      />
 
-      {/* 2. 積み重なる画面 (決済画面) */}
-      <Stack.Screen name="Payment" options={{ title: '購入手続き' }}>
-        {() => <PaymentScreen authToken={authToken} />}
-      </Stack.Screen>
+      {/* 2. 積み重なる画面 (決済) */}
+      <Stack.Screen
+        name="Payment"
+        component={PaymentScreen} // 'component' prop を使う
+        options={{ title: '購入手続き' }}
+      />
 
       {/* 3. グッズ編集画面 */}
       <Stack.Screen
@@ -64,5 +75,16 @@ const ProductStackNavigator: React.FC<Props> = ({ authToken }) => {
     </Stack.Navigator>
   );
 };
+
+// 8. ★ styles を追加
+const styles = StyleSheet.create({
+  logoutButton: {
+    marginRight: 15,
+  },
+  logoutButtonText: {
+    color: '#FF3B30',
+    fontSize: 16,
+  },
+});
 
 export default ProductStackNavigator;

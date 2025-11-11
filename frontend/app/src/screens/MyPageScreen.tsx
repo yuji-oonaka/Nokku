@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react'; // 1. ★ useState, useCallback, useFocusEffect を削除
 import {
   View,
   Text,
@@ -6,59 +6,34 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
-  Alert,
   ScrollView,
+  // 2. ★ Alert を削除
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import api from '../services/api';
-import auth from '@react-native-firebase/auth'; // ログアウト処理のため
+import { useNavigation } from '@react-navigation/native';
+// 3. ★ api.ts と auth を削除
 
-// ユーザーの型（簡易版）
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: 'user' | 'artist' | 'admin';
-}
+// 4. ★ useAuth フックをインポート
+import { useAuth } from '../context/AuthContext';
 
-// ログアウト処理の型 (MainTabNavigatorから渡される)
+// 5. ★ User 型のインポート (DbUser に変更)
+import { DbUser } from '../context/AuthContext';
+
+// ログアウト処理の型
 interface MyPageScreenProps {
   onLogout: () => void;
 }
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
-  const navigation = useNavigation<any>(); // ナビゲーションフック
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<any>();
 
-  // プロフィール情報を取得する関数
-  const fetchProfile = async () => {
-    try {
-      const response = await api.get('/profile');
-      setUser(response.data);
-    } catch (error) {
-      console.error('プロフィール取得エラー:', error);
-      Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
-      // ログインセッションが切れている可能性もある
-      if (auth().currentUser) {
-        // Firebase Authは生きてるがDBが死んでる
-      } else {
-        onLogout(); // Firebase Authが切れてたら強制ログアウト
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  // 6. ★ useAuth() フックから user と loading を取得
+  const { user, loading } = useAuth();
 
-  // 画面フォーカス時にプロフィールを再取得
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      fetchProfile();
-    }, []),
-  );
+  // 7. ★ 全削除:
+  //    fetchProfile, useFocusEffect, useState(user), useState(loading)
+  //    は AuthContext が実行するため、すべて不要になります。
 
-  // 読み込み中
+  // 読み込み中 (AuthContext が /profile を読み込んでいる間)
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -67,7 +42,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
     );
   }
 
-  // ユーザー情報が取得できなかった場合
+  // ユーザー情報が取得できなかった場合 (ログアウト状態など)
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -79,7 +54,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
     );
   }
 
-  // アーティストまたは管理者か
+  // 8. ★ user.role に基づいて判定 (ロジックは変更なし)
   const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
 
   return (
@@ -91,7 +66,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           <Text style={styles.profileEmail}>{user.email}</Text>
         </View>
 
-        {/* 2. 共通メニュー */}
+        {/* 2. 共通メニュー (プロフィール編集のみ) */}
         <View style={styles.menuGroup}>
           <Text style={styles.menuGroupTitle}>アカウント</Text>
           <TouchableOpacity
@@ -100,15 +75,23 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           >
             <Text style={styles.menuButtonText}>プロフィールを編集</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() => navigation.navigate('MyTickets')}
-          >
-            <Text style={styles.menuButtonText}>購入済みチケット一覧</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* 3. アーティスト/管理者用メニュー */}
+        {/* 3. ★ 一般ユーザー用メニューを追加 */}
+        {!isArtistOrAdmin && (
+          <View style={styles.menuGroup}>
+            <Text style={styles.menuGroupTitle}>チケット</Text>
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => navigation.navigate('MyTickets')}
+            >
+              <Text style={styles.menuButtonText}>購入済みチケット一覧</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* ★★★ ここまで ★★★ */}
+
+        {/* 4. ★ アーティスト/管理者用メニュー (番号が 3->4 にずれる) */}
         {isArtistOrAdmin && (
           <View style={styles.menuGroup}>
             <Text style={styles.menuGroupTitle}>
@@ -138,10 +121,20 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             >
               <Text style={styles.menuButtonText}>QRコードスキャン</Text>
             </TouchableOpacity>
+
+            {/* ↓↓↓ 5. 自動入場ゲートへのボタン */}
+            <TouchableOpacity
+              style={[styles.menuButton, styles.gateButton]} // 6. ★ 特別なスタイルを適用
+              onPress={() => navigation.navigate('GateScanner')}
+            >
+              <Text style={styles.gateButtonText}>
+                (会場用) 自動入場ゲートを起動
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* 4. ログアウト */}
+        {/* 5. ログアウト */}
         <View style={styles.menuGroup}>
           <TouchableOpacity
             style={[styles.menuButton, styles.logoutButton]}
@@ -155,11 +148,11 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   );
 };
 
-// スタイル (ダークモードを意識したスタイルに変更)
+// ... (Styles は変更なし) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // 背景を黒に
+    backgroundColor: '#000000',
   },
   center: {
     justifyContent: 'center',
@@ -197,7 +190,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   menuButton: {
-    backgroundColor: '#1C1C1E', // ボタンの背景色
+    backgroundColor: '#1C1C1E',
     paddingVertical: 15,
     paddingHorizontal: 20,
     borderTopWidth: 1,
@@ -205,8 +198,18 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   menuButtonText: {
-    color: '#0A84FF', // ボタンテキスト（青）
+    color: '#0A84FF',
     fontSize: 17,
+  },
+  gateButton: {
+    backgroundColor: '#34C759', // 目立つ緑色
+    borderColor: '#34C759',
+  },
+  gateButtonText: {
+    color: '#FFFFFF', // 白文字
+    fontSize: 17,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   logoutButton: {
     borderTopWidth: 1,
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   logoutButtonText: {
-    color: '#FF3B30', // ログアウト（赤）
+    color: '#FF3B30',
     fontSize: 17,
     textAlign: 'center',
   },

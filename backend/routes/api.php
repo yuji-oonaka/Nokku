@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\UserTicketController;
 use App\Http\Controllers\Api\TicketTypeController;
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\ImageUploadController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -44,4 +45,6 @@ Route::middleware('firebase.auth')->group(function () {
 
     Route::get('/profile', [UserController::class, 'show']);
     Route::put('/profile', [UserController::class, 'update']);
+
+    Route::post('/upload-image', [ImageUploadController::class, 'store']);
 });

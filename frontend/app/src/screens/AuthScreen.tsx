@@ -1,79 +1,42 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
+  View,
+  Text,
   TextInput,
   Button,
+  StyleSheet,
   Alert,
-  Text,
-  View,
-  TouchableOpacity,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
-import auth from '@react-native-firebase/auth';
 
-const API_URL = 'http://10.0.2.2';
+// 1. ★ モジュラーAPI のインポート
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from '@react-native-firebase/auth';
 
-// ★重要★
-// 認証成功時に App.tsx に情報を伝えるための Props を定義
-interface Props {
-  onAuthSuccess: (user: any, token: string) => void;
-}
+import api from '../services/api'; // DB登録用のapi
 
-const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
-  // フォーム入力用の状態
+// 2. ★ auth() の代わりに getAuth() を取得
+const authModule = getAuth();
+
+// 3. ★ onAuthSuccess は App.tsx から削除されたため、Props は不要
+// interface AuthScreenProps {
+//   onAuthSuccess: (user: any, token: string) => void;
+// }
+
+const AuthScreen: React.FC = () => {
+  // 4. ★ Props を削除
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-
-  // UI切り替え用の状態
-  const [isLoginView, setIsLoginView] = useState(true);
+  const [name, setName] = useState(''); // 新規登録用の名前
   const [loading, setLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(true); // ログイン画面か登録画面か
 
   /**
-   * ログイン処理
-   */
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('エラー', 'メールアドレスとパスワードを入力してください');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      const userCredential = await auth().signInWithEmailAndPassword(
-        email,
-        password,
-      );
-      const idToken = await userCredential.user.getIdToken();
-
-      const response = await fetch(`${API_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'ログインに失敗しました');
-      }
-
-      // ★ 認証成功を App.tsx に通知
-      onAuthSuccess(data.user, idToken);
-    } catch (error: any) {
-      setLoading(false);
-      console.error(error);
-      let errorMessage = error.message;
-      if (error.code === 'auth/invalid-credential') {
-        errorMessage = 'メールアドレスまたはパスワードが間違っています。';
-      }
-      Alert.alert('ログインエラー', errorMessage);
-    }
-    // (finallyブロックは onAuthSuccess が呼ばれるので不要)
-  };
-
-  /**
-   * 会員登録処理
+   * 新規登録処理
    */
   const handleRegister = async () => {
     if (!email || !password || !name) {
@@ -81,148 +44,149 @@ const AuthScreen: React.FC<Props> = ({ onAuthSuccess }) => {
       return;
     }
     setLoading(true);
-
     try {
-      const userCredential = await auth().createUserWithEmailAndPassword(
+      // 5. ★ auth().createUser... を createUser... (authModule, ...) に変更
+      const userCredential = await createUserWithEmailAndPassword(
+        authModule,
         email,
         password,
       );
-      const idToken = await userCredential.user.getIdToken();
 
-      const response = await fetch(`${API_URL}/api/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ name: name }),
+      // 6. ★ Firebase 登録成功後、Laravel DB にも登録
+      //    (api.ts が自動でTokenを付与する)
+      await api.post('/register', {
+        name: name, // 登録時に入力した名前を送信
+        // email と firebase_uid は AuthController が Token から取得
       });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Laravel APIでの登録に失敗しました');
-      }
-
-      // ★ 認証成功を App.tsx に通知
-      onAuthSuccess(data.user, idToken);
+      // 7. ★ App.tsx の onAuthStateChanged が検知するため、
+      //    コールバック（onAuthSuccess）は不要
     } catch (error: any) {
+      Alert.alert('登録エラー', error.message);
+    } finally {
       setLoading(false);
-      console.error(error);
-      let errorMessage = error.message;
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'このメールアドレスは既に使用されています。';
-      }
-      Alert.alert('登録エラー', errorMessage);
     }
   };
 
-  // --- UI (App.tsxからフォーム部分だけを抜粋) ---
-  return (
-    <View style={styles.formContainer}>
-      <Text style={styles.title}>NOKKU</Text>
-      <Text style={styles.subtitle}>
-        {isLoginView ? 'ログイン' : '新規登録'}
-      </Text>
+  /**
+   * ログイン処理
+   */
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('エラー', 'Emailとパスワードを入力してください');
+      return;
+    }
+    setLoading(true);
+    try {
+      // 8. ★ auth().signIn... を signIn... (authModule, ...) に変更
+      await signInWithEmailAndPassword(authModule, email, password);
 
-      {!isLoginView && (
+      // 9. ★ App.tsx の onAuthStateChanged が検知するため、
+      //    コールバック（onAuthSuccess）は不要
+    } catch (error: any) {
+      Alert.alert('ログインエラー', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.form}>
+        <Text style={styles.title}>
+          {isLogin ? 'NOKKU ログイン' : 'NOKKU 新規登録'}
+        </Text>
+
+        {!isLogin && ( // 新規登録の場合のみ名前入力
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="名前"
+            placeholderTextColor="#888"
+            autoCapitalize="words"
+          />
+        )}
+
         <TextInput
           style={styles.input}
-          placeholder="名前"
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="メールアドレス"
           placeholderTextColor="#888"
+          keyboardType="email-address"
+          autoCapitalize="none"
         />
-      )}
-
-      <TextInput
-        style={styles.input}
-        placeholder="メールアドレス"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        placeholderTextColor="#888"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="パスワード (6文字以上)"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        placeholderTextColor="#888"
-      />
-
-      {loading && (
-        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
-      )}
-
-      {!loading && (
-        <Button
-          title={isLoginView ? 'ログイン' : '新規登録'}
-          onPress={isLoginView ? handleLogin : handleRegister}
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="パスワード (6文字以上)"
+          placeholderTextColor="#888"
+          secureTextEntry
         />
-      )}
 
-      <View style={styles.buttonSpacer} />
+        {loading ? (
+          <ActivityIndicator size="large" style={styles.buttonSpacing} />
+        ) : (
+          <View style={styles.buttonSpacing}>
+            <Button
+              title={isLogin ? 'ログイン' : '登録する'}
+              onPress={isLogin ? handleLogin : handleRegister}
+            />
+          </View>
+        )}
 
-      <TouchableOpacity
-        onPress={() => setIsLoginView(!isLoginView)}
-        disabled={loading}
-      >
-        <Text style={styles.toggleText}>
-          {isLoginView
-            ? 'アカウントをお持ちでないですか？ 新規登録'
-            : 'すでにアカウントをお持ちですか？ ログイン'}
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <View style={styles.toggleButton}>
+          <Button
+            title={
+              isLogin
+                ? 'アカウントをお持ちでないですか？ 新規登録'
+                : 'すでにアカウントをお持ちですか？ ログイン'
+            }
+            onPress={() => setIsLogin(!isLogin)}
+            color="#0A84FF"
+          />
+        </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
-// --- スタイルシート (App.tsxからコピー) ---
+// スタイル (ダークモード)
 const styles = StyleSheet.create({
-  formContainer: {
+  container: {
     flex: 1,
+    backgroundColor: '#000000',
     justifyContent: 'center',
     padding: 20,
-    backgroundColor: '#121212', // 背景色をここで指定
+  },
+  form: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 8,
+    padding: 20,
   },
   title: {
-    fontSize: 48,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#BBBBBB',
-    textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   input: {
-    height: 50,
-    borderColor: '#555',
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 15,
-    paddingHorizontal: 15,
+    backgroundColor: '#333333',
     color: '#FFFFFF',
-    backgroundColor: '#333',
+    borderRadius: 5,
+    padding: 15,
+    marginBottom: 10,
     fontSize: 16,
   },
-  buttonSpacer: {
-    height: 20,
+  buttonSpacing: {
+    marginTop: 10,
+    marginBottom: 10,
   },
-  loader: {
-    marginVertical: 20,
-  },
-  toggleText: {
-    color: '#007AFF',
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 16,
+  toggleButton: {
+    marginTop: 15,
   },
 });
 

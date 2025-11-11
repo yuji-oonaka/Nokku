@@ -8,6 +8,8 @@ import EventListScreen from '../screens/EventListScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import TicketTypeCreateScreen from '../screens/TicketTypeCreateScreen';
 import EventEditScreen from '../screens/EventEditScreen';
+import ChatScreen from '../screens/ChatScreen';
+import ChatLobbyScreen from '../screens/ChatLobbyScreen';
 
 // 2. ★ EventStackParamList の型定義を修正
 export type EventStackParamList = {
@@ -17,6 +19,13 @@ export type EventStackParamList = {
   TicketTypeCreate: { event_id: number };
   // 3. ★ EventEdit を追加
   EventEdit: { eventId: number };
+  ChatLobby: { eventId: number; eventTitle: string };
+  Chat: {
+    eventId: number;
+    eventTitle: string;
+    threadId: string;
+    threadTitle: string;
+  };
 };
 
 // スタックナビゲーターを作成
@@ -84,6 +93,23 @@ const EventStackNavigator: React.FC<Props> = ({ onLogout }) => {
         name="EventEdit"
         component={EventEditScreen}
         options={{ title: 'イベント編集' }}
+      />
+
+      {/* ↓↓↓ 1. ChatLobbyScreen を追加 (EventDetail からここへ遷移する) ↓↓↓ */}
+      <Stack.Screen
+        name="ChatLobby"
+        component={ChatLobbyScreen}
+        options={({ route }) => ({
+          title: `${route.params.eventTitle} ロビー`,
+        })}
+      />
+      {/* 2. ChatScreen は ChatLobby から遷移するようにする */}
+      <Stack.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={({ route }) => ({
+          title: `${route.params.threadTitle}`, // ヘッダーはスレッド名を表示
+        })}
       />
     </Stack.Navigator>
   );

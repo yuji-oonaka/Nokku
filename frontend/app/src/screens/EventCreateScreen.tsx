@@ -1,84 +1,92 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
+  View,
   Text,
   TextInput,
   Button,
+  StyleSheet,
   Alert,
-  ScrollView,
   ActivityIndicator,
-  View,
+  SafeAreaView,
+  TouchableOpacity, // 1. ★ TouchableOpacity をインポート
+  Platform, // 2. ★ Platform をインポート
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import api from '../services/api';
 import { useNavigation } from '@react-navigation/native';
 
-const API_URL = 'http://10.0.2.2';
+// 3. ★ DateTimePicker をインポート
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 
-interface Props {
-  authToken: string;
-}
+// 4. ★ 日付をフォーマットするヘルパー関数
+// (例: 2025-12-24 18:00:00)
+const formatDateTimeForAPI = (date: Date): string => {
+  // YYYY-MM-DD
+  const dateString = date.toISOString().split('T')[0];
+  // HH:MM:SS
+  const timeString = date.toLocaleTimeString('ja-JP', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  return `${dateString} ${timeString}`;
+};
 
-const EventCreateScreen: React.FC<Props> = ({ authToken }) => {
+const EventCreateScreen = () => {
+  const navigation = useNavigation();
+  // (authToken は useAuth 導入により不要になっているはずなので削除)
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [venue, setVenue] = useState('');
-  const [eventDate, setEventDate] = useState(''); // YYYY-MM-DD HH:MM:SS 形式
-  const navigation = useNavigation();
+
+  // 5. ★ 日付入力ロジック
+  const [date, setDate] = useState(new Date()); // 選択された Date オブジェクト
+  const [showPicker, setShowPicker] = useState(false); // ピッカーの表示状態
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date'); // 'date'か'time'か
 
   const [loading, setLoading] = useState(false);
 
+  // 6. ★ ピッカーで日付/時刻が選択されたときの処理
+  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowPicker(false); // ピッカーを閉じる (Android は常時表示ではないため)
+    if (selectedDate) {
+      setDate(selectedDate); // 選択された日付を State に保存
+    }
+  };
+
+  // 7. ★ ピッカーを表示する関数
+  const showMode = (currentMode: 'date' | 'time') => {
+    setShowPicker(true);
+    setPickerMode(currentMode);
+  };
+
+  // 8. ★ 投稿処理 (handleSubmit) を修正
   const handleSubmit = async () => {
-    // フロント側での簡易バリデーション (priceとtotalTicketsを削除)
-    if (!title || !description || !venue || !eventDate) {
-      Alert.alert('エラー', 'すべての項目を入力してください');
+    if (!title || !description || !venue) {
+      Alert.alert('エラー', 'すべての項目を入力してください。');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        // body から price と total_tickets を削除
-        body: JSON.stringify({
-          title: title,
-          description: description,
-          venue: venue,
-          event_date: eventDate,
-        }),
+      // 9. ★ Date オブジェクトを API 用の文字列にフォーマット
+      const formattedEventDate = formatDateTimeForAPI(date);
+
+      await api.post('/events', {
+        title: title,
+        description: description,
+        venue: venue,
+        event_date: formattedEventDate, // フォーマットした文字列を送信
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        // バックエンドからのバリデーションエラーや権限エラー
-        let errorMsg = data.message || 'イベントの作成に失敗しました';
-        if (response.status === 403) {
-          errorMsg = '権限エラー: アーティストまたは管理者のみ作成可能です。';
-        } else if (response.status === 422) {
-          // バリデーションエラー
-          errorMsg =
-            '入力内容が正しくありません。\n' +
-            Object.values(data.errors).join('\n');
-        }
-        throw new Error(errorMsg);
-      }
-
-      // 成功
-      Alert.alert('成功', '新しいイベントが作成されました！');
-      // フォームをクリア
-      setTitle('');
-      setDescription('');
-      setVenue('');
-      setEventDate('');
-
-      //「Events」タブに自動で画面遷移する
-      navigation.navigate('Events');
-    } catch (error: any) {
-      Alert.alert('作成エラー', error.message);
+      Alert.alert('成功', '新しいイベントを作成しました。');
+      navigation.goBack(); // マイページに戻る
+    } catch (error) {
+      console.error('イベント作成エラー:', error);
+      Alert.alert('エラー', 'イベントの作成に失敗しました。');
     } finally {
       setLoading(false);
     }
@@ -86,90 +94,131 @@ const EventCreateScreen: React.FC<Props> = ({ authToken }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
+      <View style={styles.form}>
         <Text style={styles.label}>イベント名</Text>
         <TextInput
           style={styles.input}
           value={title}
           onChangeText={setTitle}
-          placeholder="例: NOKKU SPECIAL LIVE"
+          placeholder="NOKKU SPECIAL LIVE"
           placeholderTextColor="#888"
         />
 
-        <Text style={styles.label}>開催場所</Text>
-        <TextInput
-          style={styles.input}
-          value={venue}
-          onChangeText={setVenue}
-          placeholder="例: Zepp Fukuoka"
-          placeholderTextColor="#888"
-        />
-
-        <Text style={styles.label}>開催日時</Text>
-        <TextInput
-          style={styles.input}
-          value={eventDate}
-          onChangeText={setEventDate}
-          placeholder="例: 2025-12-24 18:00:00"
-          placeholderTextColor="#888"
-        />
-
-        {/* --- チケット価格 と チケット総数 のフォームは削除 --- */}
-
-        <Text style={styles.label}>イベント詳細</Text>
+        <Text style={styles.label}>イベント説明</Text>
         <TextInput
           style={[styles.input, styles.textarea]}
           value={description}
           onChangeText={setDescription}
-          placeholder="イベントの詳細説明..."
+          placeholder="イベントの詳細..."
           placeholderTextColor="#888"
           multiline
         />
 
-        <View style={styles.buttonContainer}>
-          {loading ? (
-            <ActivityIndicator size="large" color="#007AFF" />
-          ) : (
+        <Text style={styles.label}>会場</Text>
+        <TextInput
+          style={styles.input}
+          value={venue}
+          onChangeText={setVenue}
+          placeholder="Zepp Fukuoka"
+          placeholderTextColor="#888"
+        />
+
+        {/* 10. ★★★ 日付/時刻ピッカーのUI ★★★ */}
+        <Text style={styles.label}>開催日時</Text>
+        <TouchableOpacity
+          onPress={() => showMode('date')}
+          style={styles.datePickerButton}
+        >
+          <Text style={styles.datePickerText}>
+            日付を選択: {date.toLocaleDateString('ja-JP')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => showMode('time')}
+          style={styles.datePickerButton}
+        >
+          <Text style={styles.datePickerText}>
+            時刻を選択:{' '}
+            {date.toLocaleTimeString('ja-JP', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
+        </TouchableOpacity>
+
+        {/* showPicker が true の時だけ DateTimePicker を表示 */}
+        {showPicker && (
+          <DateTimePicker
+            testID="dateTimePicker"
+            value={date}
+            mode={pickerMode}
+            is24Hour={true}
+            display="default" // Android は 'default', iOS は 'spinner' など
+            onChange={onDateChange}
+          />
+        )}
+        {/* ★★★ ここまで ★★★ */}
+
+        {loading ? (
+          <ActivityIndicator size="large" style={styles.buttonSpacing} />
+        ) : (
+          <View style={styles.buttonSpacing}>
             <Button title="イベントを作成" onPress={handleSubmit} />
-          )}
-        </View>
-      </ScrollView>
+          </View>
+        )}
+      </View>
     </SafeAreaView>
   );
 };
 
-// --- スタイルシート ---
+// 11. ★ スタイルを更新
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
+  },
+  form: {
     padding: 20,
+    backgroundColor: '#1C1C1E',
+    margin: 15,
+    borderRadius: 8,
   },
   label: {
     fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
     color: '#FFFFFF',
-    marginBottom: 5,
-    marginTop: 10,
   },
   input: {
-    height: 50,
-    borderColor: '#555',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    color: '#FFFFFF',
-    backgroundColor: '#333',
+    borderColor: '#333',
+    borderRadius: 5,
+    padding: 10,
     fontSize: 16,
-    marginBottom: 15,
+    backgroundColor: '#333333',
+    color: '#FFFFFF',
+    marginBottom: 20,
   },
   textarea: {
-    height: 120, // 複数行入力のため高さを広げる
-    textAlignVertical: 'top', // Android用
-    paddingTop: 15, // iOS/Android共通
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
-  buttonContainer: {
-    marginTop: 20,
-    marginBottom: 40,
+  // --- ★ 日付ピッカー用 ---
+  datePickerButton: {
+    backgroundColor: '#333333',
+    borderRadius: 5,
+    padding: 15,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  datePickerText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  // ---
+  buttonSpacing: {
+    marginTop: 20, // 隙間を調整
   },
 });
 

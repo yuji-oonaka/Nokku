@@ -3,20 +3,41 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Event; // 忘れずにEventモデルを use
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth; // ログインユーザー情報取得のため use
+use App\Models\Event;
+use Illuminate\Http\Request; // 1. ★ Request を use
+use Illuminate\Support\Facades\Auth;
 use App\Models\TicketType;
+use Carbon\Carbon; // 2. ★ Carbon (日付ライブラリ) を use
 
 class EventController extends Controller
 {
     /**
      * イベント一覧を取得 (index)
+     * ★ 改造: 'filter' クエリパラメータ (upcoming / past) に対応
      */
-    public function index()
+    public function index(Request $request) // 3. ★ Request $request を引数に追加
     {
-        // シンプルに全てのイベントを新しい順で返す
-        $events = Event::orderBy('event_date', 'desc')->get();
+        // 4. ★ フィルターの値を取得 (デフォルトは 'upcoming')
+        $filter = $request->input('filter', 'upcoming');
+        $now = Carbon::now(); // 現在時刻を取得
+
+        // 5. ★ クエリを組み立てる
+        $query = Event::query();
+
+        if ($filter === 'past') {
+            // 【過去のイベント】
+            // 開催日時が現在より前
+            $query->where('event_date', '<', $now)
+                  ->orderBy('event_date', 'desc'); // 開催日が新しい順 (最近終わった順)
+        } else {
+            // 【開催予定のイベント (デフォルト)】
+            // 開催日時が現在以降
+            $query->where('event_date', '>=', $now)
+                  ->orderBy('event_date', 'asc'); // 開催日が近い順
+        }
+
+        // 6. ★ データを取得して返す
+        $events = $query->get();
         
         return response()->json($events);
     }
@@ -26,31 +47,22 @@ class EventController extends Controller
      */
     public function store(Request $request)
     {
-        // ログイン中のユーザー情報を取得
+        // ( ... 既存の store メソッド ... )
+        // (変更なし)
         $user = Auth::user(); 
-
-        // 権限チェック：アーティストまたは管理者でなければ作成できない
         if ($user->role !== 'artist' && $user->role !== 'admin') {
-            return response()->json(['message' => 'イベントを作成する権限がありません'], 403); // 403 Forbidden
+            return response()->json(['message' => 'イベントを作成する権限がありません'], 403);
         }
-
-        // バリデーション (設計書で定義済み)
         $validatedData = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
             'event_date' => 'required|date',
         ]);
-
-        // バリデーション済みデータに、作成者(アーティスト)のIDを追加
         $eventData = $validatedData;
         $eventData['artist_id'] = $user->id;
-
-        // DBに保存 (Eventモデルの $fillable がここで効いてきます)
         $event = Event::create($eventData);
-
-        // 作成したイベント情報をJSONで返す
-        return response()->json($event, 201); // 201 Created
+        return response()->json($event, 201);
     }
 
     /**
@@ -58,13 +70,9 @@ class EventController extends Controller
      */
     public function getTicketTypes(Event $event)
     {
-        // ルートモデルバインディング (/{event}/) により、
-        // Laravelが自動で $event を見つけてくれる
-
-        // $event に紐づく TicketType をすべて取得
+        // ( ... 既存の getTicketTypes メソッド ... )
+        // (変更なし)
         $ticketTypes = $event->ticketTypes()->get();
-        // (※ 'ticketTypes' というリレーションシップは後で Event.php に定義します)
-
         return response()->json($ticketTypes);
     }
 
@@ -73,53 +81,44 @@ class EventController extends Controller
      */
     public function show(Event $event) 
     {
-        // 権限チェックは削除する
+        // ( ... 既存の show メソッド ... )
+        // (変更なし - 権限チェックは削除済み)
         return response()->json($event);
     }
+
     /**
      * イベント情報を更新 (update)
      */
-    public function update(Request $request, Event $event) // ★ 修正： string $id から Event $event に変更
+    public function update(Request $request, Event $event)
     {
-        // ★ 実装： destroy メソッドと同様の権限チェック
+        // ( ... 既存の update メソッド ... )
+        // (変更なし)
         $user = Auth::user();
         if ($user->id !== $event->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'イベントの編集権限がありません'], 403);
         }
-
-        // ★ 実装： バリデーション (store と同じルールを適用)
         $validatedData = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
             'event_date' => 'required|date',
         ]);
-
-        // ★ 実装： データを更新
         $event->update($validatedData);
-
-        // ★ 実装： 更新後のイベント情報を返す
         return response()->json($event);
     }
 
     /**
      * イベントを削除 (destroy)
      */
-    public function destroy(Event $event) // 👈 string $id から Event $event に変更
+    public function destroy(Event $event)
     {
+        // ( ... 既存の destroy メソッド ... )
+        // (変更なし)
         $user = Auth::user();
-
-        // 1. 権限チェック
-        // (ログイン中のユーザーが主催者か、または管理者か)
         if ($user->id !== $event->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'このイベントを削除する権限がありません'], 403);
         }
-
-        // 2. 削除処理
-        // (関連する TicketType や UserTicket も DB設定(onDelete('cascade'))により自動で削除されます)
         $event->delete();
-
-        // 3. 成功レスポンス (中身は空でOK)
-        return response()->json(null, 204); // 204 No Content
+        return response()->json(null, 204);
     }
 }

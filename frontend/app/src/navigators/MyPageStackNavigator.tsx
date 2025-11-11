@@ -10,6 +10,7 @@ import EventCreateScreen from '../screens/EventCreateScreen';
 import ProductCreateScreen from '../screens/ProductCreateScreen';
 import PostCreateScreen from '../screens/PostCreateScreen';
 import ScannerScreen from '../screens/ScannerScreen';
+import GateScannerScreen from '../screens/GateScannerScreen';
 
 // App.tsx / MainTabNavigator から渡される Props
 interface Props {
@@ -99,11 +100,13 @@ const MyPageStackNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
       {/* 6. 投稿作成 */}
       <Stack.Screen
         name="PostCreate"
-        component={PostCreateScreen}
         options={{
           title: '投稿作成',
         }}
-      />
+      >
+        {/* 👈 Render prop に変更 */}
+        {() => <PostCreateScreen />}
+      </Stack.Screen>
 
       {/* 7. QRスキャン */}
       <Stack.Screen
@@ -111,6 +114,16 @@ const MyPageStackNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         component={ScannerScreen}
         options={{
           title: 'QRスキャン',
+        }}
+      />
+
+      {/* ↓↓↓ 3. 自動入場ゲート画面 */}
+      <Stack.Screen
+        name="GateScanner"
+        component={GateScannerScreen}
+        options={{
+          title: '自動入場ゲート',
+          headerShown: false, // 4. ★ 全画面UIのためヘッダーを非表示
         }}
       />
     </Stack.Navigator>

@@ -15,13 +15,15 @@ import {
   useRoute,
   useNavigation,
   useFocusEffect,
-  RouteProp, // 1. RouteProp をインポート
+  RouteProp,
 } from '@react-navigation/native';
 import { useStripe } from '@stripe/stripe-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-// 2. EventStackParamList のパスは、ご自身の環境に合わせてください
 import { EventStackParamList } from '../navigation/EventStackNavigator';
-import api from '../services/api'; // 3. ★ api.ts をインポート
+import api from '../services/api';
+
+// 1. ★ useAuth をインポート
+import { useAuth } from '../context/AuthContext';
 
 // 型定義 (Event)
 interface Event {
@@ -30,8 +32,7 @@ interface Event {
   description: string;
   venue: string;
   event_date: string;
-  // ★ artist_id を追加 (編集ボタンの表示制御用)
-  artist_id: number;
+  artist_id: number; // artist_id は必須
 }
 
 // 型定義 (TicketType)
@@ -44,13 +45,9 @@ interface TicketType {
   seating_type: 'random' | 'free';
 }
 
-// 4. ★ ユーザー情報の型 (簡易版)
-interface User {
-  id: number;
-  role: 'user' | 'artist' | 'admin';
-}
+// 2. ★ ユーザー情報の型 (User) は AuthContext から来るので削除
 
-// 5. ★ route.params の型を正しく定義
+// route.params の型
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
 // ナビゲーションの型
@@ -59,80 +56,76 @@ type EventDetailNavigationProp = StackNavigationProp<
   'EventDetail'
 >;
 
-// 6. ★ Props を削除 (authToken は不要)
 const EventDetailScreen = () => {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const navigation = useNavigation<EventDetailNavigationProp>();
   const route = useRoute<EventDetailScreenRouteProp>();
+  const eventId = route.params?.eventId;
 
-  // 7. ★ eventId を route.params から取得
-  const { eventId } = route.params;
+  // 3. ★ useAuth フックからグローバルな user 情報を取得
+  const { user } = useAuth(); // AuthContext が /profile を管理
 
-  // 8. ★ event と user の state を追加
+  // 4. ★ useState(user) を削除
   const [event, setEvent] = useState<Event | null>(null);
-  const [user, setUser] = useState<User | null>(null); // ログインユーザー情報
   const [tickets, setTickets] = useState<TicketType[]>([]);
+
+  // この画面専用のローディング（イベント・券種取得）は必要
   const [loading, setLoading] = useState(true);
   const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
 
-  // 9. ★ データをすべて取得する関数 (リファクタリング)
+  // データをすべて取得する関数 (リファクタリング)
   const fetchData = useCallback(async () => {
-    // 1. ★ eventId のチェックを setLoading(true) より先に行う
+    // 5. ★ eventId のチェック (念のため)
     if (!eventId) {
       Alert.alert('エラー', 'イベントIDが指定されていません。', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-      setLoading(false); // ★ eventId が無くてもローディングを解除
+      setLoading(false);
       return;
     }
 
-    // 2. ★ setLoading(true) を try の「外」に移動
-    setLoading(true);
     try {
-      const [eventResponse, ticketsResponse, userResponse] = await Promise.all([
-        api.get(`/events/${eventId}`), // イベント詳細
+      setLoading(true);
+      // 6. ★ Promise.all から /profile の呼び出しを削除
+      const [eventResponse, ticketsResponse] = await Promise.all([
+        api.get(`/events/${eventId}`), // イベント詳細 (show API)
         api.get(`/events/${eventId}/ticket-types`), // 券種一覧
-        api.get('/profile'), // ログインユーザー情報
+        // api.get('/profile'), // ← 削除 (AuthContext が担当)
       ]);
 
       setEvent(eventResponse.data);
       setTickets(ticketsResponse.data);
-      setUser(userResponse.data);
+      // setUser(userResponse.data); // ← 削除
     } catch (error: any) {
       console.error('データ取得エラー:', error);
       Alert.alert('エラー', 'データの取得に失敗しました。', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-      // ★ catch に入った場合でも、finally で setLoading(false) が呼ばれる
     } finally {
       setLoading(false);
     }
-  }, [eventId, navigation]);
+  }, [eventId, navigation]); // 7. ★ 依存配列から user を削除
 
-  // 11. ★ useFocusEffect で fetchData を呼ぶ
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [fetchData]),
   );
 
-  // ★ チケット購入処理 (リファクタリング)
+  // ★ チケット購入処理 (変更なし)
   const handleBuyTicket = async (ticket: TicketType) => {
+    // ... (中身は変更なし) ...
     setBuyingTicketId(ticket.id);
     let paymentIntentClientSecret: string | null = null;
     try {
-      // 1. 決済IDリクエスト (api.post)
       const response = await api.post('/create-ticket-payment-intent', {
         ticket_id: ticket.id,
         quantity: 1,
       });
-
       paymentIntentClientSecret = response.data.clientSecret;
       if (!paymentIntentClientSecret) {
         throw new Error('決済の準備に失敗しました');
       }
-
-      // 2. Stripe初期化
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: 'NOKKU, Inc.',
         paymentIntentClientSecret: paymentIntentClientSecret,
@@ -141,8 +134,6 @@ const EventDetailScreen = () => {
       if (initError) {
         throw new Error(initError.message);
       }
-
-      // 3. 決済シート表示
       const { error: presentError } = await presentPaymentSheet({
         locale: 'ja',
       });
@@ -153,8 +144,6 @@ const EventDetailScreen = () => {
         setBuyingTicketId(null);
         return;
       }
-
-      // 4. 決済成功 → 購入確定API呼び出し (api.post)
       setBuyingTicketId(null);
       Alert.alert(
         '決済完了',
@@ -165,12 +154,10 @@ const EventDetailScreen = () => {
         quantity: 1,
         stripe_payment_id: paymentIntentClientSecret,
       });
-
       Alert.alert(
         '購入確定！',
         `「${ticket.name}」のチケット（${confirmResponse.data.tickets[0].seat_number}）を購入しました！`,
       );
-      // マイチケット画面に遷移する方が親切かも？
       navigation.navigate('MyPageStack', { screen: 'MyTickets' });
     } catch (error: any) {
       let message = '不明なエラーが発生しました。';
@@ -184,8 +171,9 @@ const EventDetailScreen = () => {
     }
   };
 
-  // ★ イベント削除処理 (リファクタリング)
+  // ★ イベント削除処理 (変更なし)
   const handleDeleteEvent = async () => {
+    // ... (中身は変更なし) ...
     if (!event) return;
     Alert.alert('イベントの削除', `「${event.title}」を本当に削除しますか？`, [
       { text: 'キャンセル', style: 'cancel' },
@@ -194,7 +182,6 @@ const EventDetailScreen = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            // 12. ★ api.delete を使用
             await api.delete(`/events/${event.id}`);
             Alert.alert('削除完了', `「${event.title}」を削除しました。`);
             navigation.navigate('EventList'); // EventList に戻る
@@ -209,7 +196,7 @@ const EventDetailScreen = () => {
     ]);
   };
 
-  // ★ 「券種を追加」ボタンの処理 (リファクタリング)
+  // ★ 「券種を追加」ボタンの処理 (変更なし)
   const handleAddTicketType = () => {
     if (!event) return;
     navigation.navigate('TicketTypeCreate', {
@@ -217,8 +204,9 @@ const EventDetailScreen = () => {
     });
   };
 
-  // ★ 券種削除処理 (リファクタリング)
+  // ★ 券種削除処理 (変更なし)
   const handleDeleteTicketType = async (ticketType: TicketType) => {
+    // ... (中身は変更なし) ...
     if (buyingTicketId !== null) return;
     Alert.alert('券種の削除', `「${ticketType.name}」を本当に削除しますか？`, [
       { text: 'キャンセル', style: 'cancel' },
@@ -227,11 +215,9 @@ const EventDetailScreen = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            // 13. ★ api.delete を使用
             await api.delete(`/ticket-types/${ticketType.id}`);
             Alert.alert('削除完了', `「${ticketType.name}」を削除しました。`);
-            // ★ リストを即時更新 (fetchData を呼び出す)
-            fetchData();
+            fetchData(); // リストを即時更新
           } catch (error: any) {
             Alert.alert(
               'エラー',
@@ -243,17 +229,17 @@ const EventDetailScreen = () => {
     ]);
   };
 
-  // 14. ★★★ イベント編集ボタン（今回のタスク） ★★★
+  // ★ イベント編集ボタン (変更なし)
   const handleEditEvent = () => {
     if (!event) return;
     navigation.navigate('EventEdit', { eventId: event.id });
   };
 
-  // 15. ★ アーティスト/管理者かどうかの判定
+  // 8. ★ isOwnerOrAdmin 判定は変更なし (useAuth の 'user' を自動で参照)
   const isOwnerOrAdmin =
     user && event && (user.id === event.artist_id || user.role === 'admin');
 
-  // リストの各アイテム (変更なし)
+  // リストの各アイテム
   const renderTicketItem = ({ item }: { item: TicketType }) => (
     <View style={styles.ticketItem}>
       <View>
@@ -261,26 +247,38 @@ const EventDetailScreen = () => {
         <Text style={styles.ticketPrice}>¥{item.price.toLocaleString()}</Text>
       </View>
       <View style={styles.buttonGroup}>
-        {/* 16. ★ 権限がある場合のみ削除ボタンを表示 */}
-        {isOwnerOrAdmin && (
+        {/* 9. ★ isOwnerOrAdmin (グローバルな user を参照) */}
+        {isOwnerOrAdmin ? (
+          // 【管理者/アーティスト用】
           <Button
             title="削除"
             color="#FF3B30"
             onPress={() => handleDeleteTicketType(item)}
             disabled={buyingTicketId !== null}
           />
+        ) : (
+          // 【一般ユーザー用】
+          <Button
+            title={buyingTicketId === item.id ? '処理中...' : '購入する'}
+            onPress={() => handleBuyTicket(item)}
+            disabled={buyingTicketId !== null}
+          />
         )}
-        <View style={{ width: 10 }} />
-        <Button
-          title={buyingTicketId === item.id ? '処理中...' : '購入する'}
-          onPress={() => handleBuyTicket(item)}
-          disabled={buyingTicketId !== null}
-        />
       </View>
     </View>
   );
 
-  // 17. ★ 早期リターン (ローディングまたはイベントデータなし)
+  const handleChatPress = () => {
+    if (!event) return; // event が null でないことを確認 (event は fetch で取得済み)
+
+    // eventId と eventTitle の両方を渡す
+    navigation.navigate('ChatLobby', {
+      eventId: event.id,
+      eventTitle: event.title,
+    });
+  };
+
+  // 11. ★ 早期リターン (ローディングまたはイベントデータなし)
   if (loading || !event) {
     return (
       <SafeAreaView
@@ -294,7 +292,7 @@ const EventDetailScreen = () => {
     );
   }
 
-  // 18. ★ メインのJSX (リファクタリング)
+  // 12. ★ メインのJSX (変更なし)
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
@@ -307,9 +305,15 @@ const EventDetailScreen = () => {
           <Text style={styles.description}>{event.description}</Text>
         </View>
 
+        <TouchableOpacity style={styles.chatButton} onPress={handleChatPress}>
+          <Text style={styles.chatButtonText}>
+            💬 このイベントのチャットに参加する
+          </Text>
+        </TouchableOpacity>
+
         <View style={styles.ticketHeaderContainer}>
           <Text style={styles.ticketHeader}>チケットを選択</Text>
-          {/* 19. ★ 権限がある場合のみ「券種を追加」を表示 */}
+          {/* 13. ★ isOwnerOrAdmin (グローバルな user を参照) */}
           {isOwnerOrAdmin && (
             <TouchableOpacity onPress={handleAddTicketType}>
               <Text style={styles.addButton}>＋ 券種を追加</Text>
@@ -330,7 +334,7 @@ const EventDetailScreen = () => {
           />
         )}
 
-        {/* 20. ★ 管理者用ボタンコンテナ (編集と削除) */}
+        {/* 14. ★ isOwnerOrAdmin (グローバルな user を参照) */}
         {isOwnerOrAdmin && (
           <View style={styles.adminButtonContainer}>
             <Button
@@ -352,11 +356,11 @@ const EventDetailScreen = () => {
   );
 };
 
-// --- スタイルシート (adminButtonContainer を追加) ---
+// ... (Styles は変更なし) ...
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000000' }, // 背景を黒に変更
+  container: { flex: 1, backgroundColor: '#000000' },
   detailCard: {
-    backgroundColor: '#1C1C1E', // ダークモード
+    backgroundColor: '#1C1C1E',
     padding: 20,
     margin: 15,
     borderRadius: 8,
@@ -370,6 +374,7 @@ const styles = StyleSheet.create({
   venue: { fontSize: 18, color: '#BBBBBB', marginBottom: 5 },
   date: { fontSize: 16, color: '#888888', marginBottom: 15 },
   description: { fontSize: 16, color: '#FFFFFF', lineHeight: 24 },
+
   ticketHeaderContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -385,7 +390,7 @@ const styles = StyleSheet.create({
   },
   addButton: { fontSize: 16, color: '#0A84FF', fontWeight: 'bold' },
   ticketItem: {
-    backgroundColor: '#1C1C1E', // ダークモード
+    backgroundColor: '#1C1C1E',
     padding: 20,
     marginHorizontal: 15,
     marginVertical: 5,
@@ -398,22 +403,35 @@ const styles = StyleSheet.create({
   ticketPrice: { fontSize: 16, color: '#4CAF50', marginTop: 5 },
   buttonGroup: { flexDirection: 'row' },
   emptyText: {
-    color: '#888888', // 少し暗く
+    color: '#888888',
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
     paddingHorizontal: 15,
   },
-  // 21. ★ 新しい管理者ボタンコンテナのスタイル
   adminButtonContainer: {
     margin: 15,
     marginTop: 30,
     borderTopWidth: 1,
-    borderTopColor: '#333', // 区切り線
+    borderTopColor: '#333',
     paddingTop: 20,
     backgroundColor: '#1C1C1E',
     padding: 15,
     borderRadius: 8,
+  },
+  chatButton: {
+    backgroundColor: '#0A84FF', // 目立つ青色
+    padding: 15,
+    marginHorizontal: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 5,
+    marginBottom: 20,
+  },
+  chatButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
