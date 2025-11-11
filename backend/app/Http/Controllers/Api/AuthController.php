@@ -53,6 +53,8 @@ class AuthController extends Controller
             [
                 'email' => $email, // emailも一緒に保存
                 'name' => $name,
+                'firebase_uid' => $firebaseUid,
+                'role' => 'user'
             ]
         );
 

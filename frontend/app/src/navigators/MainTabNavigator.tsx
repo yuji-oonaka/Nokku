@@ -1,67 +1,125 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, Image } from 'react-native'; // 1. ★ Image をインポート
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+// 2. ★ react-native-vector-icons から Icon をインポート
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 // スクリーンとスタックをインポート
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
 import TimelineScreen from '../screens/TimelineScreen';
-import MyPageStackNavigator from './MyPageStackNavigator'; // マイページスタック
+import MyPageStackNavigator from './MyPageStackNavigator';
 
-// App.tsx から渡される Props を定義
+// (Props, Tab の定義は変更なし)
 interface Props {
-  authToken: string;
-  onLogout: () => void; // ログアウト処理の関数
+  onLogout: () => void;
 }
-
-// タブナビゲーターを作成
 const Tab = createBottomTabNavigator();
 
-const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
-  // ダークモード用のタブスタイル設定
-  const screenOptions = {
+const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
+  // 3. ★ screenOptions を関数形式に変更
+  const screenOptions = ({ route }: { route: any }) => ({
     tabBarStyle: {
       backgroundColor: '#1C1C1E',
       borderTopColor: '#333',
     },
-    tabBarActiveTintColor: '#0A84FF',
-    tabBarInactiveTintColor: '#888',
+    tabBarActiveTintColor: '#0A84FF', // アクティブなアイコンの色
+    tabBarInactiveTintColor: '#888', // 非アクティブなアイコンの色
     headerStyle: {
       backgroundColor: '#1C1C1E',
     },
     headerTitleStyle: {
       color: '#FFFFFF',
     },
-    // ★ヘッダー右側のログアウトボタン (共通設定)
     headerRight: () => (
       <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
         <Text style={styles.logoutButtonText}>ログアウト</Text>
       </TouchableOpacity>
     ),
-  };
+
+    // 4. ★ tabBarIcon の設定を追加
+    tabBarIcon: ({
+      focused,
+      color,
+      size,
+    }: {
+      focused: boolean;
+      color: string;
+      size: number;
+    }) => {
+      if (route.name === 'EventsStack') {
+        return (
+          <Image
+            source={require('../assets/images/event_icon.png')}
+            style={{
+              width: size,
+              height: size,
+            }}
+          />
+        );
+      } else if (route.name === 'ProductsStack') {
+        // ★ グッズアイコンをカスタム画像に変更
+        return (
+          <Image
+            source={require('../assets/images/goods_icon.png')}
+            style={{
+              width: size,
+              height: size,
+            }}
+          />
+        );
+      } else if (route.name === 'Timeline') {
+        // ★ タイムラインアイコンをカスタム画像に変更
+        return (
+          <Image
+            source={require('../assets/images/timeline_icon.png')}
+            style={{
+              width: size,
+              height: size,
+            }}
+          />
+        );
+      } else if (route.name === 'MyPageStack') {
+        // ★ マイページアイコンをカスタム画像に変更
+        return (
+          <Image
+            source={require('../assets/images/mypage_icon.png')}
+            style={{
+              width: size,
+              height: size,
+            }}
+          />
+        );
+      }
+
+      return <Icon name="help" size={size} color={color} />; // フォールバック
+    },
+  });
 
   return (
+    // 6. ★ screenOptions を更新
     <Tab.Navigator screenOptions={screenOptions}>
       {/* 1. イベント一覧タブ */}
       <Tab.Screen
-        name="EventsStack" // 名前を "Events" -> "EventsStack" に変更（被り防止）
+        name="EventsStack"
         options={{
-          title: 'イベント',
-          headerShown: false, // スタック側がヘッダーを持つため
+          title: 'イベント', // 7. ★ 名前をアイコンに合わせて短縮
+          headerShown: false,
         }}
       >
-        {() => <EventStackNavigator authToken={authToken} />}
+        {() => <EventStackNavigator onLogout={onLogout} />}
       </Tab.Screen>
 
       {/* 2. グッズ一覧タブ */}
       <Tab.Screen
-        name="ProductsStack" // 名前を "Products" -> "ProductsStack" に変更
+        name="ProductsStack"
         options={{
           title: 'グッズ',
-          headerShown: false, // スタック側がヘッダーを持つため
+          headerShown: false,
         }}
       >
-        {() => <ProductStackNavigator authToken={authToken} />}
+        {() => <ProductStackNavigator onLogout={onLogout} />}
       </Tab.Screen>
 
       {/* 3. タイムラインタブ */}
@@ -70,27 +128,24 @@ const MainTabNavigator: React.FC<Props> = ({ authToken, onLogout }) => {
         component={TimelineScreen}
         options={{
           title: 'タイムライン',
-          // ログアウトボタンは screenOptions から自動で適用
         }}
       />
 
-      {/* 4. マイページタブ (★新設) */}
+      {/* 4. マイページタブ */}
       <Tab.Screen
-        name="MyPageStack" // 名前を "MyPageStack" に設定
+        name="MyPageStack"
         options={{
           title: 'マイページ',
-          headerShown: false, // MyPageStackNavigator がヘッダーを持つため
+          headerShown: false,
         }}
       >
-        {/* authToken と onLogout をそのまま渡す */}
-        {() => (
-          <MyPageStackNavigator authToken={authToken} onLogout={onLogout} />
-        )}
+        {() => <MyPageStackNavigator authToken="" onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
 };
 
+// (styles は変更なし)
 const styles = StyleSheet.create({
   logoutButton: {
     marginRight: 15,
