@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth; // 1. Auth を use
 use App\Models\User; // 2. User モデルを use
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -14,7 +15,6 @@ class UserController extends Controller
      */
     public function show(Request $request)
     {
-        // Auth::user() で認証済みユーザーのモデルが取得できる
         $user = Auth::user();
 
         return response()->json($user);
@@ -25,27 +25,35 @@ class UserController extends Controller
      */
     public function update(Request $request)
     {
-        $user = Auth::user();
+        /** @var \App\Models\User $user */ //
+        $user = Auth::user(); // 現在ログイン中のユーザーを取得
 
-        // 1. バリデーション
-        $validated = $request->validate([
-            // 'name' => 'required|string|max:255', // 👈 削除
-            'real_name' => 'required|string|max:255', // 👈 'real_name' に変更
-            'nickname' => [ // 👈 'nickname' に変更
+        // 2. ★ バリデーションルールを定義します
+        $validatedData = $request->validate([
+            'real_name' => 'required|string|max:255',
+            'nickname' => [
                 'required',
                 'string',
                 'max:255',
-                // 2. ★ ニックネームの重複チェック (自分自身を除く)
-                Rule::unique('users', 'nickname')->ignore($user->id),
+                // ニックネームが重複していないかチェック
+                // (ただし、自分自身のIDは重複チェックの対象から除外する)
+                Rule::unique('users')->ignore($user->id),
             ],
+
+            // 3. ★ 住所フィールドのバリデーション (すべて任意)
+            // 'nullable' = 空でもOK
+            'phone_number' => 'nullable|string|max:20',
+            'postal_code' => 'nullable|string|max:8', // '123-4567' を許容
+            'prefecture' => 'nullable|string|max:10',
+            'city' => 'nullable|string|max:50',
+            'address_line1' => 'nullable|string|max:255',
+            'address_line2' => 'nullable|string|max:255',
         ]);
 
-        // 3. ユーザー情報を更新
-        $user->update([
-            'real_name' => $validated['real_name'], // 👈 変更
-            'nickname' => $validated['nickname'], // 👈 変更
-        ]);
+        // 4. ★ バリデーションが通ったデータで、ユーザー情報を更新
+        $user->update($validatedData);
 
+        // 5. ★ 更新後の最新のユーザー情報をアプリに返す
         return response()->json($user);
     }
 }

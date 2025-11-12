@@ -28,11 +28,10 @@ const PaymentScreen: React.FC = () => {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const navigation = useNavigation();
   const route = useRoute<PaymentScreenRouteProp>();
-  const { product } = route.params;
+  const { product, quantity } = route.params;
 
   const [loading, setLoading] = useState(false);
   const [paymentReady, setPaymentReady] = useState(false);
-  const quantity = 1;
 
   // --- 支払いシート初期化 ---
   useEffect(() => {
@@ -41,7 +40,7 @@ const PaymentScreen: React.FC = () => {
       try {
         const response = await api.post('/create-payment-intent', {
           product_id: product.id,
-          quantity: quantity,
+          quantity: quantity, // 👈 '1' ではなく、渡された 'quantity' を使う
         });
 
         const { clientSecret } = response.data;
@@ -70,7 +69,7 @@ const PaymentScreen: React.FC = () => {
     };
 
     initializePaymentSheet();
-  }, [product.id, initPaymentSheet]);
+  }, [product.id, quantity, initPaymentSheet]);
 
   // --- 決済処理 ---
   const handleCheckout = async () => {

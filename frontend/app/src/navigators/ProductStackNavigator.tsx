@@ -12,7 +12,10 @@ import ProductDetailScreen from '../screens/ProductDetailScreen';
 // 2. ★ ProductStackParamList の型定義を修正
 export type ProductStackParamList = {
   ProductList: undefined;
-  Payment: { product: { id: number; name: string; price: number } }; // PaymentScreen が受け取る型
+  Payment: {
+    product: { id: number; name: string; price: number };
+    quantity: number; // 👈 ★★★ これが重要 ★★★
+  };
   ProductEdit: { productId: number }; // ProductEditScreen が受け取る型
   ProductDetail: { productId: number };
 };

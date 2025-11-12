@@ -4,10 +4,18 @@ import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 // 1. DBから取得するユーザー情報の型
 export interface DbUser {
   id: number;
-  real_name: string; // 👈 追加 (本名)
-  nickname: string; // 👈 追加 (公開名)
   email: string;
+  real_name: string;
+  nickname: string;
   role: 'user' | 'artist' | 'admin';
+
+  // ↓↓↓ ここから6行を追記してください ↓↓↓
+  phone_number: string | null;
+  postal_code: string | null;
+  prefecture: string | null;
+  city: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
 }
 
 // 2. Contextが提供する値の型

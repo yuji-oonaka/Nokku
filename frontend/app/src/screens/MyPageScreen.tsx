@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   ScrollView,
   // 2. ★ Alert を削除
@@ -17,6 +16,8 @@ import { useAuth } from '../context/AuthContext';
 
 // 5. ★ User 型のインポート (DbUser に変更)
 import { DbUser } from '../context/AuthContext';
+
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ログアウト処理の型
 interface MyPageScreenProps {
@@ -80,12 +81,19 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
         {/* 3. ★ 一般ユーザー用メニューを追加 */}
         {!isArtistOrAdmin && (
           <View style={styles.menuGroup}>
-            <Text style={styles.menuGroupTitle}>チケット</Text>
+            <Text style={styles.menuGroupTitle}>チケット・購入履歴</Text>
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => navigation.navigate('MyTickets')}
             >
               <Text style={styles.menuButtonText}>購入済みチケット一覧</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => navigation.navigate('OrderHistory')}
+            >
+              <Text style={styles.menuButtonText}>グッズ購入履歴</Text>
             </TouchableOpacity>
 
             {/* ↓↓↓ 4. お問い合わせボタン ↓↓↓ */}
