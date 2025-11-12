@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { ProductStackParamList } from '../navigation/ProductStackNavigator';
+import { ProductStackParamList } from '../navigators/ProductStackNavigator';
 import api from '../services/api';
 
 // 1. ★ useAuth をインポート
@@ -44,8 +44,10 @@ const ProductListScreen: React.FC = () => {
 
   // 3. ★ ユーザーが管理者/アーティストか判定
   // (user が null の場合も考慮)
-  const isOwnerOrAdmin =
-    user && (user.role === 'artist' || user.role === 'admin');
+  const isOwnerOrAdmin = !!(
+    user &&
+    (user.role === 'artist' || user.role === 'admin')
+  );
 
   // (fetchProducts, handleProductPress, handleDeleteProduct, handleEditProduct は変更なし)
   const fetchProducts = useCallback(async () => {
@@ -70,12 +72,8 @@ const ProductListScreen: React.FC = () => {
     // 4. ★ アーティストは決済画面に遷移させない
     if (isOwnerOrAdmin) return;
 
-    navigation.navigate('Payment', {
-      product: {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-      },
+    navigation.navigate('ProductDetail', {
+      productId: product.id, // 👈 product オブジェクト丸ごとではなく、ID を渡す
     });
   };
 

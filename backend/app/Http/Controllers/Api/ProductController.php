@@ -56,17 +56,17 @@ class ProductController extends Controller
     /**
      * 特定のグッズ詳細を取得 (show)
      */
-    public function show(Product $product) // ★ 修正： string $id から Product $product に変更
+    public function show(Product $product)
     {
-        // ★ 実装： 権限チェック
-        $user = Auth::user();
-        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'グッズを閲覧する権限がありません'], 403);
-        }
-        
+        // ↓↓↓ 権限チェックを削除しました ↓↓↓
+        // $user = Auth::user();
+        // if ($user->id !== $product->artist_id && $user->role !== 'admin') {
+        //     return response()->json(['message' => 'グッズを閲覧する権限がありません'], 403);
+        // }
+        // ↑↑↑ 権限チェックを削除しました ↑↑↑
+
         return response()->json($product);
     }
-
     /**
      * グッズ情報を更新 (update)
      */
