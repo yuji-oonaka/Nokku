@@ -63,5 +63,5 @@ Route::middleware('firebase.auth')->group(function () {
     Route::delete('/artists/{artist}/unfollow', [ArtistController::class, 'unfollow']);
 
     // (将来用: 特定のアーティストの詳細ページ)
-    // Route::get('/artists/{artist}', [ArtistController::class, 'show']);
+    Route::get('/artists/{artist}', [ArtistController::class, 'show']);
 });

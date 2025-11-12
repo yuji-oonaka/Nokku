@@ -3,14 +3,14 @@ import { TouchableOpacity, Text, StyleSheet, Image } from 'react-native'; // 1. 
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 // 2. ★ react-native-vector-icons から Icon をインポート
-import Icon from 'react-native-vector-icons/MaterialIcons';
+// import Icon from 'react-native-vector-icons/MaterialIcons';
 
 // スクリーンとスタックをインポート
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
 import TimelineScreen from '../screens/TimelineScreen';
 import MyPageStackNavigator from './MyPageStackNavigator';
-import ArtistListScreen from '../screens/ArtistListScreen';
+import SearchStackNavigator from './SearchStackNavigator';
 
 // (Props, Tab の定義は変更なし)
 interface Props {
@@ -104,7 +104,12 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
         );
       }
 
-      return <Icon name="help" size={size} color={color} />; // フォールバック
+      return (
+        <Image
+          source={require('../assets/images/default_icon.png')}
+          style={{ width: size, height: size }}
+        />
+      );
     },
   });
 
@@ -144,12 +149,15 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
 
       <Tab.Screen
         name="Search"
-        component={ArtistListScreen}
+        // component={ArtistListScreen} // 3. ★ 削除
         options={{
           title: '探す',
-          // ヘッダー右側のログアウトボタン (共通設定から適用)
+          headerShown: false, // 4. ★ ヘッダーはスタック側で管理
         }}
-      />
+      >
+        {/* 5. ★ SearchStackNavigator を呼び出す */}
+        {() => <SearchStackNavigator onLogout={onLogout} />}
+      </Tab.Screen>
 
       {/* 4. マイページタブ */}
       <Tab.Screen

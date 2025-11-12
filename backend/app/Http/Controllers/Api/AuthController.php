@@ -45,17 +45,21 @@ class AuthController extends Controller
         $email = $verifiedIdToken->claims()->get('email');
 
         // (5) 念のため、名前もリクエストから受け取る
-        $name = $request->input('name', 'New User'); // 'name' がなければ 'New User' を仮登録
+        $validated = $request->validate([
+        'real_name' => 'required|string|max:255',
+        'nickname' => 'required|string|max:255|unique:users,nickname', // ニックネームは重複不可
+        ]);
 
         // (6) DBのusersテーブルに保存
         $user = User::firstOrCreate(
-            ['firebase_uid' => $firebaseUid], // このUIDで検索
-            [
-                'email' => $email, // emailも一緒に保存
-                'name' => $name,
-                'firebase_uid' => $firebaseUid,
-                'role' => 'user'
-            ]
+        ['firebase_uid' => $firebaseUid], // このUIDで検索
+        [
+            'email' => $email,
+            'real_name' => $validated['real_name'], // 👈 'name' から変更
+            'nickname' => $validated['nickname'], // 👈 追加
+            'firebase_uid' => $firebaseUid,
+            'role' => 'user'
+        ]
         );
 
         // (7) 成功レスポンス（作成したユーザー情報）を返す

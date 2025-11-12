@@ -11,54 +11,62 @@ import {
 } from 'react-native';
 import api from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext'; // 1. ★ useAuth をインポート
 
 const ProfileEditScreen = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState(''); // メールアドレスは表示のみ
-  const [loading, setLoading] = useState(true); // 読み込み中
-  const [updating, setUpdating] = useState(false); // 更新中
+  // 2. ★ name -> realName, nickname に変更
+  const [realName, setRealName] = useState('');
+  const [nickname, setNickname] = useState('');
 
-  // プロフィール情報を取得する関数
-  const fetchProfile = async () => {
-    try {
-      const response = await api.get('/profile');
-      setName(response.data.name || '');
-      setEmail(response.data.email || ''); // Firebaseから取得したEmail
-    } catch (error) {
-      console.error('プロフィール取得エラー:', error);
-      Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
-  // 画面フォーカス時にプロフィールを再取得
+  // 3. ★ useAuth から user を取得 (useFocusEffect の API 呼び出しを置き換え)
+  const { user, loading: authLoading } = useAuth();
+
+  // 4. ★ 取得ロジックを useAuth に依存するように変更
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      fetchProfile();
-    }, []),
+      if (user) {
+        setRealName(user.real_name || '');
+        setNickname(user.nickname || '');
+        setEmail(user.email || '');
+        setLoading(false);
+      } else if (!authLoading) {
+        // user が null なのに authLoading が終わっている = エラー
+        setLoading(false);
+        Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
+      }
+    }, [user, authLoading]), // user または authLoading が変わったら実行
   );
 
-  // 更新ボタン押下時の処理
+  // 5. ★ 更新ボタン押下時の処理
   const handleUpdate = async () => {
-    if (name.trim().length === 0) {
-      Alert.alert('エラー', '名前を入力してください。');
+    if (realName.trim().length === 0 || nickname.trim().length === 0) {
+      Alert.alert('エラー', '本名とニックネームを入力してください。');
       return;
     }
 
     setUpdating(true);
     try {
-      // PUT /api/profile を呼び出す
+      // 6. ★ PUT /profile に 'real_name' と 'nickname' を送信
       const response = await api.put('/profile', {
-        name: name,
+        real_name: realName,
+        nickname: nickname,
       });
-      // サーバーから返された最新の名前で state を更新
-      setName(response.data.name);
+
+      setRealName(response.data.real_name);
+      setNickname(response.data.nickname);
       Alert.alert('成功', 'プロフィールを更新しました。');
-    } catch (error) {
-      console.error('プロフィール更新エラー:', error);
-      Alert.alert('エラー', '更新に失敗しました。');
+      // (AuthContext も更新する必要があるが、それは App.tsx のリロードで対応)
+    } catch (error: any) {
+      // 7. ★ ニックネーム重複エラーのハンドリング
+      if (error.response && error.response.status === 422) {
+        Alert.alert('更新エラー', 'そのニックネームは既に使用されています。');
+      } else {
+        Alert.alert('エラー', '更新に失敗しました。');
+      }
     } finally {
       setUpdating(false);
     }
@@ -79,15 +87,26 @@ const ProfileEditScreen = () => {
         <TextInput
           style={[styles.input, styles.readOnly]}
           value={email}
-          editable={false} // 編集不可
+          editable={false}
         />
 
-        <Text style={styles.label}>名前</Text>
+        {/* 8. ★ フォームを 'real_name' と 'nickname' に変更 */}
+        <Text style={styles.label}>本名 (非公開)</Text>
         <TextInput
           style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="表示名"
+          value={realName}
+          onChangeText={setRealName}
+          placeholder="（チケット購入・決済用）"
+          placeholderTextColor="#888"
+        />
+
+        <Text style={styles.label}>ニックネーム (公開)</Text>
+        <TextInput
+          style={styles.input}
+          value={nickname}
+          onChangeText={setNickname}
+          placeholder="（チャット・投稿用）"
+          placeholderTextColor="#888"
         />
 
         {updating ? (
@@ -100,10 +119,11 @@ const ProfileEditScreen = () => {
   );
 };
 
+// 9. ★ スタイルを更新
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: '#000000',
   },
   center: {
     flex: 1,
@@ -112,7 +132,7 @@ const styles = StyleSheet.create({
   },
   form: {
     padding: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1C1C1E',
     margin: 15,
     borderRadius: 8,
   },
@@ -121,18 +141,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 10,
     marginTop: 10,
+    color: '#FFFFFF',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#CCC',
+    borderColor: '#333',
     borderRadius: 5,
     padding: 10,
     fontSize: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#333333',
+    color: '#FFFFFF',
+    marginBottom: 20,
   },
   readOnly: {
-    backgroundColor: '#EFEFEF', // 編集不可のフィールドはグレーに
-    color: '#666',
+    backgroundColor: '#444',
+    color: '#AAA',
   },
   buttonSpacing: {
     marginTop: 20,

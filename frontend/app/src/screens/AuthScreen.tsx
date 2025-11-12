@@ -8,69 +8,54 @@ import {
   Alert,
   ActivityIndicator,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
-
-// 1. ★ モジュラーAPI のインポート
 import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from '@react-native-firebase/auth';
+import api from '../services/api';
 
-import api from '../services/api'; // DB登録用のapi
-
-// 2. ★ auth() の代わりに getAuth() を取得
 const authModule = getAuth();
 
-// 3. ★ onAuthSuccess は App.tsx から削除されたため、Props は不要
-// interface AuthScreenProps {
-//   onAuthSuccess: (user: any, token: string) => void;
-// }
-
 const AuthScreen: React.FC = () => {
-  // 4. ★ Props を削除
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState(''); // 新規登録用の名前
+  const [realName, setRealName] = useState(''); // 本名
+  const [nickname, setNickname] = useState(''); // 公開名
   const [loading, setLoading] = useState(false);
-  const [isLogin, setIsLogin] = useState(true); // ログイン画面か登録画面か
+  const [isLogin, setIsLogin] = useState(true);
 
-  /**
-   * 新規登録処理
-   */
   const handleRegister = async () => {
-    if (!email || !password || !name) {
+    if (!email || !password || !realName || !nickname) {
       Alert.alert('エラー', 'すべての項目を入力してください');
       return;
     }
     setLoading(true);
     try {
-      // 5. ★ auth().createUser... を createUser... (authModule, ...) に変更
       const userCredential = await createUserWithEmailAndPassword(
         authModule,
         email,
         password,
       );
 
-      // 6. ★ Firebase 登録成功後、Laravel DB にも登録
-      //    (api.ts が自動でTokenを付与する)
       await api.post('/register', {
-        name: name, // 登録時に入力した名前を送信
-        // email と firebase_uid は AuthController が Token から取得
+        real_name: realName,
+        nickname: nickname,
       });
-
-      // 7. ★ App.tsx の onAuthStateChanged が検知するため、
-      //    コールバック（onAuthSuccess）は不要
+      // (App.tsx の onAuthStateChanged が自動でログイン処理)
     } catch (error: any) {
-      Alert.alert('登録エラー', error.message);
+      if (error.response && error.response.status === 422) {
+        Alert.alert('登録エラー', 'そのニックネームは既に使用されています。');
+      } else {
+        Alert.alert('登録エラー', error.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * ログイン処理
-   */
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('エラー', 'Emailとパスワードを入力してください');
@@ -78,11 +63,7 @@ const AuthScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      // 8. ★ auth().signIn... を signIn... (authModule, ...) に変更
       await signInWithEmailAndPassword(authModule, email, password);
-
-      // 9. ★ App.tsx の onAuthStateChanged が検知するため、
-      //    コールバック（onAuthSuccess）は不要
     } catch (error: any) {
       Alert.alert('ログインエラー', error.message);
     } finally {
@@ -92,72 +73,95 @@ const AuthScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.form}>
-        <Text style={styles.title}>
-          {isLogin ? 'NOKKU ログイン' : 'NOKKU 新規登録'}
-        </Text>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.form}>
+          <Text style={styles.title}>
+            {isLogin ? 'NOKKU ログイン' : 'NOKKU 新規登録'}
+          </Text>
 
-        {!isLogin && ( // 新規登録の場合のみ名前入力
+          {!isLogin && (
+            <>
+              <Text style={styles.label}>本名 (非公開)</Text>
+              <TextInput
+                style={styles.input}
+                value={realName}
+                onChangeText={setRealName}
+                placeholder="（チケット購入・決済用）"
+                placeholderTextColor="#888"
+                autoCapitalize="words"
+              />
+              <Text style={styles.label}>ニックネーム (公開)</Text>
+              <TextInput
+                style={styles.input}
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder="（チャット・投稿用）"
+                placeholderTextColor="#888"
+                autoCapitalize="none"
+              />
+            </>
+          )}
+
+          <Text style={styles.label}>
+            {isLogin ? 'メールアドレス' : 'Email (ログイン用)'}
+          </Text>
           <TextInput
             style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="名前"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="メールアドレス"
             placeholderTextColor="#888"
-            autoCapitalize="words"
+            keyboardType="email-address"
+            autoCapitalize="none"
           />
-        )}
+          <Text style={styles.label}>
+            {isLogin ? 'パスワード' : 'パスワード (6文字以上)'}
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="パスワード"
+            placeholderTextColor="#888"
+            secureTextEntry
+          />
 
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="メールアドレス"
-          placeholderTextColor="#888"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="パスワード (6文字以上)"
-          placeholderTextColor="#888"
-          secureTextEntry
-        />
+          {loading ? (
+            <ActivityIndicator size="large" style={styles.buttonSpacing} />
+          ) : (
+            <View style={styles.buttonSpacing}>
+              <Button
+                title={isLogin ? 'ログイン' : '登録する'}
+                onPress={isLogin ? handleLogin : handleRegister}
+              />
+            </View>
+          )}
 
-        {loading ? (
-          <ActivityIndicator size="large" style={styles.buttonSpacing} />
-        ) : (
-          <View style={styles.buttonSpacing}>
+          <View style={styles.toggleButton}>
             <Button
-              title={isLogin ? 'ログイン' : '登録する'}
-              onPress={isLogin ? handleLogin : handleRegister}
+              title={
+                isLogin
+                  ? 'アカウントをお持ちでないですか？ 新規登録'
+                  : 'すでにアカウントをお持ちですか？ ログイン'
+              }
+              onPress={() => setIsLogin(!isLogin)}
+              color="#0A84FF"
             />
           </View>
-        )}
-
-        <View style={styles.toggleButton}>
-          <Button
-            title={
-              isLogin
-                ? 'アカウントをお持ちでないですか？ 新規登録'
-                : 'すでにアカウントをお持ちですか？ ログイン'
-            }
-            onPress={() => setIsLogin(!isLogin)}
-            color="#0A84FF"
-          />
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// スタイル (ダークモード)
+// ★★★ 構文エラーを修正した完全な styles オブジェクト
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
   },
@@ -173,13 +177,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
+  label: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 5,
+    marginTop: 5,
+  },
   input: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 5,
+    padding: 10,
+    fontSize: 16,
     backgroundColor: '#333333',
     color: '#FFFFFF',
-    borderRadius: 5,
-    padding: 15,
     marginBottom: 10,
-    fontSize: 16,
   },
   buttonSpacing: {
     marginTop: 10,

@@ -68,4 +68,51 @@ class ArtistController extends Controller
 
         return response()->json(['message' => 'アーティストのフォローを解除しました'], 200);
     }
+
+    /**
+     * 特定のアーティストの詳細情報を取得 (プロフィールページ用)
+     *
+     * @param \App\Models\User $artist (ルートモデルバインディングにより自動で User が $artist に注入される)
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function show(User $artist)
+    {
+        // 1. 指定されたユーザーが 'artist' ロールか確認
+        if ($artist->role !== 'artist') {
+            return response()->json(['message' => '指定されたユーザーはアーティストではありません'], 404);
+        }
+
+        // 2. アーティスト情報と関連情報を Eager Loading で取得
+        //    (N+1問題を回避するため with() を使用)
+        //    お知らせ(posts)、イベント(events)、グッズ(products) を読み込む
+        $artistData = $artist->load([
+            // 投稿: 作成日時が新しい順で取得
+            'posts' => function ($query) {
+                $query->orderBy('created_at', 'desc');
+            },
+            // イベント: 開催日が新しい順で取得 (※'event_date' カラムを想定)
+            // (カラム名が違う場合は修正してください)
+            'events' => function ($query) {
+                $query->orderBy('event_date', 'desc');
+            },
+            // グッズ: 作成日時が新しい順で取得
+            'products' => function ($query) {
+                $query->orderBy('created_at', 'desc');
+            }
+        ]);
+
+        // 3. 必要な情報だけをJSONで返す
+        // (real_name などの非公開情報がフロントに渡らないよう注意)
+        return response()->json([
+            'id' => $artistData->id,
+            'nickname' => $artistData->nickname,
+            'profile_image_url' => $artistData->profile_image_url, // (もしあれば)
+            'bio' => $artistData->bio, // (もしあれば)
+
+            // 関連情報
+            'posts' => $artistData->posts,
+            'events' => $artistData->events,
+            'products' => $artistData->products,
+        ]);
+    }
 }

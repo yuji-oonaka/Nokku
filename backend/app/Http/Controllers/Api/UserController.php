@@ -28,18 +28,24 @@ class UserController extends Controller
         $user = Auth::user();
 
         // 1. バリデーション
-        // (email は Firebase 側で管理するため、ここでは name のみ)
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            // 必要に応じて 'avatar_url' などを追加
+            // 'name' => 'required|string|max:255', // 👈 削除
+            'real_name' => 'required|string|max:255', // 👈 'real_name' に変更
+            'nickname' => [ // 👈 'nickname' に変更
+                'required',
+                'string',
+                'max:255',
+                // 2. ★ ニックネームの重複チェック (自分自身を除く)
+                Rule::unique('users', 'nickname')->ignore($user->id),
+            ],
         ]);
 
-        // 2. ユーザー情報を更新
+        // 3. ユーザー情報を更新
         $user->update([
-            'name' => $validated['name'],
+            'real_name' => $validated['real_name'], // 👈 変更
+            'nickname' => $validated['nickname'], // 👈 変更
         ]);
 
-        // 3. 更新後のユーザー情報を返す
         return response()->json($user);
     }
 }
