@@ -62,7 +62,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
       <ScrollView>
         {/* 1. プロフィール情報表示 */}
         <View style={styles.profileHeader}>
-          <Text style={styles.profileName}>{user.name}</Text>
+          <Text style={styles.profileName}>{user.nickname}</Text>
           <Text style={styles.profileEmail}>{user.email}</Text>
         </View>
 

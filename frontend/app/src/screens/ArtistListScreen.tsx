@@ -7,21 +7,22 @@ import {
   ActivityIndicator,
   Alert,
   Button,
-  SafeAreaView,
   TouchableOpacity,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext'; // 1. ★ 自分のロール確認用
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // APIから返ってくるアーティストの型
 interface Artist {
   id: number;
-  name: string;
+  nickname: string;
   // (将来的に 'avatar_url' などを追加)
 }
 
 const ArtistListScreen = () => {
+  const navigation = useNavigation<any>();
   const { user } = useAuth(); // 2. ★ 自分のロールを取得
   const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +55,6 @@ const ArtistListScreen = () => {
       fetch();
     }, [fetchData]),
   );
-
 
   // 7. ★ フォロー処理
   const handleFollow = async (artistId: number) => {
@@ -92,17 +92,25 @@ const ArtistListScreen = () => {
     }
   };
 
+  const handleArtistPress = (artist: Artist) => {
+    // 'ArtistProfile' 画面 (ステップ2で作成) に artistId を渡して遷移
+    navigation.navigate('ArtistProfile', { artistId: artist.id });
+  };
+
   // 9. ★ アーティストごとのアイテム
   const renderArtistItem = ({ item }: { item: Artist }) => {
     const isFollowing = followingIds.has(item.id);
 
     return (
       <View style={styles.artistItem}>
-        <View style={styles.artistInfo}>
-          {/* (将来ここにアバター画像 <Image />) */}
-          <Text style={styles.artistName}>{item.name}</Text>
-        </View>
-
+        {/* 5. ★ アーティスト情報部分を TouchableOpacity でラップ */}
+        <TouchableOpacity
+          style={styles.artistInfoWrapper} // 6. ★ ボタン以外の領域を広げる
+          onPress={() => handleArtistPress(item)}
+        >
+        {/* (将来ここにアバター画像 <Image />) */}
+          <Text style={styles.artistName}>{item.nickname}</Text>
+        </TouchableOpacity>
         {/* 10. ★ フォロー/アンフォローボタン */}
         {/* (自分自身がアーティストの場合はフォローボタンを非表示) */}
         {user?.role === 'user' && (
@@ -163,9 +171,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  artistInfo: {
+  artistInfoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1, // 8. ★ タップ可能な領域をボタン以外に広げる
+    paddingVertical: 5, // タップ領域の上下に余白を持たせる
   },
   artistName: {
     color: '#FFFFFF',

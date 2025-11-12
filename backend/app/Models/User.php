@@ -20,12 +20,14 @@ class User extends Authenticatable
      */
     // ↓↓↓ このブロックを追記・または編集 ↓↓↓
     protected $fillable = [
-        'name',
+        // 'name', // 👈 削除
+        'real_name',  // 👈 'name' の代わりに追加 (本名)
+        'nickname',   // 👈 追加 (公開名)
         'email',
-        'firebase_uid', // FirebaseのUID
-        'role',         // 権限 (もしあれば)
+        'firebase_uid',
+        'role',
+        'password', // 👈 UserSeeder で使っているので fillable に必要
     ];
-    // ↑↑↑ このブロックを追記・または編集 ↑↑↑
     /**
      * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
      */
@@ -37,6 +39,24 @@ class User extends Authenticatable
     public function posts(): HasMany // 2. メソッド追加
     {
         return $this->hasMany(Post::class);
+    }
+
+    /**
+     * このアーティストが作成したイベント (1対多)
+     */
+    public function events(): HasMany
+    {
+        // 'artist_id' カラムで Event と紐付け
+        return $this->hasMany(Event::class, 'artist_id');
+    }
+
+    /**
+     * このアーティストが作成したグッズ (1対多)
+     */
+    public function products(): HasMany
+    {
+        // 'artist_id' カラムで Product と紐付け
+        return $this->hasMany(Product::class, 'artist_id');
     }
 
     /**

@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 // 投稿データの型定義
 interface User {
   id: number;
-  name: string;
+  nickname: string;
 }
 
 interface Post {
@@ -29,7 +29,9 @@ interface Post {
 const PostItem = ({ post }: { post: Post }) => {
   return (
     <View style={styles.postContainer}>
-      <Text style={styles.postUser}>{post.user.name || '不明なユーザー'}</Text>
+      <Text style={styles.postUser}>
+        {post.user.nickname || '不明なユーザー'}
+      </Text>
       <Text style={styles.postContent}>{post.content}</Text>
       {/* TODO: image_url があれば画像を表示 */}
       <Text style={styles.postDate}>

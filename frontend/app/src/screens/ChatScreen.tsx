@@ -85,7 +85,7 @@ const ChatScreen = () => {
       text: inputText.trim(),
       createdAt: firestore.Timestamp.now(), // サーバー側の正確なタイムスタンプ
       userId: authUser.id,
-      userName: authUser.name,
+      userName: authUser.nickname,
     };
 
     messagesRef.add(message);
