@@ -20,13 +20,20 @@ class User extends Authenticatable
      */
     // ↓↓↓ このブロックを追記・または編集 ↓↓↓
     protected $fillable = [
-        // 'name', // 👈 削除
-        'real_name',  // 👈 'name' の代わりに追加 (本名)
-        'nickname',   // 👈 追加 (公開名)
+        'real_name',
+        'nickname',
         'email',
         'firebase_uid',
         'role',
-        'password', // 👈 UserSeeder で使っているので fillable に必要
+        'password',
+        // ↓↓↓ ここから6行を追記してください ↓↓↓
+        'phone_number',
+        'postal_code',
+        'prefecture',
+        'city',
+        'address_line1',
+        'address_line2',
+        // ↑↑↑ ここまで追記 ↑↑↑
     ];
     /**
      * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)

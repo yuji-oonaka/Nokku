@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
@@ -10,8 +9,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg'; // 👈 1. QRコードライブラリをインポート
-
-const API_URL = 'http://10.0.2.2';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import api from '../services/api';
 
 // 型定義 (DBの関連付け(with)と合わせる)
 interface UserTicket {
@@ -31,11 +30,7 @@ interface UserTicket {
   };
 }
 
-interface Props {
-  authToken: string;
-}
-
-const MyTicketsScreen: React.FC<Props> = ({ authToken }) => {
+const MyTicketsScreen: React.FC = () => {
   const [myTickets, setMyTickets] = useState<UserTicket[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,29 +40,25 @@ const MyTicketsScreen: React.FC<Props> = ({ authToken }) => {
       const fetchMyTickets = async () => {
         try {
           setLoading(true);
-          const response = await fetch(`${API_URL}/api/my-tickets`, {
-            // 👈 2. 新しいAPIを叩く
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${authToken}`,
-            },
-          });
+          // 5. ★ fetch(...) を api.get(...) に置き換え
+          // api.ts が自動で baseURL と Auth ヘッダーを付与します
+          const response = await api.get<UserTicket[]>('/my-tickets');
 
-          if (!response.ok) {
-            throw new Error('マイチケットの取得に失敗しました');
-          }
-          const data = (await response.json()) as UserTicket[];
-          setMyTickets(data);
+          // 6. ★ response.ok チェックは不要 (api.tsがエラーを自動で catch に投げるため)
+          // 7. ★ データは response.data に入っています
+          setMyTickets(response.data);
         } catch (error: any) {
-          Alert.alert('エラー', error.message);
+          Alert.alert(
+            'エラー',
+            error.message || 'マイチケットの取得に失敗しました',
+          );
         } finally {
           setLoading(false);
         }
       };
 
       fetchMyTickets();
-    }, [authToken]),
+    }, []), // 8. ★ 依存配列から authToken を削除 (空の配列にする)
   );
 
   // リストの各アイテム（チケット）

@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product; // 忘れずにProductモデルを use
+use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth; // ログインユーザー情報取得のため use
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage; // use されていることを確認
 
 class ProductController extends Controller
 {
@@ -14,102 +15,112 @@ class ProductController extends Controller
      */
     public function index()
     {
-        // シンプルに全てのグッズを新しい順で返す
         $products = Product::orderBy('created_at', 'desc')->get();
-        
         return response()->json($products);
     }
 
     /**
      * 新しいグッズを作成 (store)
+     * (ここは既に修正済みです)
      */
     public function store(Request $request)
     {
-        // ログイン中のユーザー情報を取得
         $user = Auth::user();
 
-        // 権限チェック：アーティストまたは管理者でなければ作成できない
         if ($user->role !== 'artist' && $user->role !== 'admin') {
             return response()->json(['message' => 'グッズを作成する権限がありません'], 403);
         }
 
-        // バリデーション
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'image_url' => 'nullable|string|url', // 画像URL (任意)
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // image (ファイル)
         ]);
 
-        // バリデーション済みデータに、作成者(アーティスト)のIDを追加
         $productData = $validatedData;
         $productData['artist_id'] = $user->id;
 
-        // DBに保存
+        if ($request->hasFile('image')) {
+            $path = Storage::disk('public')->put('products', $request->file('image'));
+            $productData['image_url'] = $path;
+        }
+
         $product = Product::create($productData);
 
-        // 作成したグッズ情報をJSONで返す
-        return response()->json($product, 201); // 201 Created
+        return response()->json($product, 201);
     }
 
     /**
      * 特定のグッズ詳細を取得 (show)
+     * (変更なし)
      */
     public function show(Product $product)
     {
-        // ↓↓↓ 権限チェックを削除しました ↓↓↓
-        // $user = Auth::user();
-        // if ($user->id !== $product->artist_id && $user->role !== 'admin') {
-        //     return response()->json(['message' => 'グッズを閲覧する権限がありません'], 403);
-        // }
-        // ↑↑↑ 権限チェックを削除しました ↑↑↑
-
         return response()->json($product);
     }
+
     /**
      * グッズ情報を更新 (update)
+     *
+     * ★★★ ここからが修正箇所です ★★★
      */
-    public function update(Request $request, Product $product) // ★ 修正： string $id から Product $product に変更
+    public function update(Request $request, Product $product)
     {
-        // ★ 実装： 権限チェック
         $user = Auth::user();
         if ($user->id !== $product->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'グッズの編集権限がありません'], 403);
         }
 
-        // ★ 実装： バリデーション (store と同じ)
+        // 4. ★ バリデーションを修正 (store と同じ)
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'image_url' => 'nullable|string|url',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // 👈 'image_url' から 'image' に変更
         ]);
 
-        // ★ 実装： データ更新
+        // 5. ★ 画像更新ロジックを追加
+        if ($request->hasFile('image')) {
+            // 5-a. 既存の画像があれば削除
+            if ($product->image_url) {
+                Storage::disk('public')->delete($product->image_url);
+            }
+
+            // 5-b. 新しい画像を保存
+            $path = Storage::disk('public')->put('products', $request->file('image'));
+            $validatedData['image_url'] = $path; // 👈 'image_url' カラムにパスをセット
+        }
+
+        // データを更新
         $product->update($validatedData);
 
-        // ★ 実装： 更新後のデータを返す
         return response()->json($product);
     }
 
     /**
      * グッズを削除 (destroy)
+     *
+     * ★★★ ここも修正箇所です ★★★
      */
-    public function destroy(Product $product) // 👈 string $id から Product $product に変更
+    public function destroy(Product $product)
     {
         $user = Auth::user();
 
-        // 1. 権限チェック
         if ($user->id !== $product->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'このグッズを削除する権限がありません'], 403);
         }
 
-        // 2. 削除処理
+        // 6. ★ 画像ファイルも Storage から削除
+        if ($product->image_url) {
+            Storage::disk('public')->delete($product->image_url);
+        }
+
+        // DBからレコードを削除
         $product->delete();
 
-        // 3. 成功レスポンス
-        return response()->json(null, 204); // 204 No Content
+        return response()->json(null, 204);
     }
 }
