@@ -7,12 +7,14 @@ import { TouchableOpacity, Text, StyleSheet } from 'react-native'; // ログア�
 import ProductListScreen from '../screens/ProductListScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import ProductEditScreen from '../screens/ProductEditScreen';
+import ProductDetailScreen from '../screens/ProductDetailScreen';
 
 // 2. ★ ProductStackParamList の型定義を修正
 export type ProductStackParamList = {
   ProductList: undefined;
   Payment: { product: { id: number; name: string; price: number } }; // PaymentScreen が受け取る型
   ProductEdit: { productId: number }; // ProductEditScreen が受け取る型
+  ProductDetail: { productId: number };
 };
 
 // スタックナビゲーターを作成
@@ -71,6 +73,13 @@ const ProductStackNavigator: React.FC<Props> = ({ onLogout }) => {
         name="ProductEdit"
         component={ProductEditScreen}
         options={{ title: 'グッズ編集' }}
+      />
+
+      {/* 4. グッズ詳細画面 (新規追加) */}
+      <Stack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+        options={{ title: 'グッズ詳細' }} // ヘッダータイトル
       />
     </Stack.Navigator>
   );

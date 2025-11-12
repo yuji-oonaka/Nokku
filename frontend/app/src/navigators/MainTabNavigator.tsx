@@ -106,7 +106,7 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
 
       return (
         <Image
-          source={require('../assets/images/default_icon.png')}
+          source={require('../assets/images/default_icon.jpg')}
           style={{ width: size, height: size }}
         />
       );
