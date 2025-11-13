@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg'; // 👈 1. QRコードライブラリをインポート
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
+import firestore, {
+  FirebaseFirestoreTypes,
+} from '@react-native-firebase/firestore';
+
+
 
 // 型定義 (DBの関連付け(with)と合わせる)
 interface UserTicket {
@@ -61,10 +66,60 @@ const MyTicketsScreen: React.FC = () => {
     }, []), // 8. ★ 依存配列から authToken を削除 (空の配列にする)
   );
 
+  // 4. ★★★ (NEW) Firestore リアルタイムリスナー ★★★
+  useEffect(() => {
+    // myTickets がAPIから読み込まれるまで待つ
+    if (myTickets.length === 0) {
+      return;
+    }
+
+    // 購読を解除するための関数を格納する配列
+    const unsubscribers: (() => void)[] = [];
+
+    // ユーザーが持っているチケット（未使用のもの）だけを購読
+    myTickets.forEach(ticket => {
+      // 既に 'is_used' が true のチケットは購読する必要がない
+      if (ticket.is_used || !ticket.qr_code_id) {
+        return;
+      }
+
+      // 'ticket_status/{qr_code_id}' ドキュメントを購読
+      const docRef = firestore()
+        .collection('ticket_status')
+        .doc(ticket.qr_code_id);
+
+      const unsubscribe = docRef.onSnapshot(
+        (snapshot: FirebaseFirestoreTypes.DocumentSnapshot) => {
+          if (snapshot.exists() && snapshot.data()?.status === 'used') {
+            console.log(`チケット ${ticket.id} がスキャンされました！`);
+            setMyTickets(prevTickets =>
+              prevTickets.map(t =>
+                t.id === ticket.id ? { ...t, is_used: true } : t,
+              ),
+            );
+          }
+        },
+        error => {
+          console.error(`Failed to listen to ticket ${ticket.id}:`, error);
+        },
+      );
+
+      // ← ★ここを修正
+      unsubscribers.push(unsubscribe);
+    });
+
+    // 6. ★ クリーンアップ関数
+    // 画面を離れるか、myTickets が変更されたら、すべての購読を解除
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, [myTickets]); // myTickets リストが更新されたらリスナーを再設定
+
   // リストの各アイテム（チケット）
   const renderItem = ({ item }: { item: UserTicket }) => (
-    <View style={styles.ticketItem}>
+    <View style={[styles.ticketItem, item.is_used && styles.ticketItemUsed]}>
       <View style={styles.ticketInfo}>
+        {item.is_used && <Text style={styles.usedLabel}>[使用済み]</Text>}
         <Text style={styles.eventTitle}>{item.event.title}</Text>
         <Text style={styles.ticketDetail}>
           {item.ticket_type.name} / {item.seat_number}
@@ -75,8 +130,14 @@ const MyTicketsScreen: React.FC = () => {
         </Text>
       </View>
       <View style={styles.qrContainer}>
-        {/* 👈 3. qr_code_id を使ってQRコードを生成 */}
-        {item.qr_code_id ? (
+        {item.is_used ? (
+          // --- (A) 使用済みの場合 ---
+          <View style={styles.usedContainer}>
+            <Text style={styles.usedIcon}>✅</Text>
+            <Text style={styles.usedText}>入場OK</Text>
+          </View>
+        ) : item.qr_code_id ? (
+          // --- (B) 未使用 (QRあり) の場合 ---
           <QRCode
             value={item.qr_code_id}
             size={80}
@@ -84,6 +145,7 @@ const MyTicketsScreen: React.FC = () => {
             color="black"
           />
         ) : (
+          // --- (C) QRなし (エラーなど) ---
           <Text style={styles.noQrText}>QRなし</Text>
         )}
       </View>
@@ -123,9 +185,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  ticketItemUsed: {
+    backgroundColor: '#1C1C1E', // 少し暗く
+    borderColor: '#34C759', // 緑色の枠線
+  },
   ticketInfo: {
     flex: 1,
     marginRight: 10,
+  },
+  usedLabel: {
+    color: '#34C759', // 緑色
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
   eventTitle: {
     fontSize: 18,
@@ -139,13 +211,33 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   qrContainer: {
+    width: 90, // 13. ★ サイズを固定 (QR/使用済み)
+    height: 90, //
     padding: 5,
-    backgroundColor: 'white', // QRコードの背景
+    backgroundColor: 'white',
     borderRadius: 4,
+    justifyContent: 'center', // 14. ★ 中身を中央揃え
+    alignItems: 'center',
   },
   noQrText: {
     color: '#000000',
     fontSize: 12,
+  },
+  usedContainer: {
+    backgroundColor: 'white',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  usedIcon: {
+    fontSize: 30,
+  },
+  usedText: {
+    fontSize: 14,
+    color: '#34C759',
+    fontWeight: 'bold',
+    marginTop: 5,
   },
   emptyText: {
     color: '#FFFFFF',
