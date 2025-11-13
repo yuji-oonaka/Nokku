@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   FlatList,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 
@@ -35,6 +35,7 @@ type TabKey = 'posts' | 'events' | 'products';
 // --- コンポーネント ---
 const ArtistProfileScreen = () => {
   const route = useRoute<ArtistProfileRouteProp>();
+  const navigation = useNavigation<any>();
   const { artistId } = route.params;
 
   const [loading, setLoading] = useState(true);
@@ -46,7 +47,9 @@ const ArtistProfileScreen = () => {
     const fetchArtistProfile = async () => {
       try {
         setLoading(true);
-        const response = await api.get<ArtistProfileData>(`/artists/${artistId}`);
+        const response = await api.get<ArtistProfileData>(
+          `/artists/${artistId}`,
+        );
         setArtistData(response.data);
       } catch (error) {
         console.error('アーティスト詳細取得エラー:', error);
@@ -57,6 +60,28 @@ const ArtistProfileScreen = () => {
     };
     fetchArtistProfile();
   }, [artistId]);
+
+  /**
+   * イベント詳細ページ（EventsStack）へ遷移する
+   * (タブ跨ぎナビゲーション)
+   */
+  const handleEventPress = (eventId: number) => {
+    navigation.navigate('EventsStack', {
+      screen: 'EventDetail',
+      params: { eventId: eventId },
+    });
+  };
+
+  /**
+   * グッズ詳細ページ（ProductsStack）へ遷移する
+   * (タブ跨ぎナビゲーション)
+   */
+  const handleProductPress = (productId: number) => {
+    navigation.navigate('ProductsStack', {
+      screen: 'ProductDetail',
+      params: { productId: productId },
+    });
+  };
 
   // --- タブコンテンツレンダリング ---
   const renderTabContent = () => {
@@ -71,29 +96,42 @@ const ArtistProfileScreen = () => {
         data = artistData.posts;
         emptyText = 'お知らせはありません';
         renderItem = ({ item }: { item: Post }) => (
+          // お知らせはタップ不要なので <View> のまま
           <View style={styles.listItem}>
             <Text style={styles.listText}>{item.content}</Text>
           </View>
         );
         break;
+
       case 'events':
         data = artistData.events;
         emptyText = 'イベントはありません';
         renderItem = ({ item }: { item: Event }) => (
-          <View style={styles.listItem}>
+          // 5. ★ <View> を <TouchableOpacity> に変更
+          <TouchableOpacity
+            style={styles.listItem}
+            onPress={() => handleEventPress(item.id)} // 👈 遷移ハンドラを呼ぶ
+          >
             <Text style={styles.listText}>{item.title}</Text>
-            <Text style={styles.subText}>{item.event_date}</Text>
-          </View>
+            <Text style={styles.subText}>
+              {new Date(item.event_date).toLocaleString('ja-JP')}
+            </Text>
+          </TouchableOpacity>
         );
         break;
+
       case 'products':
         data = artistData.products;
         emptyText = 'グッズはありません';
         renderItem = ({ item }: { item: Product }) => (
-          <View style={styles.listItem}>
+          // 6. ★ <View> を <TouchableOpacity> に変更
+          <TouchableOpacity
+            style={styles.listItem}
+            onPress={() => handleProductPress(item.id)} // 👈 遷移ハンドラを呼ぶ
+          >
             <Text style={styles.listText}>{item.name}</Text>
             <Text style={styles.subText}>¥{item.price.toLocaleString()}</Text>
-          </View>
+          </TouchableOpacity>
         );
         break;
     }
@@ -123,7 +161,9 @@ const ArtistProfileScreen = () => {
   if (!artistData) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>アーティスト情報の取得に失敗しました。</Text>
+        <Text style={styles.errorText}>
+          アーティスト情報の取得に失敗しました。
+        </Text>
       </SafeAreaView>
     );
   }
@@ -150,7 +190,10 @@ const ArtistProfileScreen = () => {
           <Text style={styles.tabText}>イベント</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'products' && styles.activeTab]}
+          style={[
+            styles.tabButton,
+            activeTab === 'products' && styles.activeTab,
+          ]}
           onPress={() => setActiveTab('products')}
         >
           <Text style={styles.tabText}>グッズ</Text>
