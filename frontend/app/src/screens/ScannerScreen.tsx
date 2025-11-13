@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Alert,
   Linking,
-  ActivityIndicator, // 読み込み中のインジケーター
+  ActivityIndicator,
 } from 'react-native';
 import {
   Camera,
@@ -13,14 +13,37 @@ import {
   useCameraPermission,
   useCodeScanner,
 } from 'react-native-vision-camera';
-import { useIsFocused } from '@react-navigation/native';
+// ↓↓↓ 1. ★ この 'useIsFocused' の行を、以下の3行ブロックに修正します
+import { useIsFocused, useRoute, RouteProp } from '@react-navigation/native';
 import api from '../services/api';
+// ↓↓↓ 2. ★ この行が新しく追加されていることを確認してください
+import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
+
+type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
 
 const ScannerScreen = () => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const isFocused = useIsFocused(); // 画面がフォーカスされているか
   const [isScanning, setIsScanning] = useState(false);
+  // 4. ★ route から 'scanMode' を受け取る
+  const route = useRoute<ScannerScreenRouteProp>();
+  // 渡されなかった場合は 'ticket' をフォールバック (安全のため)
+  const scanMode = route.params?.scanMode || 'ticket';
+
+  // 5. ★ モードに応じて動的にテキストを設定
+  const uiTexts = {
+    ticket: {
+      title: 'チケット入場スキャン',
+      loading: '認証中...',
+      successTitle: '認証成功',
+    },
+    order: {
+      title: 'グッズ引換スキャン',
+      loading: '処理中...',
+      successTitle: '引換完了',
+    },
+  };
 
   // 1. カメラ権限の確認とリクエスト
   useEffect(() => {
@@ -29,40 +52,54 @@ const ScannerScreen = () => {
     }
   }, [hasPermission, requestPermission]);
 
-  // 4. API呼び出し処理
+  // 6. ★ API呼び出し処理 (handleScan) を大幅に修正
   const handleScan = async (qrCodeId: string) => {
-    if (isScanning) return; // 処理中の場合は何もしない
+    if (isScanning) return;
+    setIsScanning(true);
 
-    setIsScanning(true); // スキャン開始
+    // 7. ★ scanMode に応じて API エンドポイントとメッセージを決定
+    let endpoint = '';
+    let successMessagePrefix = '';
+
+    if (scanMode === 'ticket') {
+      endpoint = '/tickets/scan'; // チケット用API
+      successMessagePrefix = 'チケットを使用済みにしました。';
+    } else if (scanMode === 'order') {
+      endpoint = '/orders/redeem'; // ★ グッズ引換用 API
+      successMessagePrefix = '商品の引き換えが完了しました。';
+    } else {
+      Alert.alert('エラー', '無効なスキャンモードです。');
+      setIsScanning(false);
+      return;
+    }
 
     try {
-      // 5. バックエンドAPIを呼び出す
-      const response = await api.post('/tickets/scan', {
+      // 8. ★ 動的なエンドポイントを呼び出す
+      const response = await api.post(endpoint, {
         qr_code_id: qrCodeId,
       });
 
-      // 6. 成功時のアラート
+      // 9. ★ 成功時のアラート (動的なタイトルとメッセージ)
       Alert.alert(
-        '認証成功',
-        response.data.message || 'チケットを使用済みにしました。',
-        [{ text: 'OK', onPress: () => setIsScanning(false) }], // OKを押したらスキャン再開
+        uiTexts[scanMode].successTitle, // '認証成功' or '引換完了'
+        response.data.message || successMessagePrefix,
+        [{ text: 'OK', onPress: () => setIsScanning(false) }],
         { cancelable: false },
       );
     } catch (error: any) {
-      // 7. エラーハンドリング
+      // 10. ★ エラーハンドリング (共通化)
       let errorMessage = '不明なエラーが発生しました。';
       if (error.response) {
-        // バックエンドからのエラー
         console.error('API Error:', error.response.data);
         if (error.response.status === 409) {
           // 409 Conflict (使用済み)
           errorMessage =
-            error.response.data.message || 'このチケットは既に使用済みです。';
+            error.response.data.message || 'このQRコードは既に使用済みです。';
         } else if (error.response.status === 403) {
-          // 403 Forbidden (権限なし)
+          // 403 Forbidden (権限なし / 他アーティストの商品)
           errorMessage =
             error.response.data.message ||
-            'スキャンを実行する権限がありません。';
+            'この操作を実行する権限がありません。';
         } else if (
           error.response.status === 404 ||
           error.response.status === 422
@@ -76,9 +113,9 @@ const ScannerScreen = () => {
       }
 
       Alert.alert(
-        '認証エラー',
+        'エラー', // エラータイトルは共通
         errorMessage,
-        [{ text: 'OK', onPress: () => setIsScanning(false) }], // OKを押したらスキャン再開
+        [{ text: 'OK', onPress: () => setIsScanning(false) }],
         { cancelable: false },
       );
     }
@@ -119,21 +156,23 @@ const ScannerScreen = () => {
     );
   }
 
-  // 9. 描画処理の更新 (ローディング表示)
+  // 11. ★ 描画処理 (ローディングテキストを動的に)
   return (
     <View style={styles.container}>
       <Camera
         style={StyleSheet.absoluteFill}
         device={device}
-        isActive={isFocused && !isScanning} // 10. スキャン処理中はカメラを一時停止
+        isActive={isFocused && !isScanning}
         codeScanner={codeScanner}
         enableZoomGesture={true}
       />
-      {/* 11. スキャン処理中のオーバーレイ */}
+      {/* スキャン処理中のオーバーレイ */}
       {isScanning && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>認証中...</Text>
+          <Text style={styles.loadingText}>
+            {uiTexts[scanMode].loading} {/* 👈 '認証中...' or '処理中...' */}
+          </Text>
         </View>
       )}
 

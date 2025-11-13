@@ -13,7 +13,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ImageUploadController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\ArtistController;
-use App\Http\Controllers\Api\OrderController; // 1. ★ OrderController を use
+use App\Http\Controllers\Api\OrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,7 +21,7 @@ use App\Http\Controllers\Api\OrderController; // 1. ★ OrderController を use
 |--------------------------------------------------------------------------
 */
 
-// --- 認証 (Sprint 1) ---
+// --- 認証 ---
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -32,7 +32,7 @@ Route::middleware('firebase.auth')->group(function () {
         return $request->user();
     });
 
-    // --- イベント・グッズ (Sprint 2 & 3) ---
+    // --- イベント・グッズ ---
     Route::apiResource('events', EventController::class);
     Route::get('/events/{event}/ticket-types', [EventController::class, 'getTicketTypes']);
     Route::apiResource('products', ProductController::class);
@@ -43,11 +43,14 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/confirm-ticket-purchase', [PaymentController::class, 'confirmTicketPurchase']);
     Route::get('/my-tickets', [UserTicketController::class, 'index']);
     Route::apiResource('ticket-types', TicketTypeController::class);
-    Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']);
+    Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']); // 👈 チケット用スキャン
 
-    // 2. ★ E-commerce v2 (注文API) のルートを追加
+    // --- E-commerce v2 (注文API) ---
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/my-orders', [OrderController::class, 'index']);
+
+    // ↓↓↓ 1. ★ ここに「グッズ引換用」のAPIルートを追加 ↓↓↓
+    Route::post('/orders/redeem', [OrderController::class, 'redeem']);
 
     // --- 投稿 (お知らせ) ---
     Route::apiResource('posts', PostController::class)->only(['index', 'store']);

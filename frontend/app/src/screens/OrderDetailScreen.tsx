@@ -66,8 +66,23 @@ const OrderDetailScreen: React.FC = () => {
   const deliveryMethodText =
     order.delivery_method === 'mail' ? '郵送' : '会場受取り';
 
-  // 注文ステータスの表示名 (仮)
-  const statusText = order.status.toUpperCase();
+  let statusText = '処理中';
+  let statusStyle = styles.value_pending; // デフォルトスタイル
+
+  if (order.status === 'pending') {
+    if (order.payment_method === 'cash') {
+      statusText = '支払・受取待ち';
+    } else {
+      statusText = '支払処理中';
+    }
+    statusStyle = styles.value_pending; // (青)
+  } else if (order.status === 'paid' || order.status === 'shipped') {
+    statusText = '支払い完了';
+    statusStyle = styles.value_paid; // (緑)
+  } else if (order.status === 'redeemed') {
+    statusText = '受取済み';
+    statusStyle = styles.value_redeemed; // (グレー)
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -236,6 +251,21 @@ const styles = StyleSheet.create({
   },
   value_status: {
     color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  value_pending: {
+    color: '#0A84FF', // 青
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  value_paid: {
+    color: '#34C759', // 緑
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  value_redeemed: {
+    color: '#888', // グレー
     fontSize: 16,
     fontWeight: 'bold',
   },

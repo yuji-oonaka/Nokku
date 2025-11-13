@@ -11,9 +11,12 @@ import {
   Platform 
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
-import firestore from '@react-native-firebase/firestore';
+import firestore, {
+  FirebaseFirestoreTypes,
+} from '@react-native-firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { EventStackParamList } from '../navigators/EventStackNavigator';
 
 // ナビゲーションパラメータの型
 type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
@@ -22,7 +25,7 @@ type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
 interface ChatMessage {
   id: string; // Firestore Document ID
   text: string;
-  createdAt: firestore.Timestamp;
+  createdAt: FirebaseFirestoreTypes.Timestamp;
   userId: number;
   userName: string;
 }

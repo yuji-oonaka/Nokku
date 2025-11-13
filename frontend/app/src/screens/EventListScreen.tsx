@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { EventStackParamList } from '../navigation/EventStackNavigator';
+import { EventStackParamList } from '../navigators/EventStackNavigator';
 import api from '../services/api';
 
 // (Event 型定義は変更なし)

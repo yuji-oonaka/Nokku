@@ -6,10 +6,10 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
 } from 'react-native';
 import api from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 投稿データの型定義
 interface User {

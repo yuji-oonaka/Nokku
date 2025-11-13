@@ -67,6 +67,25 @@ const OrderHistoryScreen: React.FC = () => {
     // 注文日をフォーマット
     const orderDate = new Date(item.created_at).toLocaleDateString('ja-JP');
 
+    let statusText = '処理中';
+    let statusStyle = styles.orderStatusPending; // デフォルトは青
+
+    if (item.status === 'pending') {
+      if (item.payment_method === 'cash') {
+        statusText = '支払・受取待ち'; // 👈 「現金払い」の場合
+      } else {
+        statusText = '支払処理中'; // 👈 「クレジットカード」の場合
+      }
+      statusStyle = styles.orderStatusPending; // (青)
+    } else if (item.status === 'paid' || item.status === 'shipped') {
+      // (shipped は 郵送用)
+      statusText = '支払い完了';
+      statusStyle = styles.orderStatusPaid; // (緑)
+    } else if (item.status === 'redeemed') {
+      statusText = '受取済み';
+      statusStyle = styles.orderStatusRedeemed; // (グレー)
+    }
+
     return (
       <TouchableOpacity
         style={styles.orderItem}
@@ -157,6 +176,24 @@ const styles = StyleSheet.create({
   },
   orderStatus: {
     color: '#0A84FF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 5,
+  },
+  orderStatusPending: {
+    color: '#0A84FF', // 青 (元の色)
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 5,
+  },
+  orderStatusPaid: {
+    color: '#34C759', // 緑 (支払い完了)
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 5,
+  },
+  orderStatusRedeemed: {
+    color: '#888', // グレー (受取済み)
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 5,

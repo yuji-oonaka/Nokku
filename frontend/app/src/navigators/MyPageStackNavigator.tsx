@@ -24,7 +24,7 @@ export type MyPageStackParamList = {
   EventCreate: undefined;
   ProductCreate: undefined;
   PostCreate: undefined;
-  Scan: undefined;
+  Scan: { scanMode: 'ticket' | 'order' };
   GateScanner: undefined;
   Inquiry: undefined;
   OrderHistory: undefined;
