@@ -7,13 +7,13 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity, // 2. ★ TouchableOpacity をインポート
   Platform, // 3. ★ Platform をインポート
 } from 'react-native';
 import api from '../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 4. ★ DateTimePicker をインポート
 import DateTimePicker, {

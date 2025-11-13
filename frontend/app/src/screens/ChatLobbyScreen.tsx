@@ -6,14 +6,17 @@ import {
   FlatList, 
   TouchableOpacity, 
 } from 'react-native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ナビゲーションパラメータの型
 type ChatLobbyScreenRouteProp = RouteProp<EventStackParamList, 'ChatLobby'>;
-type ChatLobbyScreenNavigationProp = useNavigation<any>; // 便宜上 any にしますが、本来は型を定義すべきです
-
+type ChatLobbyScreenNavigationProp = StackNavigationProp<
+  EventStackParamList,
+  'ChatLobby'
+>;
 // 固定のスレッド一覧データ (Firestoreに保存するまで、これで代用)
 const THREADS = [
   { id: 'general', title: '🙌 雑談・自己紹介スレッド', description: '自由に挨拶や雑談をどうぞ' },
@@ -46,7 +49,7 @@ const ChatLobbyScreen = () => {
         <Text style={styles.threadTitle}>{item.title}</Text>
         <Text style={styles.threadDescription}>{item.description}</Text>
       </View>
-      <Text style={styles.threadArrow}>></Text>
+      <Text style={styles.threadArrow}></Text>
     </TouchableOpacity>
   );
 

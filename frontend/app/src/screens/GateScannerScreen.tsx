@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
 import {
   Camera,
@@ -14,6 +13,7 @@ import {
 } from 'react-native-vision-camera';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../services/api';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // スキャン結果の状態を定義
 type ScanResult = 'idle' | 'scanning' | 'success' | 'error';

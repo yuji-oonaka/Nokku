@@ -19,7 +19,7 @@ import {
 } from '@react-navigation/native';
 import { useStripe } from '@stripe/stripe-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { EventStackParamList } from '../navigation/EventStackNavigator';
+import { EventStackParamList } from '../navigators/EventStackNavigator';
 import api from '../services/api';
 
 // 1. ★ useAuth をインポート
@@ -50,15 +50,10 @@ interface TicketType {
 // route.params の型
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
-// ナビゲーションの型
-type EventDetailNavigationProp = StackNavigationProp<
-  EventStackParamList,
-  'EventDetail'
->;
 
 const EventDetailScreen = () => {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const navigation = useNavigation<EventDetailNavigationProp>();
+  const navigation = useNavigation<any>();
   const route = useRoute<EventDetailScreenRouteProp>();
   const eventId = route.params?.eventId;
 
@@ -129,13 +124,11 @@ const EventDetailScreen = () => {
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: 'NOKKU, Inc.',
         paymentIntentClientSecret: paymentIntentClientSecret,
-        merchantLocale: 'ja-JP',
       });
       if (initError) {
         throw new Error(initError.message);
       }
       const { error: presentError } = await presentPaymentSheet({
-        locale: 'ja',
       });
       if (presentError) {
         if (presentError.code !== 'Canceled') {

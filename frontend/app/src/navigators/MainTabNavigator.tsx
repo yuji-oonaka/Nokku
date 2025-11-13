@@ -167,7 +167,7 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
           headerShown: false,
         }}
       >
-        {() => <MyPageStackNavigator authToken="" onLogout={onLogout} />}
+        {() => <MyPageStackNavigator onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
   );

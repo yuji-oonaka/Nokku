@@ -133,9 +133,20 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuButton}
-              onPress={() => navigation.navigate('Scan')}
+              // 1. ★ 'scanMode: 'ticket'' を渡す
+              onPress={() =>
+                navigation.navigate('Scan', { scanMode: 'ticket' })
+              }
             >
-              <Text style={styles.menuButtonText}>QRコードスキャン</Text>
+              <Text style={styles.menuButtonText}>チケット入場スキャン</Text>
+            </TouchableOpacity>
+
+            {/* 2. ★「グッズ引換スキャン」を新規追加 */}
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => navigation.navigate('Scan', { scanMode: 'order' })}
+            >
+              <Text style={styles.menuButtonText}>グッズ引換スキャン</Text>
             </TouchableOpacity>
 
             {/* ↓↓↓ 5. 自動入場ゲートへのボタン */}

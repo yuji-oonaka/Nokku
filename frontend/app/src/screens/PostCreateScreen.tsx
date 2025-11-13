@@ -7,11 +7,11 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  SafeAreaView,
   Image, // 1. ★ Image をインポート
   TouchableOpacity, // 2. ★ TouchableOpacity をインポート
 } from 'react-native';
 import api from '../services/api';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 3. ★ react-native-image-picker から launchImageLibrary をインポート
 import {

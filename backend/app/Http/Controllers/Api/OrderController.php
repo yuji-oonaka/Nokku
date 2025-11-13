@@ -144,6 +144,68 @@ class OrderController extends Controller
     }
 
     /**
+     * QRコードをスキャンして注文を処理（引き換え）する (redeem)
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function redeem(Request $request)
+    {
+        // A. 権限チェック (スキャンする人 ＝ アーティストか？)
+        /** @var \App\Models\User $artist */
+        $artist = Auth::user();
+        if ($artist->role !== 'artist' && $artist->role !== 'admin') {
+            return response()->json(['message' => 'この操作を行う権限がありません'], 403);
+        }
+
+        // B. バリデーション (QRコードIDが送られてきたか？)
+        $validatedData = $request->validate([
+            'qr_code_id' => 'required|string|uuid|exists:orders,qr_code_id',
+        ]);
+
+        // C. 注文の検索
+        $order = Order::where('qr_code_id', $validatedData['qr_code_id'])
+            ->with('items.product') // ★ 商品とアーティストIDをチェックするため
+            ->firstOrFail();
+
+        // D. ビジネスロジックの検証
+
+        // D-1. 会場受取りの注文か？
+        if ($order->delivery_method !== 'venue') {
+            return response()->json(['message' => 'この注文は会場受取りではありません'], 422);
+        }
+
+        // D-2. 既に処理済み（受取済み）ではないか？
+        if ($order->status === 'redeemed') {
+            return response()->json(['message' => 'このQRコードは既に使用（受取済み）されています'], 409); // 409 Conflict
+        }
+
+        // D-3. (重要) スキャンしたアーティストが、この商品の作成者か？
+        // (管理者の場合はこのチェックをスキップ)
+        if ($artist->role !== 'admin') {
+            $product = $order->items->first()->product; // 注文の最初の商品を取得
+
+            // 商品が存在し、その商品の artist_id がスキャンした人の id と一致するか
+            if (!$product || $product->artist_id !== $artist->id) {
+                return response()->json(['message' => 'あなたが作成した商品の注文ではありません'], 403);
+            }
+        }
+
+        // E. 注文ステータスの更新
+        // 'pending' (現金待ち) または 'paid' (クレカ払い済み)
+        // どちらの場合でも「受取済み」に更新する
+        $order->update([
+            'status' => 'redeemed' // 👈 ★「受取済み」に更新
+        ]);
+
+        // F. 成功レスポンス (アーティストの画面に注文詳細を表示するため)
+        return response()->json([
+            'message' => '商品の引き換えが完了しました。',
+            'order' => $order->load('items', 'user'), // ユーザー情報も付けて返す
+        ]);
+    }
+
+    /**
      * Stripe PaymentIntent を作成するプライベートメソッド
      * (このロジックは、以前の PaymentController にあったものとほぼ同じです)
      */
