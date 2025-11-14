@@ -15,6 +15,7 @@ class ArtistController extends Controller
     public function index()
     {
         // 1. ログイン中のユーザーを取得
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         // 2. 'role' が 'artist' のユーザーのみを取得
@@ -41,6 +42,7 @@ class ArtistController extends Controller
     public function follow(User $artist)
     {
         // 1. ログイン中のユーザーを取得
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         // 2. 自分自身や、アーティスト以外はフォローさせない (念のため)
@@ -60,6 +62,8 @@ class ArtistController extends Controller
      */
     public function unfollow(User $artist)
     {
+        // 1. ログイン中のユーザーを取得
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         // 'following' リレーションを使って紐付けを解除

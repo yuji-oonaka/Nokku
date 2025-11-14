@@ -53,7 +53,7 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/orders/redeem', [OrderController::class, 'redeem']);
 
     // --- 投稿 (お知らせ) ---
-    Route::apiResource('posts', PostController::class)->only(['index', 'store']);
+    Route::apiResource('posts', PostController::class);
 
     // --- ユーザープロフィール・住所 ---
     Route::get('/profile', [UserController::class, 'show']);

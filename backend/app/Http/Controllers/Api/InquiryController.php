@@ -23,6 +23,7 @@ class InquiryController extends Controller
         ]);
 
         // 2. 認証済みユーザーを取得
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         // 3. お問い合わせを作成
