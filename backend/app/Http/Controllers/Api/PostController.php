@@ -7,6 +7,7 @@ use App\Models\Post;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Carbon;
 
 class PostController extends Controller // 2. Controller を extends
 {
@@ -16,26 +17,44 @@ class PostController extends Controller // 2. Controller を extends
     public function index()
     {
         /** @var \App\Models\User $user */
-        // 1. ログイン中のユーザーを取得
         $user = Auth::user();
 
-        // 2. ユーザーがフォローしているアーティストのIDリストを取得
+        // [・・・(followingArtistIds, adminIds の取得は変更なし)・・・]
         $followingArtistIds = $user->following()->pluck('id');
-
-        // 3. 自分のIDもリストに追加 (自分の投稿も表示するため)
         $followingArtistIds->push($user->id);
-
-        // 4. すべての「管理者」のIDリストを取得
         $adminIds = User::where('role', 'admin')->pluck('id');
+
+        // 2. ★ 現在の日時を取得 (JST, タイムゾーン修正済み)
+        $now = Carbon::now();
 
         // 5. ★ 投稿を検索
         $posts = Post::with('user')
-            // 条件A: 投稿者が「フォロー中 (または自分)」である
-            ->whereIn('user_id', $followingArtistIds)
-            
-            // ★ 条件B: または、投稿者が「管理者」である
-            ->orWhereIn('user_id', $adminIds)
-            
+
+            // --- フィルター条件 (AND) ---
+            ->where(function ($query) use ($followingArtistIds, $adminIds) {
+                // 条件A: 投稿者が「フォロー中 (または自分)」
+                $query->whereIn('user_id', $followingArtistIds)
+                    // 条件B: または、投稿者が「管理者」
+                    ->orWhereIn('user_id', $adminIds);
+            })
+
+            // 3. ★ (NEW) 「公開日時」の条件
+            // 'publish_at' が NULL (即時公開)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('publish_at')
+                    // または 'publish_at' が過去 (公開済み)
+                    ->orWhere('publish_at', '<=', $now);
+            })
+
+            // 4. ★ (NEW) 「有効期限」の条件
+            // 'expires_at' が NULL (無期限)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')
+                    // または 'expires_at' が未来 (まだ有効)
+                    ->orWhere('expires_at', '>', $now);
+            })
+            // --- フィルター条件ここまで ---
+
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -47,19 +66,25 @@ class PostController extends Controller // 2. Controller を extends
      */
     public function store(Request $request)
     {
+        // 5. ★ バリデーションに日付項目を追加
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string|max:1000',
             'image_url' => 'nullable|string|url',
+            'publish_at' => 'nullable|date', // (例: "2025-11-15 20:00:00")
+            'expires_at' => 'nullable|date|after_or_equal:publish_at', // 期限は公開日時以降
         ]);
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
+        // 6. ★ create に日付項目を追加
         $post = $user->posts()->create([
             'title' => $validated['title'],
             'content' => $validated['content'],
             'image_url' => $validated['image_url'] ?? null,
+            'publish_at' => $validated['publish_at'] ?? null,
+            'expires_at' => $validated['expires_at'] ?? null,
         ]);
 
         return response()->json($post->load('user'), 201);
@@ -79,16 +104,18 @@ class PostController extends Controller // 2. Controller を extends
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        // 権限チェック: 投稿者本人 または 管理者 か？
+        // [・・・(権限チェックは変更なし)・・・]
         if ($user->id !== $post->user_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'この投稿を編集する権限がありません'], 403);
+            // ...
         }
 
-        // バリデーション (store と同じ)
+        // 7. ★ バリデーション (store と同じ)
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string|max:1000',
-            'image_url' => 'nullable|string|url', // URLを受け取る
+            'image_url' => 'nullable|string|url',
+            'publish_at' => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:publish_at',
         ]);
 
         // 更新

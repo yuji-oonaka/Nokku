@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo; // 1. インポート
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Post extends Model
 {
@@ -16,6 +16,17 @@ class Post extends Model
         'title',
         'content',
         'image_url',
+        'publish_at', // 👈 ★ 1. 'publish_at' を追加
+        'expires_at', // 👈 ★ 2. 'expires_at' を追加
+    ];
+
+    /**
+     * 3. ★ (NEW) 型キャストの定義
+     * これらのカラムを自動的に 'datetime' オブジェクトとして扱います
+     */
+    protected $casts = [
+        'publish_at' => 'datetime',
+        'expires_at' => 'datetime',
     ];
 
     /**
