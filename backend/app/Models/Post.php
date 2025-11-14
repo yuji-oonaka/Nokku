@@ -13,6 +13,7 @@ class Post extends Model
     // 2. 登録を許可するカラム
     protected $fillable = [
         'user_id',
+        'title',
         'content',
         'image_url',
     ];

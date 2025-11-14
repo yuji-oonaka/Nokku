@@ -15,6 +15,7 @@ class PostController extends Controller // 2. Controller を extends
      */
     public function index()
     {
+        /** @var \App\Models\User $user */
         // 1. ログイン中のユーザーを取得
         $user = Auth::user();
 
@@ -47,17 +48,76 @@ class PostController extends Controller // 2. Controller を extends
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'title' => 'required|string|max:255',
             'content' => 'required|string|max:1000',
             'image_url' => 'nullable|string|url',
         ]);
 
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         $post = $user->posts()->create([
+            'title' => $validated['title'],
             'content' => $validated['content'],
             'image_url' => $validated['image_url'] ?? null,
         ]);
 
         return response()->json($post->load('user'), 201);
+    }
+
+    public function show(Post $post)
+    {
+        // 投稿者情報も一緒に返す
+        return response()->json($post->load('user'));
+    }
+
+    /**
+     * 2. 投稿を更新 (update)
+     */
+    public function update(Request $request, Post $post)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // 権限チェック: 投稿者本人 または 管理者 か？
+        if ($user->id !== $post->user_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'この投稿を編集する権限がありません'], 403);
+        }
+
+        // バリデーション (store と同じ)
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'content' => 'required|string|max:1000',
+            'image_url' => 'nullable|string|url', // URLを受け取る
+        ]);
+
+        // 更新
+        $post->update($validated);
+
+        // 更新後のデータを返す
+        return response()->json($post->load('user'));
+    }
+
+    /**
+     * 3. 投稿を削除 (destroy)
+     */
+    public function destroy(Post $post)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // 権限チェック: 投稿者本人 または 管理者 か？
+        if ($user->id !== $post->user_id && $user->role !== 'admin') {
+            return response()->json(['message' => 'この投稿を削除する権限がありません'], 403);
+        }
+
+        // DBレコードを削除
+        $post->delete();
+
+        // (前述の通り、このロジックでは ImageUploadController で
+        // アップロードされたファイル本体を Storage から削除することはできません)
+
+        // 成功（コンテンツなし）
+        return response()->json(null, 204);
     }
 }
