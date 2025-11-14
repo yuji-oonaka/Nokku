@@ -8,7 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 // スクリーンとスタックをインポート
 import ProductStackNavigator from './ProductStackNavigator';
 import EventStackNavigator from './EventStackNavigator';
-import TimelineScreen from '../screens/TimelineScreen';
+import TimelineStackNavigator from './TimelineStackNavigator';
 import MyPageStackNavigator from './MyPageStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
 
@@ -141,11 +141,15 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
       {/* 3. タイムラインタブ */}
       <Tab.Screen
         name="Timeline"
-        component={TimelineScreen}
+        // component={TimelineScreen} // 3. ★ 削除
         options={{
           title: 'お知らせ',
+          headerShown: false, // 4. ★ ヘッダーはスタック側で管理
         }}
-      />
+      >
+        {/* 5. ★ TimelineStackNavigator を呼び出す */}
+        {() => <TimelineStackNavigator onLogout={onLogout} />}
+      </Tab.Screen>
 
       <Tab.Screen
         name="Search"
