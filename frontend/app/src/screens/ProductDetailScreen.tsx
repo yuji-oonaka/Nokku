@@ -1,6 +1,4 @@
-// C:\Nokku\frontend\app\src\screens\ProductDetailScreen.tsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // 1. ★ useEffect は不要に
 import {
   View,
   Text,
@@ -11,29 +9,26 @@ import {
   Alert,
   ScrollView,
   TouchableOpacity,
+  RefreshControl, // 2. ★ RefreshControl をインポート
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-import api from '../services/api';
+import api from '../services/api'; // (mutation でまだ使う)
 import { SafeAreaView } from 'react-native-safe-area-context';
-// 1. ★ useStripe と useAuth をインポート
 import { useStripe } from '@stripe/stripe-react-native';
 import { useAuth } from '../context/AuthContext';
 
-// --- (Product, 型定義は変更なし) ---
-interface Product {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-}
-// 2. ナビゲーションの型
-type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
+// 3. ★ React Query と新しい型/関数をインポート
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { Product, fetchProductById } from '../api/queries';
 
-// --- 型定義 (内部用) ---
+// --- 型定義 ---
+type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
 type PaymentMethod = 'stripe' | 'cash';
 type DeliveryMethod = 'mail' | 'venue';
 
@@ -43,36 +38,36 @@ const ProductDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { productId } = route.params;
 
-  // 2. ★ 必要なHooksを呼び出し
-  const { user } = useAuth(); // 住所チェック用
-  const { initPaymentSheet, presentPaymentSheet } = useStripe(); // 決済用
+  const { user } = useAuth();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const queryClient = useQueryClient(); // 4. ★ QueryClient を取得
 
-  // --- 2. State ---
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true); // 商品読み込み中
+  // --- 2. State (UI操作用の State は残す) ---
+  // (product, loading state は useQuery が管理)
   const [quantity, setQuantity] = useState(1);
-  const [isProcessing, setIsProcessing] = useState(false); // ★ 購入処理中
-
-  // 3. ★ 選択用の State を追加
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('stripe');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('mail');
+  // (isProcessing state は useMutation が管理)
 
-  // --- 3. データ取得 (変更なし) ---
-  useEffect(() => {
-    const fetchProduct = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get<Product>(`/products/${productId}`);
-        setProduct(response.data);
-      } catch (error) {
-        console.error('商品詳細の取得エラー:', error);
-        Alert.alert('エラー', '商品情報の取得に失敗しました。');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProduct();
-  }, [productId]);
+  // --- 3. データ取得 (useQuery) ---
+  // 5. ★ useEffect, useState(product), useState(loading) を useQuery に置き換え
+  // 2. ★ (NEW) 手動スワイプ中だけを管理する state
+  const [isManualRefetching, setIsManualRefetching] = useState(false);
+
+  // --- 3. データ取得 (useQuery) ---
+  const {
+    data: product,
+    isLoading,
+    // 3. ★ isRefetching は RefreshControl では "使わない"
+    // (ただし、裏で動いていることを知るために変数自体は受け取っておく)
+    isRefetching,
+    refetch,
+    isError,
+  } = useQuery({
+    queryKey: ['product', productId],
+    queryFn: () => fetchProductById(productId),
+    enabled: !!productId,
+  });
 
   // --- 4. 個数処理 (変更なし) ---
   const incrementQuantity = () => {
@@ -86,11 +81,107 @@ const ProductDetailScreen: React.FC = () => {
     }
   };
 
-  // --- 5. ★ 購入ボタンのメイン処理 (handlePurchasePress を置き換え) ---
-  const handleCreateOrder = async () => {
-    if (!product || !user) return; // 商品かユーザーが未読み込み
+  // --- 5. ★ 購入処理 (useMutation) ---
+  // 6. ★ useState(isProcessing) の代わりに useMutation を使用
+  const createOrderMutation = useMutation({
+    // 7. ★ mutationFn: API呼び出しとStripe処理の "全体"
+    mutationFn: async (orderData: {
+      productId: number;
+      quantity: number;
+      paymentMethod: PaymentMethod;
+      deliveryMethod: DeliveryMethod;
+    }) => {
+      // 5-b. (旧 handleCreateOrder の try ブロック)
+      const response = await api.post('/orders', {
+        product_id: orderData.productId,
+        quantity: orderData.quantity,
+        payment_method: orderData.paymentMethod,
+        delivery_method: orderData.deliveryMethod,
+      });
 
-    // 5-a. ★ 住所バリデーション (フロント側)
+      const { clientSecret } = response.data;
+
+      // 5-c. 決済方法によって処理を分岐
+      if (orderData.paymentMethod === 'stripe') {
+        if (!clientSecret) {
+          throw new Error(
+            '決済の準備に失敗しました (clientSecretがありません)',
+          );
+        }
+        // 5-c-1. Stripeシートを初期化
+        const { error: initError } = await initPaymentSheet({
+          merchantDisplayName: 'NOKKU, Inc.',
+          paymentIntentClientSecret: clientSecret,
+        });
+        if (initError) {
+          throw new Error('決済シートの初期化に失敗しました。');
+        }
+        // 5-c-2. Stripeシートを表示
+        const { error: presentError } = await presentPaymentSheet();
+        if (presentError) {
+          if (presentError.code === 'Canceled') {
+            throw new Error('Canceled'); // 👈 キャンセル時は特別なエラーを投げる
+          } else {
+            throw new Error(`決済に失敗しました: ${presentError.message}`);
+          }
+        }
+        // 決済成功
+        return { paymentType: 'stripe' };
+      } else {
+        // 現金払い
+        return { paymentType: 'cash' };
+      }
+    },
+    // 8. ★ (NEW) onSuccess: 成功時の処理
+    onSuccess: data => {
+      if (data.paymentType === 'stripe') {
+        Alert.alert('購入完了', 'ありがとうございます。購入が完了しました。');
+      } else {
+        Alert.alert(
+          '予約完了',
+          '会場での受け取り・お支払いの準備ができました。',
+        );
+      }
+
+      // ★ キャッシュを無効化 (在庫数を更新するため)
+      queryClient.invalidateQueries({ queryKey: ['product', productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] }); // 一覧画面の在庫も更新
+
+      navigation.goBack();
+    },
+    // 9. ★ (NEW) onError: 失敗時の処理
+    onError: (err: any) => {
+      // 5-d. (旧 handleCreateOrder の catch ブロック)
+      if (err.message === 'Canceled') {
+        Alert.alert('キャンセル', '決済がキャンセルされました。');
+        return; // 'Canceled' はエラーとして表示しない
+      }
+      const message =
+        err.response?.data?.message ||
+        err.message ||
+        '注文処理中にエラーが発生しました。';
+      Alert.alert('注文エラー', message);
+    },
+    // (finally は isPending で管理)
+  });
+
+  // 4. ★ (NEW) RefreshControl が呼び出す "専用" の関数
+  const onRefresh = useCallback(async () => {
+    setIsManualRefetching(true); // 👈 クルクル開始
+    try {
+      await refetch(); // 👈 useQuery の refetch を実行
+    } catch (error) {
+      // (エラーは useQuery の isError が検知するのでここでは不要)
+    }
+    setIsManualRefetching(false); // 👈 クルクル停止
+  }, [refetch]);
+
+  // 10. ★ (NEW) handleCreateOrder:
+  // バリデーションを実行し、useMutation を "呼び出す" 関数
+  const handleCreateOrder = async () => {
+    if (!product || !user) return;
+
+    // 5-a. ★ 住所バリデーション (変更なし)
     if (
       deliveryMethod === 'mail' &&
       (!user.postal_code ||
@@ -113,79 +204,19 @@ const ProductDetailScreen: React.FC = () => {
       return;
     }
 
-    setIsProcessing(true);
-
-    try {
-      // 5-b. ★ バックエンド (OrderController@store) に注文リクエスト
-      const response = await api.post('/orders', {
-        product_id: product.id,
-        quantity: quantity,
-        payment_method: paymentMethod,
-        delivery_method: deliveryMethod,
-      });
-
-      const { clientSecret } = response.data; // Stripe決済用の秘密キー
-
-      // 5-c. ★ 決済方法によって処理を分岐
-      if (paymentMethod === 'stripe') {
-        // --- クレジットカード決済 ---
-        if (!clientSecret) {
-          throw new Error(
-            '決済の準備に失敗しました (clientSecretがありません)',
-          );
-        }
-
-        // 5-c-1. Stripeシートを初期化
-        const { error: initError } = await initPaymentSheet({
-          merchantDisplayName: 'NOKKU, Inc.',
-          paymentIntentClientSecret: clientSecret,
-        });
-        if (initError) {
-          console.error('initPaymentSheet error:', initError);
-          throw new Error('決済シートの初期化に失敗しました。');
-        }
-
-        // 5-c-2. Stripeシートを表示
-        const { error: presentError } = await presentPaymentSheet();
-        if (presentError) {
-          if (presentError.code === 'Canceled') {
-            Alert.alert('キャンセル', '決済がキャンセルされました。');
-          } else {
-            throw new Error(`決済に失敗しました: ${presentError.message}`);
-          }
-        } else {
-          // ★ 決済成功 ★
-          Alert.alert('購入完了', 'ありがとうございます。購入が完了しました。');
-          navigation.goBack(); // (または購入履歴画面へ)
-        }
-      } else {
-        // --- 現金払い (会場受取り) ---
-        // (APIは成功しているので、ここでは完了を通知するだけ)
-        Alert.alert(
-          '予約完了',
-          '会場での受け取り・お支払いの準備ができました。',
-        );
-        navigation.goBack(); // (または購入履歴画面へ)
-      }
-    } catch (err: any) {
-      // 5-d. ★ エラーハンドリング
-      console.error('注文作成エラー:', err.response?.data || err.message);
-      // バックエンドからのバリデーションエラー (在庫不足、住所未登録など)
-      const message =
-        err.response?.data?.message ||
-        err.message ||
-        '注文処理中にエラーが発生しました。';
-      Alert.alert('注文エラー', message);
-    } finally {
-      setIsProcessing(false);
-    }
+    // 11. ★ (NEW) バリデーション通過後、mutation を実行
+    // (旧 try...catch...finally は useMutation が担当)
+    createOrderMutation.mutate({
+      productId: product.id,
+      quantity: quantity,
+      paymentMethod: paymentMethod,
+      deliveryMethod: deliveryMethod,
+    });
   };
 
   // --- 6. ヘルパー変数 (JSX描画用) ---
   const isSoldOut = product ? product.stock <= 0 : false;
   const totalPrice = (product?.price || 0) * quantity;
-
-  // 6-a. ★ 住所が登録されているか
   const isAddressComplete =
     user &&
     user.postal_code &&
@@ -193,14 +224,15 @@ const ProductDetailScreen: React.FC = () => {
     user.city &&
     user.address_line1;
 
-  // 6-b. ★ 購入ボタンを無効化する条件
+  // 12. ★ isProcessing を mutation.isPending に置き換え
   const isPurchaseDisabled =
     isSoldOut ||
-    isProcessing || // 処理中
-    (deliveryMethod === 'mail' && !isAddressComplete); // 郵送なのに住所がない
+    createOrderMutation.isPending || // 👈 変更
+    (deliveryMethod === 'mail' && !isAddressComplete);
 
-  // --- 7. ローディング表示 ---
-  if (loading || !user) {
+  // --- 7. ローディング/エラー表示 ---
+  // 13. ★ loading を isLoading に置き換え
+  if (isLoading || !user) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
@@ -208,10 +240,29 @@ const ProductDetailScreen: React.FC = () => {
     );
   }
 
+  // 14. ★ (NEW) エラー表示
+  if (isError) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>商品の取得に失敗しました。</Text>
+        <Button title="再試行" onPress={() => refetch()} color="#0A84FF" />
+      </SafeAreaView>
+    );
+  }
+
   // --- 8. メイン描画 ---
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
+      {/* 15. ★ RefreshControl を ScrollView に追加 */}
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={isManualRefetching} // 👈 'isRefetching' ではなく 'isManualRefetching' を渡す
+            onRefresh={onRefresh} // 👈 'refetch' ではなく 'onRefresh' (自作した関数) を渡す
+            tintColor="#FFFFFF"
+          />
+        }
+      >
         {/* --- 商品情報 (変更なし) --- */}
         {product?.image_url ? (
           <Image
@@ -254,7 +305,7 @@ const ProductDetailScreen: React.FC = () => {
           </View>
         )}
 
-        {/* --- 9. ★★★ ここからが新しいUI ★★★ --- */}
+        {/* --- オプションUI (変更なし) --- */}
         {!isSoldOut && (
           <View style={styles.optionsSection}>
             {/* 9-a. お受取り方法 */}
@@ -285,7 +336,6 @@ const ProductDetailScreen: React.FC = () => {
               <View style={styles.addressContainer}>
                 <Text style={styles.addressLabel}>配送先住所:</Text>
                 {isAddressComplete ? (
-                  // 住所が登録されている場合
                   <View style={styles.addressBox}>
                     <Text style={styles.addressText}>〒{user.postal_code}</Text>
                     <Text style={styles.addressText}>
@@ -308,7 +358,6 @@ const ProductDetailScreen: React.FC = () => {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  // 住所が未登録の場合
                   <View style={styles.warningBox}>
                     <Text style={styles.warningText}>
                       配送先住所が未登録です。
@@ -347,7 +396,6 @@ const ProductDetailScreen: React.FC = () => {
                   styles.optionButton,
                   paymentMethod === 'cash' && styles.optionButtonSelected,
                 ]}
-                // 郵送（mail）の場合は現金（cash）を選べないようにする
                 disabled={deliveryMethod === 'mail'}
                 onPress={() => setPaymentMethod('cash')}
               >
@@ -377,16 +425,15 @@ const ProductDetailScreen: React.FC = () => {
             </View>
           </View>
         )}
-        {/* --- ★★★ 新しいUIここまで ★★★ --- */}
 
-        {/* 10. ★ 購入ボタンを修正 (処理中と住所未登録も考慮) */}
+        {/* 16. ★ 購入ボタン (isProcessing を isPending に変更) */}
         <View style={styles.buttonContainer}>
-          {isProcessing ? (
+          {createOrderMutation.isPending ? ( // 👈 変更
             <ActivityIndicator size="large" color="#0A84FF" />
           ) : (
             <Button
               title={isSoldOut ? '売り切れ' : '注文を確定する'}
-              onPress={handleCreateOrder} // ★ 呼び出す関数を変更
+              onPress={handleCreateOrder}
               disabled={isPurchaseDisabled}
               color="#0A84FF"
             />
@@ -397,7 +444,7 @@ const ProductDetailScreen: React.FC = () => {
   );
 };
 
-// --- スタイル (大幅に追加) ---
+// --- スタイル (変更なし) ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   center: {
@@ -408,7 +455,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#FF3B30', fontSize: 16 },
   productImage: { width: '100%', height: 300, resizeMode: 'cover' },
   imagePlaceholder: { backgroundColor: '#333' },
-  infoContainer: { padding: 20, paddingBottom: 0 }, // 下の余白を削除
+  infoContainer: { padding: 20, paddingBottom: 0 },
   productName: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -451,10 +498,8 @@ const styles = StyleSheet.create({
   buttonContainer: {
     padding: 20,
     paddingTop: 0,
-    paddingBottom: 40, // スクロール下部の余白
+    paddingBottom: 40,
   },
-
-  // --- ↓↓↓ ここからが新しいスタイル ↓↓↓ ---
   optionsSection: {
     padding: 20,
     paddingTop: 10,
@@ -485,7 +530,7 @@ const styles = StyleSheet.create({
   },
   optionButtonSelected: {
     borderColor: '#0A84FF',
-    backgroundColor: '#0A84FF20', // 青色の薄い背景
+    backgroundColor: '#0A84FF20',
   },
   optionButtonText: {
     color: '#FFFFFF',
@@ -493,13 +538,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   optionButtonDisabledText: {
-    color: '#555', // 無効化されたテキスト
+    color: '#555',
   },
   infoText: {
     color: '#888',
     fontSize: 12,
     paddingHorizontal: 5,
-    marginTop: -15, // ボタンのすぐ下に配置
+    marginTop: -15,
     marginBottom: 20,
   },
   addressContainer: {
@@ -530,7 +575,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   warningBox: {
-    backgroundColor: '#FF3B3020', // 赤色の薄い背景
+    backgroundColor: '#FF3B3020',
     borderColor: '#FF3B30',
     borderWidth: 1,
     borderRadius: 8,

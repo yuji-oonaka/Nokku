@@ -1,5 +1,5 @@
 // ArtistProfileScreen.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,27 +8,27 @@ import {
   Alert,
   TouchableOpacity,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import api from '../services/api';
+// 4. ★ React Query と新しい型/関数をインポート
+import { useQuery } from '@tanstack/react-query';
+import {
+  ArtistPostMin,
+  ArtistEventMin,
+  ArtistProductMin,
+  ArtistProfileData,
+  fetchArtistProfileData,
+} from '../api/queries';
 
-// --- 型定義 ---
 type ArtistProfileRouteParams = {
   ArtistProfile: { artistId: number };
 };
-type ArtistProfileRouteProp = RouteProp<ArtistProfileRouteParams, 'ArtistProfile'>;
-
-interface Post { id: number; content: string; created_at: string; }
-interface Event { id: number; title: string; event_date: string; }
-interface Product { id: number; name: string; price: number; }
-interface ArtistProfileData {
-  id: number;
-  nickname: string;
-  posts: Post[];
-  events: Event[];
-  products: Product[];
-}
+type ArtistProfileRouteProp = RouteProp<
+  ArtistProfileRouteParams,
+  'ArtistProfile'
+>;
 
 type TabKey = 'posts' | 'events' | 'products';
 
@@ -38,28 +38,32 @@ const ArtistProfileScreen = () => {
   const navigation = useNavigation<any>();
   const { artistId } = route.params;
 
-  const [loading, setLoading] = useState(true);
-  const [artistData, setArtistData] = useState<ArtistProfileData | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
+  const [isManualRefetching, setIsManualRefetching] = useState(false);
 
-  // API取得
-  useEffect(() => {
-    const fetchArtistProfile = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get<ArtistProfileData>(
-          `/artists/${artistId}`,
-        );
-        setArtistData(response.data);
-      } catch (error) {
-        console.error('アーティスト詳細取得エラー:', error);
-        Alert.alert('エラー', '情報の取得に失敗しました。');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchArtistProfile();
-  }, [artistId]);
+  // 8. ★ (NEW) useQuery フック (useEffect の代わり)
+  const {
+    data: artistData, // 👈 artistData state の代わり
+    isLoading, // 👈 loading state の代わり
+    isRefetching, // 👈 裏での更新中
+    refetch,
+    isError,
+  } = useQuery({
+    queryKey: ['artistProfile', artistId],
+    queryFn: () => fetchArtistProfileData(artistId),
+    enabled: !!artistId,
+  });
+
+  // 9. ★ (NEW) RefreshControl が呼び出す "専用" の関数
+  const onRefresh = useCallback(async () => {
+    setIsManualRefetching(true);
+    try {
+      await refetch();
+    } catch (error) {
+      /* (エラーは useQuery の isError が検知) */
+    }
+    setIsManualRefetching(false);
+  }, [refetch]);
 
   /**
    * イベント詳細ページ（EventsStack）へ遷移する
@@ -95,10 +99,13 @@ const ArtistProfileScreen = () => {
       case 'posts':
         data = artistData.posts;
         emptyText = 'お知らせはありません';
-        renderItem = ({ item }: { item: Post }) => (
+        renderItem = ({ item }: { item: ArtistPostMin }) => (
           // お知らせはタップ不要なので <View> のまま
           <View style={styles.listItem}>
             <Text style={styles.listText}>{item.content}</Text>
+            <Text style={styles.subText}>
+              {new Date(item.created_at).toLocaleString('ja-JP')}
+            </Text>
           </View>
         );
         break;
@@ -106,7 +113,7 @@ const ArtistProfileScreen = () => {
       case 'events':
         data = artistData.events;
         emptyText = 'イベントはありません';
-        renderItem = ({ item }: { item: Event }) => (
+        renderItem = ({ item }: { item: ArtistEventMin }) => (
           // 5. ★ <View> を <TouchableOpacity> に変更
           <TouchableOpacity
             style={styles.listItem}
@@ -123,7 +130,7 @@ const ArtistProfileScreen = () => {
       case 'products':
         data = artistData.products;
         emptyText = 'グッズはありません';
-        renderItem = ({ item }: { item: Product }) => (
+        renderItem = ({ item }: { item: ArtistProductMin }) => (
           // 6. ★ <View> を <TouchableOpacity> に変更
           <TouchableOpacity
             style={styles.listItem}
@@ -149,7 +156,7 @@ const ArtistProfileScreen = () => {
   };
 
   // --- ローディング中 ---
-  if (loading) {
+  if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#FFFFFF" />

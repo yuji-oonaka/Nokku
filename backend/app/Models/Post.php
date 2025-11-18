@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+// 1. ★ 2つを use
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Support\Facades\Storage;
+
 class Post extends Model
 {
     use HasFactory;
@@ -16,13 +20,13 @@ class Post extends Model
         'title',
         'content',
         'image_url',
-        'publish_at', // 👈 ★ 1. 'publish_at' を追加
-        'expires_at', // 👈 ★ 2. 'expires_at' を追加
+        'publish_at',
+        'expires_at',
     ];
 
     /**
      * 3. ★ (NEW) 型キャストの定義
-     * これらのカラムを自動的に 'datetime' オブジェクトとして扱います
+     * これら
      */
     protected $casts = [
         'publish_at' => 'datetime',
@@ -32,8 +36,27 @@ class Post extends Model
     /**
      * この投稿を所有するユーザーを取得
      */
-    public function user(): BelongsTo // 3. メソッド追加
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    // 4. ★★★ (NEW) Product.php と同じアクセサを追加 ★★★
+    /**
+     * image_url 属性 (アクセサ)
+     *
+     * DBから 'image_url' を取得した際に、
+     * 自動でフルURL (Storage::url()) に変換する。
+     */
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+                return asset(Storage::url($value));
+            }
+        );
     }
 }

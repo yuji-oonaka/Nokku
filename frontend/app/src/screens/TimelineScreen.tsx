@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,25 +11,15 @@ import {
   Alert, // 3. ★ Alert をインポート
 } from 'react-native';
 import api from '../services/api';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-
-// 投稿データの型定義
-interface User {
-  id: number;
-  nickname: string;
-  role?: 'user' | 'artist' | 'admin';
-}
-
-interface Post {
-  id: number;
-  title: string; // 4. ★ 'title' を追加
-  content: string;
-  image_url: string | null;
-  created_at: string;
-  user: User; // 投稿者情報
-}
+import {
+  useQuery,
+  useMutation,
+  useQueryClient, // キャッシュを手動で更新するためにインポート
+} from '@tanstack/react-query';
+import { Post, fetchPosts } from '../api/queries';
 
 // 4. ★★★ PostItem コンポーネントを修正 ★★★
 const PostItem = ({
@@ -41,14 +31,15 @@ const PostItem = ({
 }: {
   post: Post;
   onPress: () => void;
-  user: User | null; // ログインしていない場合は null
+  user: any | null; // ログインしていない場合は null
   onEdit: () => void;
   onDelete: () => void;
 }) => {
   const postDate = new Date(post.created_at).toLocaleDateString('ja-JP');
 
   // 8. ★ 投稿者本人 or 管理者 かどうかを判定
-  const isOwnerOrAdmin = user && (user.id === post.user.id || user.role === 'admin');
+  const isOwnerOrAdmin =
+    user && (user.id === post.user.id || user.role === 'admin');
 
   return (
     // カード全体をタップ可能に
@@ -66,7 +57,7 @@ const PostItem = ({
           <Text style={styles.postDate}>{postDate}</Text>
         </View>
       </View>
-      
+
       {/* 9. ★ (NEW) 編集・削除ボタンをここに追加 */}
       {isOwnerOrAdmin && (
         <View style={styles.buttonContainer}>
@@ -89,76 +80,71 @@ const PostItem = ({
 };
 
 const TimelineScreen = () => {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  // [・・・(ページネーションは省略)・・・]
-
   // 10. ★ useAuth と useNavigation を呼び出し
   const { user } = useAuth(); // ログイン中のユーザーを取得
   const navigation = useNavigation<any>(); // 編集画面への遷移用
 
-  const fetchPosts = async (isRefresh: boolean = false) => {
-    // 4. ★ 状態を明確に分離
-    if (isRefresh) {
-      setRefreshing(true); // 引っ張って更新
-    } else {
-      setLoading(true); // 初回ロード
-    }
+  const queryClient = useQueryClient();
 
-    try {
-      const response = await api.get('/posts');
-      setPosts(response.data.data);
-    } catch (error) {
-      console.error('投稿の取得に失敗しました:', error);
-    } finally {
-      // 5. ★ 両方の状態を必ず false に戻す
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  // 8. ★★★ (NEW) useQuery フック ★★★
+  // これが useState, loading, fetching, useFocusEffect の代わり
+  const {
+    data: posts, // 👈 'posts' state の代わり
+    isLoading, // 👈 'loading' state の代わり
+    isRefetching, // 👈 'refreshing' state の代わり
+    refetch, // 👈 'onRefresh' で呼び出す関数
+    isError, // 👈 (NEW) エラーハンドリング用
+  } = useQuery({
+    queryKey: ['posts'], // 👈 キャッシュの「名前（キー）」
+    queryFn: fetchPosts, // 👈 データを取得する「使い回せる」関数
+    // (useFocusEffect と同じく、タブ切り替えで自動的に再検証されます)
+  });
 
-  // 6. ★ useFocusEffect は「初回ロード」として 'false' を渡す
-  useFocusEffect(
-    useCallback(() => {
-      fetchPosts(false);
-    }, []),
+  // 9. ★ (NEW) 削除ボタンの処理 (useMutation) ★★★
+  // useMutation は「データを変更する」操作（POST, PUT, DELETE）に使います
+  const deleteMutation = useMutation({
+    mutationFn: (postId: number) => {
+      // (A) APIを呼び出す
+      return api.delete(`/posts/${postId}`);
+    },
+    // (B) 成功した場合
+    onSuccess: (data, postId) => {
+      // (C) キャッシュ ('posts') を手動で更新し、UIから即時削除
+      queryClient.setQueryData(['posts'], (oldData: Post[] | undefined) => {
+        return oldData ? oldData.filter(p => p.id !== postId) : [];
+      });
+      Alert.alert('成功', '投稿を削除しました。');
+    },
+    // (D) 失敗した場合
+    onError: (error: any) => {
+      Alert.alert(
+        'エラー',
+        '削除に失敗しました: ' +
+          (error.response?.data?.message || error.message),
+      );
+    },
+  });
+
+  // 10. ★ handleDelete 関数を、useMutation を呼び出すように変更
+  const handleDelete = useCallback(
+    // 👈 ★★★ これだけを残す
+    (postId: number) => {
+      Alert.alert('投稿の削除', '本当にこの投稿を削除しますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: () => deleteMutation.mutate(postId), // 👈 useMutation を呼ぶ
+        },
+      ]);
+    },
+    [deleteMutation],
   );
-  const onRefresh = useCallback(() => {
-    fetchPosts(true);
-  }, []);
 
   const handlePostPress = (post: Post) => {
     // ★ (NEW) PostDetailScreen に 'post' オブジェクトを渡して遷移
     navigation.navigate('PostDetail', { post: post });
   };
-
-  // 11. ★ (NEW) 削除ボタンの処理
-  const handleDelete = useCallback((postId: number) => {
-    Alert.alert('投稿の削除', '本当にこの投稿を削除しますか？', [
-      { text: 'キャンセル', style: 'cancel' },
-      {
-        text: '削除する',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            // API (DELETE /api/posts/{id}) を呼び出し
-            await api.delete(`/posts/${postId}`);
-
-            // 成功したら、State からも即時削除
-            setPosts(prevPosts => prevPosts.filter(p => p.id !== postId));
-            Alert.alert('成功', '投稿を削除しました。');
-          } catch (error: any) {
-            Alert.alert(
-              'エラー',
-              '削除に失敗しました: ' +
-                (error.response?.data?.message || error.message),
-            );
-          }
-        },
-      },
-    ]);
-  }, []); // 依存配列は空
 
   // 12. ★ (NEW) 編集ボタンの処理
   const handleEdit = useCallback(
@@ -168,18 +154,29 @@ const TimelineScreen = () => {
     [navigation],
   );
 
-  // 8. ★ ローディング判定を 'loading' のみに簡素化
-  if (loading) {
+  // 11. ★ ローディング判定を 'isLoading' に変更
+  // (isRefetching は「裏での更新」なので、クルクルは出さない)
+  if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
       </View>
     );
   }
+
+  // 12. ★ エラー表示を追加
+  if (isError) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.emptyText}>投稿の読み込みに失敗しました。</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={posts}
+        data={posts || []}
         keyExtractor={item => item.id.toString()}
         // 13. ★ renderItem を修正
         renderItem={({ item }) => (
@@ -193,17 +190,17 @@ const TimelineScreen = () => {
         )}
         ListEmptyComponent={
           // 9. ★「リフレッシュ中」は「投稿はありません」を隠す
-          !refreshing ? (
+          !isRefetching  ? (
             <View style={[styles.container, styles.center]}>
               <Text style={styles.emptyText}>投稿はまだありません。</Text>
             </View>
           ) : null
         }
         refreshControl={
-          // 10. ★ refreshing の状態を RefreshControl に正しく渡す
+          // 14. ★ refreshing を 'isRefetching' に、onRefresh を 'refetch' に変更
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshing={isRefetching}
+            onRefresh={refetch} // 👈 React Query の refetch 関数を呼ぶ
             tintColor="#FFFFFF"
           />
         }

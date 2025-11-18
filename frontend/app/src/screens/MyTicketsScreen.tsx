@@ -1,89 +1,61 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useEffect } from 'react'; // 1. ★ useState, useCallback, useFocusEffect を削除
 import {
   StyleSheet,
   Text,
   View,
   FlatList,
   ActivityIndicator,
-  Alert,
+  // Alert, // 2. ★ Alert は useQuery のエラー処理に任せる (または別途エラー表示)
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import QRCode from 'react-native-qrcode-svg'; // 👈 1. QRコードライブラリをインポート
+// 3. ★ useFocusEffect を削除
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import api from '../services/api';
+// 4. ★ api.ts は不要 (queries.ts が使う)
 import firestore, {
   FirebaseFirestoreTypes,
 } from '@react-native-firebase/firestore';
 
-
-
-// 型定義 (DBの関連付け(with)と合わせる)
-interface UserTicket {
-  id: number;
-  seat_number: string; // "S席-1" や "自由席-10"
-  qr_code_id: string; // QRコード生成用のUUID
-  is_used: boolean;
-  event: {
-    // 'with'で読み込んだイベント情報
-    title: string;
-    venue: string;
-    event_date: string;
-  };
-  ticket_type: {
-    // 'with'で読み込んだ券種情報
-    name: string; // "S席"
-  };
-}
+// 5. ★ React Query をインポート
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+// 6. ★ queries.ts から型と関数をインポート
+import { UserTicket, fetchMyTickets } from '../api/queries';
 
 const MyTicketsScreen: React.FC = () => {
-  const [myTickets, setMyTickets] = useState<UserTicket[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 7. ★ useState(myTickets), useState(loading) を削除
 
-  // 画面にフォーカスが当たるたびに、購入済みチケット一覧を取得
-  useFocusEffect(
-    useCallback(() => {
-      const fetchMyTickets = async () => {
-        try {
-          setLoading(true);
-          // 5. ★ fetch(...) を api.get(...) に置き換え
-          // api.ts が自動で baseURL と Auth ヘッダーを付与します
-          const response = await api.get<UserTicket[]>('/my-tickets');
+  // 8. ★ QueryClient を取得 (キャッシュを直接更新するため)
+  const queryClient = useQueryClient();
 
-          // 6. ★ response.ok チェックは不要 (api.tsがエラーを自動で catch に投げるため)
-          // 7. ★ データは response.data に入っています
-          setMyTickets(response.data);
-        } catch (error: any) {
-          Alert.alert(
-            'エラー',
-            error.message || 'マイチケットの取得に失敗しました',
-          );
-        } finally {
-          setLoading(false);
-        }
-      };
+  // 9. ★ (NEW) React Query で /my-tickets を取得
+  const myTicketsQueryKey = ['myTickets']; // キャッシュキー
+  const {
+    data: myTickets, // 取得したデータ (UserTicket[] | undefined)
+    isLoading, // 初回ロード中 (キャッシュがない場合)
+    isError, // エラー発生時
+  } = useQuery({
+    queryKey: myTicketsQueryKey,
+    queryFn: fetchMyTickets,
+    staleTime: 1000 * 60 * 3, // 3分間はキャッシュを優先
+  });
 
-      fetchMyTickets();
-    }, []), // 8. ★ 依存配列から authToken を削除 (空の配列にする)
-  );
+  // 10. ★ (DELETE) useFocusEffect を削除
+  // (useQuery がキャッシュ管理と 'refetchOnWindowFocus' を自動で行うため)
 
-  // 4. ★★★ (NEW) Firestore リアルタイムリスナー ★★★
+  // 11. ★ (MODIFY) Firestore リアルタイムリスナー
   useEffect(() => {
-    // myTickets がAPIから読み込まれるまで待つ
-    if (myTickets.length === 0) {
+    // 11-a. myTickets が取得できるまで待つ
+    // (isLoading や myTickets が undefined の場合は何もしない)
+    if (!myTickets || myTickets.length === 0) {
       return;
     }
 
-    // 購読を解除するための関数を格納する配列
     const unsubscribers: (() => void)[] = [];
 
-    // ユーザーが持っているチケット（未使用のもの）だけを購読
     myTickets.forEach(ticket => {
-      // 既に 'is_used' が true のチケットは購読する必要がない
       if (ticket.is_used || !ticket.qr_code_id) {
         return;
       }
 
-      // 'ticket_status/{qr_code_id}' ドキュメントを購読
       const docRef = firestore()
         .collection('ticket_status')
         .doc(ticket.qr_code_id);
@@ -92,10 +64,22 @@ const MyTicketsScreen: React.FC = () => {
         (snapshot: FirebaseFirestoreTypes.DocumentSnapshot) => {
           if (snapshot.exists() && snapshot.data()?.status === 'used') {
             console.log(`チケット ${ticket.id} がスキャンされました！`);
-            setMyTickets(prevTickets =>
-              prevTickets.map(t =>
-                t.id === ticket.id ? { ...t, is_used: true } : t,
-              ),
+
+            // 11-b. ★★★ (IMPORTANT) ★★★
+            // useState(setMyTickets) の代わりに、
+            // React Query のキャッシュ (setQueryData) を "直接" 更新する
+            queryClient.setQueryData(
+              myTicketsQueryKey,
+              (oldData: UserTicket[] | undefined) => {
+                // キャッシュ (oldData) がなければ何もしない
+                if (!oldData) {
+                  return [];
+                }
+                // キャッシュ (oldData) を見に行き、該当チケットの is_used を true に書き換える
+                return oldData.map(t =>
+                  t.id === ticket.id ? { ...t, is_used: true } : t,
+                );
+              },
             );
           }
         },
@@ -104,18 +88,18 @@ const MyTicketsScreen: React.FC = () => {
         },
       );
 
-      // ← ★ここを修正
       unsubscribers.push(unsubscribe);
     });
 
-    // 6. ★ クリーンアップ関数
-    // 画面を離れるか、myTickets が変更されたら、すべての購読を解除
+    // 11-c. クリーンアップ (変更なし)
     return () => {
       unsubscribers.forEach(unsubscribe => unsubscribe());
     };
-  }, [myTickets]); // myTickets リストが更新されたらリスナーを再設定
+  }, [myTickets, queryClient]); // 12. ★ 依存配列に myTickets と queryClient を指定
 
-  // リストの各アイテム（チケット）
+  // --- (ここから下は、ほぼ変更なし) ---
+
+  // 13. ★ renderItem は変更なし
   const renderItem = ({ item }: { item: UserTicket }) => (
     <View style={[styles.ticketItem, item.is_used && styles.ticketItemUsed]}>
       <View style={styles.ticketInfo}>
@@ -131,13 +115,11 @@ const MyTicketsScreen: React.FC = () => {
       </View>
       <View style={styles.qrContainer}>
         {item.is_used ? (
-          // --- (A) 使用済みの場合 ---
           <View style={styles.usedContainer}>
             <Text style={styles.usedIcon}>✅</Text>
             <Text style={styles.usedText}>入場OK</Text>
           </View>
         ) : item.qr_code_id ? (
-          // --- (B) 未使用 (QRあり) の場合 ---
           <QRCode
             value={item.qr_code_id}
             size={80}
@@ -145,7 +127,6 @@ const MyTicketsScreen: React.FC = () => {
             color="black"
           />
         ) : (
-          // --- (C) QRなし (エラーなど) ---
           <Text style={styles.noQrText}>QRなし</Text>
         )}
       </View>
@@ -154,13 +135,24 @@ const MyTicketsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#FFFFFF" />
-      ) : myTickets.length === 0 ? (
-        <Text style={styles.emptyText}>購入済みのチケットはありません</Text>
+      {/* 14. ★ ローディング判定を 'isLoading' に変更 */}
+      {isLoading ? (
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </View>
+      ) : isError ? (
+        // 15. ★ エラー表示
+        <View style={styles.centerContent}>
+          <Text style={styles.emptyText}>チケットの取得に失敗しました。</Text>
+        </View>
+      ) : !myTickets || myTickets.length === 0 ? (
+        // 16. ★ 空の表示 (myTickets が undefined の場合も考慮)
+        <View style={styles.centerContent}>
+          <Text style={styles.emptyText}>購入済みのチケットはありません</Text>
+        </View>
       ) : (
         <FlatList
-          data={myTickets}
+          data={myTickets} // 17. ★ useQuery の data をそのまま使用
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
         />
@@ -169,12 +161,18 @@ const MyTicketsScreen: React.FC = () => {
   );
 };
 
-// --- スタイルシート ---
+// --- スタイルシート (一部追加) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
     padding: 10,
+  },
+  // 18. ★ (NEW) 中央配置用のスタイル
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   ticketItem: {
     backgroundColor: '#222',
@@ -186,15 +184,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ticketItemUsed: {
-    backgroundColor: '#1C1C1E', // 少し暗く
-    borderColor: '#34C759', // 緑色の枠線
+    backgroundColor: '#1C1C1E',
+    borderColor: '#34C759',
   },
   ticketInfo: {
     flex: 1,
     marginRight: 10,
   },
   usedLabel: {
-    color: '#34C759', // 緑色
+    color: '#34C759',
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 5,
@@ -211,12 +209,12 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   qrContainer: {
-    width: 90, // 13. ★ サイズを固定 (QR/使用済み)
-    height: 90, //
+    width: 90,
+    height: 90,
     padding: 5,
     backgroundColor: 'white',
     borderRadius: 4,
-    justifyContent: 'center', // 14. ★ 中身を中央揃え
+    justifyContent: 'center',
     alignItems: 'center',
   },
   noQrText: {
@@ -242,7 +240,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#FFFFFF',
     textAlign: 'center',
-    marginTop: 50,
     fontSize: 18,
   },
 });

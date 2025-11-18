@@ -1,22 +1,23 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react'; // 1. ★ useState, useCallback, useFocusEffect を削除
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  Alert,
+  // Alert, // 2. ★ Alert は isError で処理
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import api from '../services/api';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+// 3. ★ api.ts は不要
+import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-// 1. ★ MyPageStackNavigator の型をインポート (後で修正します)
 import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
-import { Order, OrderItem } from '../screens/OrderDetailScreen';
 
-// 3. ★ ナビゲーションの型
+// 4. ★ React Query と、queries.ts から型・関数をインポート
+import { useQuery } from '@tanstack/react-query';
+import { Order, fetchMyOrders } from '../api/queries';
+
 type OrderHistoryNavigationProp = StackNavigationProp<
   MyPageStackParamList,
   'OrderHistory'
@@ -24,72 +25,55 @@ type OrderHistoryNavigationProp = StackNavigationProp<
 
 const OrderHistoryScreen: React.FC = () => {
   const navigation = useNavigation<OrderHistoryNavigationProp>();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // 4. ★ APIから注文履歴を取得
-  const fetchOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await api.get<Order[]>('/my-orders');
-      setOrders(response.data);
-    } catch (error) {
-      console.error('注文履歴の取得エラー:', error);
-      Alert.alert('エラー', '注文履歴の取得に失敗しました。');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 5. ★ (DELETE) useState(orders), useState(loading) を削除
+  // 6. ★ (DELETE) fetchOrders (useCallback) を削除
+  // 7. ★ (DELETE) useFocusEffect を削除
 
-  // 5. ★ 画面が表示されるたびに履歴を再取得
-  useFocusEffect(
-    useCallback(() => {
-      // useFocusEffect 内で async 関数を呼び出すためのラッパー
-      const loadData = async () => {
-        await fetchOrders();
-      };
+  // 8. ★ (NEW) React Query で /my-orders を取得
+  const {
+    data: orders, // 取得したデータ (Order[] | undefined)
+    isLoading, // 初回ロード中
+    isError, // エラー発生時
+  } = useQuery({
+    queryKey: ['myOrders'], // キャッシュキー
+    queryFn: fetchMyOrders,
+    staleTime: 1000 * 60 * 3, // 3分間はキャッシュを優先
+  });
 
-      loadData(); // 実行
-
-      // (クリーンアップ関数は不要な場合は何も返さない)
-    }, [fetchOrders]), // fetchOrders (useCallback) が変わった時だけ再実行
-  );
-
-  // 6. ★ リストの各アイテムを描画
+  // 9. ★ リストの各アイテムを描画 (ロジックはほぼ変更なし)
   const renderItem = ({ item }: { item: Order }) => {
-    // 注文に含まれる最初の商品の名前 (または「他X件」)
     const firstItemName = item.items[0]?.product_name || '商品情報なし';
     const otherItemsCount = item.items.length - 1;
     const orderTitle = `${firstItemName}${
       otherItemsCount > 0 ? ` 他${otherItemsCount}点` : ''
     }`;
 
-    // 注文日をフォーマット
     const orderDate = new Date(item.created_at).toLocaleDateString('ja-JP');
 
+    // 10. ★ (BUG FIX) ステータス表示のロジック (ここは元のままでOK)
     let statusText = '処理中';
     let statusStyle = styles.orderStatusPending; // デフォルトは青
 
     if (item.status === 'pending') {
       if (item.payment_method === 'cash') {
-        statusText = '支払・受取待ち'; // 👈 「現金払い」の場合
+        statusText = '支払・受取待ち';
       } else {
-        statusText = '支払処理中'; // 👈 「クレジットカード」の場合
+        statusText = '支払処理中';
       }
-      statusStyle = styles.orderStatusPending; // (青)
+      statusStyle = styles.orderStatusPending;
     } else if (item.status === 'paid' || item.status === 'shipped') {
-      // (shipped は 郵送用)
       statusText = '支払い完了';
-      statusStyle = styles.orderStatusPaid; // (緑)
+      statusStyle = styles.orderStatusPaid;
     } else if (item.status === 'redeemed') {
       statusText = '受取済み';
-      statusStyle = styles.orderStatusRedeemed; // (グレー)
+      statusStyle = styles.orderStatusRedeemed;
     }
+    // (もし 'cancelled' などの他ステータスもあれば、ここに追加)
 
     return (
       <TouchableOpacity
         style={styles.orderItem}
-        // 7. ★ (次のステップ) OrderDetail 画面へ遷移
         onPress={() => navigation.navigate('OrderDetail', { order: item })}
       >
         <View>
@@ -100,13 +84,17 @@ const OrderHistoryScreen: React.FC = () => {
           <Text style={styles.orderPrice}>
             ¥{item.total_price.toLocaleString()}
           </Text>
-          <Text style={styles.orderStatus}>{item.status}</Text>
+          {/* 11. ★ (BUG FIX) item.status -> statusText と statusStyle を使う */}
+          <Text style={[styles.orderStatusBase, statusStyle]}>
+            {statusText}
+          </Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  if (loading) {
+  // 12. ★ (MODIFY) ローディング判定を 'isLoading' に変更
+  if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
@@ -114,10 +102,19 @@ const OrderHistoryScreen: React.FC = () => {
     );
   }
 
+  // 13. ★ (NEW) エラー表示
+  if (isError) {
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <Text style={styles.emptyText}>注文履歴の取得に失敗しました。</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={orders}
+        data={orders || []} // 14. ★ (MODIFY) data は {orders || []}
         renderItem={renderItem}
         keyExtractor={item => item.id.toString()}
         ListEmptyComponent={
@@ -174,29 +171,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  orderStatus: {
-    color: '#0A84FF',
+  // 15. ★ (NEW) ステータスの共通スタイル
+  orderStatusBase: {
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 5,
   },
+  // 16. ★ (RENAME) orderStatus -> orderStatusPending
   orderStatusPending: {
-    color: '#0A84FF', // 青 (元の色)
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 5,
+    color: '#0A84FF', // 青
   },
   orderStatusPaid: {
-    color: '#34C759', // 緑 (支払い完了)
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 5,
+    color: '#34C759', // 緑
   },
   orderStatusRedeemed: {
-    color: '#888', // グレー (受取済み)
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 5,
+    color: '#888', // グレー
   },
 });
 
