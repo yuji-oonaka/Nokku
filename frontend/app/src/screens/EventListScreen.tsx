@@ -1,27 +1,19 @@
-import React, { useState, useCallback } from 'react'; // 1. ★ useEffect は不要に
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   FlatList,
   ActivityIndicator,
-  Alert,
+  RefreshControl,
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
-import api from '../services/api';
-
-// (Event 型定義は変更なし)
-interface Event {
-  id: number;
-  title: string;
-  description: string;
-  venue: string;
-  event_date: string;
-}
+import { useQuery } from '@tanstack/react-query';
+import { Event, fetchEvents } from '../api/queries';
 
 type EventListNavigationProp = StackNavigationProp<
   EventStackParamList,
@@ -29,36 +21,23 @@ type EventListNavigationProp = StackNavigationProp<
 >;
 
 const EventListScreen: React.FC = () => {
-  // 2. ★ activeTab State を追加 (デフォルトは 'upcoming')
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
-
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigation = useNavigation<EventListNavigationProp>();
 
-  // 3. ★ fetchEvents を activeTab (State) に基づいて取得するように修正
-  const fetchEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-      // 4. ★ /api/events?filter=... を呼び出す
-      const response = await api.get(`/events?filter=${activeTab}`);
-      setEvents(response.data);
-    } catch (error: any) {
-      Alert.alert('エラー', 'イベントの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab]); // 5. ★ activeTab が変更されたら、この関数が再構築される
+  const {
+    data: events,
+    isLoading,
+    isRefetching,
+    refetch,
+    isError,
+  } = useQuery({
+    queryKey: ['events', activeTab],
+    queryFn: () => fetchEvents(activeTab),
+    // ★ (FIX) キャッシュ有効期間を設定 (5分)
+    // これにより、タブ切り替え時に毎回「クルクル」(RefreshControl) が出るのを防ぎます
+    staleTime: 1000 * 60 * 5,
+  });
 
-  // 6. ★ useFocusEffect を修正
-  //    (画面フォーカス時、または fetchEvents 関数が再構築された時 に実行)
-  useFocusEffect(
-    useCallback(() => {
-      fetchEvents();
-    }, [fetchEvents]),
-  );
-
-  // (handleEventPress, renderItem は変更なし)
   const handleEventPress = (item: Event) => {
     navigation.navigate('EventDetail', {
       eventId: item.id,
@@ -79,7 +58,7 @@ const EventListScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 7. ★★★ タブ切り替えUIを追加 ★★★ */}
+      {/* タブ切り替えUI */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[
@@ -116,36 +95,59 @@ const EventListScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
-      {/* ★★★ ここまで ★★★ */}
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#FFFFFF" />
-      ) : events.length === 0 ? (
-        // 8. ★ 空のメッセージをタブごとに変更
-        <Text style={styles.emptyText}>
-          {activeTab === 'upcoming'
-            ? '開催予定のイベントはありません'
-            : '過去のイベントはありません'}
-        </Text>
+      {/* コンテンツ表示 */}
+      {isLoading ? (
+        // 初回ロード中のみ中央スピナーを表示 (タブの下に出る)
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </View>
+      ) : isError ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>イベントの取得に失敗しました。</Text>
+        </View>
       ) : (
         <FlatList
-          data={events}
+          data={events || []}
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          // データが空の場合の表示
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Text style={styles.emptyText}>
+                {activeTab === 'upcoming'
+                  ? '開催予定のイベントはありません'
+                  : '過去のイベントはありません'}
+              </Text>
+            </View>
+          }
+          // 引っ張って更新 (手動更新の時だけクルクルが出る)
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor="#FFFFFF"
+            />
+          }
         />
       )}
     </SafeAreaView>
   );
 };
 
-// 9. ★★★ スタイルシートにタブ用のスタイルを追加 ★★★
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000000' }, // 背景を #121212 -> #000000 に統一
-  // --- タブUI ---
+  container: { flex: 1, backgroundColor: '#000000' },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
   tabContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#1C1C1E', // タブの背景
+    backgroundColor: '#1C1C1E',
     paddingVertical: 10,
     marginHorizontal: 10,
     marginTop: 10,
@@ -157,23 +159,25 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   activeTabButton: {
-    backgroundColor: '#0A84FF', // アクティブなタブの背景色
+    backgroundColor: '#0A84FF',
   },
   activeTabText: {
-    color: '#FFFFFF', // アクティブなテキスト色
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
   },
   inactiveTabText: {
-    color: '#888888', // 非アクティブなテキスト色
+    color: '#888888',
     fontSize: 16,
   },
-  // --- リスト ---
+  listContent: {
+    paddingBottom: 20,
+  },
   eventItem: {
     backgroundColor: '#1C1C1E',
     padding: 15,
     marginVertical: 8,
-    marginHorizontal: 10, // 左右マージンを追加
+    marginHorizontal: 10,
     borderRadius: 8,
   },
   eventTitle: {

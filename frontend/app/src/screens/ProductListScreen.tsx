@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react'; // 1. ★ useState, useCallback は不要に
 import {
   StyleSheet,
   Text,
@@ -9,25 +9,20 @@ import {
   Image,
   TouchableOpacity,
   Button,
+  RefreshControl, // 2. ★ RefreshControl をインポート
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native'; // 3. ★ useFocusEffect は不要に
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-import api from '../services/api';
+import api from '../services/api'; // (削除APIでまだ使う)
 
-// 1. ★ useAuth をインポート
 import { useAuth } from '../context/AuthContext';
 
-// (Product 型定義は変更なし)
-interface Product {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-}
+// 4. ★ React Query をインポート
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+// 5. ★ 新しい型と関数をインポート
+import { Product, fetchProducts } from '../api/queries';
 
 type ProductListNavigationProp = StackNavigationProp<
   ProductStackParamList,
@@ -35,50 +30,43 @@ type ProductListNavigationProp = StackNavigationProp<
 >;
 
 const ProductListScreen: React.FC = () => {
-  // 2. ★ useAuth() フックから user 情報を取得
   const { user } = useAuth();
-
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigation = useNavigation<ProductListNavigationProp>();
 
-  // 3. ★ ユーザーが管理者/アーティストか判定
-  // (user が null の場合も考慮)
+  // 6. ★ QueryClient を取得 (キャッシュ操作用)
+  const queryClient = useQueryClient();
+
   const isOwnerOrAdmin = !!(
     user &&
     (user.role === 'artist' || user.role === 'admin')
   );
 
-  // (fetchProducts, handleProductPress, handleDeleteProduct, handleEditProduct は変更なし)
-  const fetchProducts = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/products');
-      setProducts(response.data);
-    } catch (error: any) {
-      Alert.alert('エラー', 'グッズの取得に失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 7. ★★★ (NEW) useQuery フック ★★★
+  const {
+    data: products,
+    isLoading,
+    isRefetching,
+    refetch,
+    isError,
+  } = useQuery({
+    // 8. ★ キャッシュキー
+    queryKey: ['products'],
+    // 9. ★ queries.ts の関数を呼び出す
+    queryFn: fetchProducts,
+    // (この画面は filter がないので queryKey は固定)
+  });
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchProducts();
-    }, [fetchProducts]),
-  );
+  // 10. ★ useFocusEffect と fetchProducts (useCallback) は削除
 
   const handleProductPress = (product: Product) => {
-    // 4. ★ アーティストは決済画面に遷移させない
     if (isOwnerOrAdmin) return;
-
     navigation.navigate('ProductDetail', {
-      productId: product.id, // 👈 product オブジェクト丸ごとではなく、ID を渡す
+      productId: product.id,
     });
   };
 
+  // 11. ★ handleDeleteProduct を修正
   const handleDeleteProduct = async (product: Product) => {
-    // (中身は変更なし)
     Alert.alert('グッズの削除', `「${product.name}」を本当に削除しますか？`, [
       { text: 'キャンセル', style: 'cancel' },
       {
@@ -88,7 +76,12 @@ const ProductListScreen: React.FC = () => {
           try {
             await api.delete(`/products/${product.id}`);
             Alert.alert('削除完了', `「${product.name}」を削除しました。`);
-            fetchProducts();
+
+            // 12. ★★★★ (IMPORTANT) ★★★★
+            // 削除成功時、'products' のキャッシュを無効化する
+            // -> React Query が自動でデータを再取得（refetch）します
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            // ★ (古い fetchProducts() 呼び出しは不要)
           } catch (error: any) {
             if (error.response && error.response.status === 403) {
               Alert.alert('エラー', 'このグッズを削除する権限がありません');
@@ -102,15 +95,17 @@ const ProductListScreen: React.FC = () => {
   };
 
   const handleEditProduct = (product: Product) => {
+    // 編集画面から戻ってきた時も、useQuery が
+    // 'refetchOnWindowFocus' (デフォルト) で自動で再取得してくれます
     navigation.navigate('ProductEdit', { productId: product.id });
   };
 
-  // リストの各アイテム
-  const renderItem = ({ item }: { item: Product }) => (
-    // 5. ★ アーティストは 'onPress' 無効 (TouchableOpacity 自体は残す)
+  // renderItem は変更なし
+  const renderItem = ({ item }: { item: Product }) => {
+    return (
     <TouchableOpacity
       onPress={() => handleProductPress(item)}
-      disabled={isOwnerOrAdmin} // アーティストはタップ無効
+      disabled={isOwnerOrAdmin}
     >
       <View style={styles.productItem}>
         {item.image_url && (
@@ -125,9 +120,7 @@ const ProductListScreen: React.FC = () => {
           <Text style={styles.productStock}>在庫: {item.stock}</Text>
         </View>
 
-        {/* 6. ★ ボタンの出し分け */}
         {isOwnerOrAdmin ? (
-          // 管理者/アーティスト用のボタン
           <View style={styles.adminButtonContainer}>
             <Button
               title="編集"
@@ -149,25 +142,44 @@ const ProductListScreen: React.FC = () => {
             </View>
           </View>
         ) : (
-          // 一般ユーザー用のボタン (購入ボタンは親の TouchableOpacity が担当)
-          // (ここでは何も表示しない、または「詳細」ボタンを置く)
-          <View style={styles.adminButtonContainer} /> // 空のコンテナでレイアウトを維持
+          <View style={styles.adminButtonContainer} />
         )}
       </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#FFFFFF" />
-      ) : products.length === 0 ? (
-        <Text style={styles.emptyText}>販売中のグッズはありません</Text>
+      {/* 13. ★ ローディング判定を 'isLoading' に変更 */}
+      {isLoading ? (
+        // 14. ★ ActivityIndicator を中央に配置 (styles.center を追加)
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </View>
+      ) : isError ? (
+        // 15. ★ エラー表示
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>グッズの取得に失敗しました。</Text>
+        </View>
+      ) : (products || []).length === 0 ? (
+        // 16. ★ 空のメッセージ
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>販売中のグッズはありません</Text>
+        </View>
       ) : (
         <FlatList
-          data={products}
+          data={products || []} // 17. ★ data は {products || []}
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
+          // 18. ★★★ (NEW) RefreshControl を追加 ★★★
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor="#FFFFFF"
+            />
+          }
         />
       )}
     </SafeAreaView>
@@ -177,6 +189,12 @@ const ProductListScreen: React.FC = () => {
 // --- スタイルシート (変更なし) ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000', padding: 10 },
+  // 19. ★ (NEW) 中央配置用のスタイル (EventListScreen からコピー)
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   productItem: {
     backgroundColor: '#1C1C1E',
     borderRadius: 8,
@@ -203,7 +221,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingRight: 10,
     alignItems: 'center',
-    minWidth: 120, // 7. ★ ボタンエリアの最小幅を確保
+    minWidth: 120,
   },
   emptyText: {
     color: '#FFFFFF',

@@ -31,7 +31,19 @@ class Product extends Model
     protected function imageUrl(): Attribute
     {
         return Attribute::make(
-            get: fn($value) => $value ? Storage::url($value) : null,
+            // get: fn($value) => $value ? Storage::url($value) : null, // 👈 この行を削除
+
+            // 1. ★ get 処理を {} を使う書き方(クロージャ)に変更
+            get: function ($value) {
+                // 2. ★ $value (DBの値) が null なら、null を返す
+                if (!$value) {
+                    return null;
+                }
+
+                // 3. ★ Storage::url() でパス (/storage/...) を取得し、
+                //    asset() でホスト (http://10.0.2.2) を付け足す
+                return asset(Storage::url($value));
+            }
         );
     }
 }

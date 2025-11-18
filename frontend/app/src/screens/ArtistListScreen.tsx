@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState, useEffect } from 'react'; // ★ useEffect を追加
 import {
   View,
   Text,
@@ -8,124 +8,173 @@ import {
   Alert,
   Button,
   TouchableOpacity,
+  RefreshControl,
+  TextInput,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import api from '../services/api';
-import { useAuth } from '../context/AuthContext'; // 1. ★ 自分のロール確認用
+import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// APIから返ってくるアーティストの型
-interface Artist {
-  id: number;
-  nickname: string;
-  // (将来的に 'avatar_url' などを追加)
-}
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Artist, ArtistListResponse, fetchArtists } from '../api/queries';
 
 const ArtistListScreen = () => {
   const navigation = useNavigation<any>();
-  const { user } = useAuth(); // 2. ★ 自分のロールを取得
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  // 3. ★ フォロー中のIDを保持するSet (高速検索用)
-  const [followingIds, setFollowingIds] = useState<Set<number>>(new Set());
+  // 1. 入力欄の値を管理する state
+  const [searchQuery, setSearchQuery] = useState('');
+  // 2. ★ 実際にAPIに渡す「遅延させた」値を管理する state
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  // 4. ★ データを取得する関数
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/artists');
-      setArtists(response.data.artists);
-      // 5. ★ ID配列を Set に変換して State に保存
-      setFollowingIds(new Set(response.data.following_ids));
-    } catch (error) {
-      console.error('アーティスト一覧の取得エラー:', error);
-      Alert.alert('エラー', 'アーティスト一覧の取得に失敗しました。');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // 3. ★ デバウンス処理 (入力が止まってから500ms後に debouncedQuery を更新)
+  useEffect(() => {
+    const timerId = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 500); // 0.5秒待機
 
-  // 6. ★ 画面フォーカス時にデータを再取得
-  useFocusEffect(
-    useCallback(() => {
-      const fetch = async () => {
-        await fetchData(); // 👈 async関数を内部で呼び出す
-      };
-      fetch();
-    }, [fetchData]),
-  );
+    return () => {
+      clearTimeout(timerId); // 待機中に次の入力があればタイマーをリセット
+    };
+  }, [searchQuery]);
 
-  // 7. ★ フォロー処理
-  const handleFollow = async (artistId: number) => {
-    try {
-      // 画面を即時更新 (Optimistic UI)
-      setFollowingIds(prevIds => new Set(prevIds).add(artistId));
-      // APIを呼び出し
-      await api.post(`/artists/${artistId}/follow`);
-    } catch (error) {
+  const {
+    data: response,
+    isLoading,
+    isRefetching,
+    refetch,
+    isError,
+  } = useQuery({
+    // 4. ★ debouncedQuery をキーと引数に使う
+    queryKey: ['artists', debouncedQuery],
+    queryFn: () => fetchArtists(debouncedQuery),
+    placeholderData: previousData => previousData,
+    // キャッシュ時間を短くして、検索体験をスムーズに
+    staleTime: 1000 * 60 * 1,
+  });
+
+  const artists = response?.artists || [];
+  const followingIds = useMemo(() => {
+    return new Set(response?.following_ids || []);
+  }, [response?.following_ids]);
+
+  const followMutation = useMutation({
+    mutationFn: (artistId: number) => api.post(`/artists/${artistId}/follow`),
+    onMutate: async (artistId: number) => {
+      // ★ debouncedQuery を使う
+      await queryClient.cancelQueries({
+        queryKey: ['artists', debouncedQuery],
+      });
+      const previousData = queryClient.getQueryData<ArtistListResponse>([
+        'artists',
+        debouncedQuery,
+      ]);
+
+      if (previousData) {
+        queryClient.setQueryData<ArtistListResponse>(
+          ['artists', debouncedQuery],
+          {
+            ...previousData,
+            following_ids: [...previousData.following_ids, artistId],
+          },
+        );
+      }
+      return { previousData };
+    },
+    onError: (err, artistId, context) => {
       Alert.alert('エラー', 'フォローに失敗しました');
-      // 失敗したら画面を元に戻す
-      setFollowingIds(prevIds => {
-        const newIds = new Set(prevIds);
-        newIds.delete(artistId);
-        return newIds;
-      });
-    }
-  };
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          ['artists', debouncedQuery],
+          context.previousData,
+        );
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['artists', debouncedQuery] });
+    },
+  });
 
-  // 8. ★ アンフォロー処理
-  const handleUnfollow = async (artistId: number) => {
-    try {
-      // 画面を即時更新
-      setFollowingIds(prevIds => {
-        const newIds = new Set(prevIds);
-        newIds.delete(artistId);
-        return newIds;
+  const unfollowMutation = useMutation({
+    mutationFn: (artistId: number) =>
+      api.delete(`/artists/${artistId}/unfollow`),
+    onMutate: async (artistId: number) => {
+      await queryClient.cancelQueries({
+        queryKey: ['artists', debouncedQuery],
       });
-      // APIを呼び出し
-      await api.delete(`/artists/${artistId}/unfollow`);
-    } catch (error) {
+      const previousData = queryClient.getQueryData<ArtistListResponse>([
+        'artists',
+        debouncedQuery,
+      ]);
+
+      if (previousData) {
+        queryClient.setQueryData<ArtistListResponse>(
+          ['artists', debouncedQuery],
+          {
+            ...previousData,
+            following_ids: previousData.following_ids.filter(
+              id => id !== artistId,
+            ),
+          },
+        );
+      }
+      return { previousData };
+    },
+    onError: (err, artistId, context) => {
       Alert.alert('エラー', 'アンフォローに失敗しました');
-      // 失敗したら画面を元に戻す
-      setFollowingIds(prevIds => new Set(prevIds).add(artistId));
-    }
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          ['artists', debouncedQuery],
+          context.previousData,
+        );
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['artists', debouncedQuery] });
+    },
+  });
+
+  const handleFollow = (artistId: number) => {
+    followMutation.mutate(artistId);
+  };
+  const handleUnfollow = (artistId: number) => {
+    unfollowMutation.mutate(artistId);
   };
 
   const handleArtistPress = (artist: Artist) => {
-    // 'ArtistProfile' 画面 (ステップ2で作成) に artistId を渡して遷移
     navigation.navigate('ArtistProfile', { artistId: artist.id });
   };
 
-  // 9. ★ アーティストごとのアイテム
   const renderArtistItem = ({ item }: { item: Artist }) => {
     const isFollowing = followingIds.has(item.id);
+    const isPending =
+      (followMutation.isPending && followMutation.variables === item.id) ||
+      (unfollowMutation.isPending && unfollowMutation.variables === item.id);
 
     return (
       <View style={styles.artistItem}>
-        {/* 5. ★ アーティスト情報部分を TouchableOpacity でラップ */}
         <TouchableOpacity
-          style={styles.artistInfoWrapper} // 6. ★ ボタン以外の領域を広げる
+          style={styles.artistInfoWrapper}
           onPress={() => handleArtistPress(item)}
         >
-        {/* (将来ここにアバター画像 <Image />) */}
           <Text style={styles.artistName}>{item.nickname}</Text>
         </TouchableOpacity>
-        {/* 10. ★ フォロー/アンフォローボタン */}
-        {/* (自分自身がアーティストの場合はフォローボタンを非表示) */}
         {user?.role === 'user' && (
           <View style={styles.buttonContainer}>
             {isFollowing ? (
               <Button
                 title="フォロー中"
                 onPress={() => handleUnfollow(item.id)}
-                color="#888" // フォロー中はグレー
+                color="#888"
+                disabled={isPending}
               />
             ) : (
               <Button
                 title="フォローする"
                 onPress={() => handleFollow(item.id)}
-                color="#0A84FF" // フォロー前は青
+                color="#0A84FF"
+                disabled={isPending}
               />
             )}
           </View>
@@ -136,19 +185,43 @@ const ArtistListScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {loading ? (
-        <ActivityIndicator
-          size="large"
-          color="#FFFFFF"
-          style={{ marginTop: 20 }}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="アーティスト名で検索..."
+          placeholderTextColor="#888"
+          value={searchQuery}
+          onChangeText={setSearchQuery} // ★ ここではまだAPIを呼ばない
+          autoCapitalize="none"
         />
+      </View>
+
+      {isLoading && !response ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </View>
+      ) : isError ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>一覧の取得に失敗しました。</Text>
+        </View>
       ) : (
         <FlatList
           data={artists}
           renderItem={renderArtistItem}
           keyExtractor={item => item.id.toString()}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>登録アーティストがいません</Text>
+            <View style={styles.center}>
+              <Text style={styles.emptyText}>
+                該当するアーティストがいません
+              </Text>
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor="#FFFFFF"
+            />
           }
         />
       )}
@@ -160,6 +233,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 50,
+  },
+  searchContainer: {
+    padding: 10,
+    backgroundColor: '#1C1C1E',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  searchInput: {
+    backgroundColor: '#333',
+    color: '#FFFFFF',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 16,
   },
   artistItem: {
     backgroundColor: '#1C1C1E',
@@ -174,8 +266,8 @@ const styles = StyleSheet.create({
   artistInfoWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1, // 8. ★ タップ可能な領域をボタン以外に広げる
-    paddingVertical: 5, // タップ領域の上下に余白を持たせる
+    flex: 1,
+    paddingVertical: 5,
   },
   artistName: {
     color: '#FFFFFF',
@@ -188,7 +280,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#888',
     textAlign: 'center',
-    marginTop: 50,
     fontSize: 16,
   },
 });

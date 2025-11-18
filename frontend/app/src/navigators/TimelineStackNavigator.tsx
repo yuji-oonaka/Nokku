@@ -5,23 +5,11 @@ import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import TimelineScreen from '../screens/TimelineScreen';
 import PostEditScreen from '../screens/PostEditScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
-
-// 2. ★ (仮の) Post 型定義
-// (本当は PostEditScreen からインポートしたいが、ファイルがまだないので仮置き)
-interface Post {
-  id: number;
-  title: string;
-  content: string;
-  image_url: string | null;
-  created_at: string;
-  user: { id: number; nickname: string; role?: 'user' | 'artist' | 'admin' };
-  publish_at: string | null;
-  expires_at: string | null;
-}
+import { Post } from '../api/queries';
 
 // 3. ★ 型定義 (このスタックが持つ画面)
 export type TimelineStackParamList = {
-  Timeline: undefined;
+  TimelineList: undefined;
   PostEdit: { post: Post };
   PostDetail: { post: Post }; // 👈 ★ 追加
 };
@@ -57,7 +45,7 @@ const TimelineStackNavigator: React.FC<Props> = ({ onLogout }) => {
     <Stack.Navigator screenOptions={screenOptions}>
       {/* 1. お知らせ一覧 (Timeline) */}
       <Stack.Screen
-        name="Timeline"
+        name="TimelineList"
         component={TimelineScreen}
         options={{
           title: 'お知らせ',
