@@ -15,6 +15,8 @@ import InquiryScreen from '../screens/InquiryScreen';
 import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 // 1. ★ OrderDetailScreen と Order 型をインポート
 import OrderDetailScreen, { Order } from '../screens/OrderDetailScreen';
+import FavoriteProductsScreen from '../screens/FavoriteProductsScreen';
+import ProductDetailScreen from '../screens/ProductDetailScreen';
 
 // 2. ★ 型定義を修正
 export type MyPageStackParamList = {
@@ -30,6 +32,8 @@ export type MyPageStackParamList = {
   OrderHistory: undefined;
   // ↓↓↓ ここを orderId (数値) から order (オブジェクト) に変更
   OrderDetail: { order: Order };
+  FavoriteProducts: undefined;
+  ProductDetail: { productId: number };
 };
 
 // 3. ★ Props (変更なし)
@@ -110,6 +114,18 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         name="OrderDetail"
         component={OrderDetailScreen}
         options={{ title: '注文詳細' }}
+      />
+
+      <Stack.Screen
+        name="FavoriteProducts"
+        component={FavoriteProductsScreen}
+        options={{ title: 'お気に入りグッズ' }}
+      />
+
+      <Stack.Screen
+        name="ProductDetail"
+        component={ProductDetailScreen}
+        options={{ title: 'グッズ詳細' }}
       />
     </Stack.Navigator>
   );

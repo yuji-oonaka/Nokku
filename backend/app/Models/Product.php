@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 // 1. ★ 2つを use
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 
 class Product extends Model
 {
@@ -45,5 +46,32 @@ class Product extends Model
                 return asset(Storage::url($value));
             }
         );
+    }
+
+    /**
+     * このグッズを「お気に入り」に入れているユーザーたち
+     */
+    public function favoritedBy()
+    {
+        return $this->belongsToMany(User::class, 'favorites', 'product_id', 'user_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * ★ アクセサ: 現在ログインしているユーザーが、この商品を「いいね」しているか？
+     * $product->is_liked で true/false が取れるようになります
+     */
+    protected $appends = ['is_liked']; // JSONに自動で含める
+
+    public function getIsLikedAttribute(): bool
+    {
+        // ログインしていなければ false
+        if (!Auth::check()) {
+            return false;
+        }
+        // 自分が favoritedBy のリストに含まれているかチェック
+        // (N+1問題対策のため、Controller側で withExists を使うのが本当は良いですが、
+        //  まずは手軽なこの方法で実装します)
+        return $this->favoritedBy()->where('user_id', Auth::id())->exists();
     }
 }

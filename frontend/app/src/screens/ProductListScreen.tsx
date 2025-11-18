@@ -1,4 +1,4 @@
-import React from 'react'; // 1. ★ useState, useCallback は不要に
+import React from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,19 +9,15 @@ import {
   Image,
   TouchableOpacity,
   Button,
-  RefreshControl, // 2. ★ RefreshControl をインポート
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native'; // 3. ★ useFocusEffect は不要に
+import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-import api from '../services/api'; // (削除APIでまだ使う)
-
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-
-// 4. ★ React Query をインポート
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-// 5. ★ 新しい型と関数をインポート
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Product, fetchProducts } from '../api/queries';
 
 type ProductListNavigationProp = StackNavigationProp<
@@ -32,8 +28,6 @@ type ProductListNavigationProp = StackNavigationProp<
 const ProductListScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation<ProductListNavigationProp>();
-
-  // 6. ★ QueryClient を取得 (キャッシュ操作用)
   const queryClient = useQueryClient();
 
   const isOwnerOrAdmin = !!(
@@ -41,7 +35,6 @@ const ProductListScreen: React.FC = () => {
     (user.role === 'artist' || user.role === 'admin')
   );
 
-  // 7. ★★★ (NEW) useQuery フック ★★★
   const {
     data: products,
     isLoading,
@@ -49,14 +42,87 @@ const ProductListScreen: React.FC = () => {
     refetch,
     isError,
   } = useQuery({
-    // 8. ★ キャッシュキー
     queryKey: ['products'],
-    // 9. ★ queries.ts の関数を呼び出す
     queryFn: fetchProducts,
-    // (この画面は filter がないので queryKey は固定)
+    staleTime: 1000 * 60 * 5,
   });
 
-  // 10. ★ useFocusEffect と fetchProducts (useCallback) は削除
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (productId: number) =>
+      api.post(`/products/${productId}/favorite`),
+
+    onMutate: async productId => {
+      // キャンセル
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      await queryClient.cancelQueries({ queryKey: ['product', productId] }); // ★ 追加
+
+      // 1. 一覧データの更新 (既存)
+      const previousProducts = queryClient.getQueryData<Product[]>([
+        'products',
+      ]);
+      if (previousProducts) {
+        queryClient.setQueryData<Product[]>(['products'], old => {
+          return old?.map(p => {
+            if (p.id === productId) {
+              const wasLiked = p.is_liked;
+              return {
+                ...p,
+                is_liked: !wasLiked,
+                likes_count: wasLiked
+                  ? (p.likes_count || 0) - 1
+                  : (p.likes_count || 0) + 1,
+              };
+            }
+            return p;
+          });
+        });
+      }
+
+      // 2. ★★★ 詳細データの更新 (ここを追加！) ★★★
+      // (もし詳細ページを一度でも開いていてキャッシュがある場合のみ更新される)
+      const previousProductDetail = queryClient.getQueryData<Product>([
+        'product',
+        productId,
+      ]);
+      if (previousProductDetail) {
+        queryClient.setQueryData<Product>(['product', productId], old => {
+          if (!old) return undefined;
+          const wasLiked = old.is_liked;
+          return {
+            ...old,
+            is_liked: !wasLiked,
+            likes_count: wasLiked
+              ? (old.likes_count || 0) - 1
+              : (old.likes_count || 0) + 1,
+          };
+        });
+      }
+
+      return { previousProducts, previousProductDetail }; // コンテキストに両方保存
+    },
+
+    onError: (err, productId, context) => {
+      // 失敗したら両方戻す
+      if (context?.previousProducts) {
+        queryClient.setQueryData(['products'], context.previousProducts);
+      }
+      if (context?.previousProductDetail) {
+        // ★ 追加
+        queryClient.setQueryData(
+          ['product', productId],
+          context.previousProductDetail,
+        );
+      }
+      Alert.alert('エラー', 'お気に入りの更新に失敗しました');
+    },
+
+    onSettled: (data, error, productId) => {
+      // ★★★ 両方無効化して、次回アクセス時に最新を取得するようにする ★★★
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product', productId] });
+      queryClient.invalidateQueries({ queryKey: ['myFavorites'] });
+    },
+  });
 
   const handleProductPress = (product: Product) => {
     if (isOwnerOrAdmin) return;
@@ -65,7 +131,6 @@ const ProductListScreen: React.FC = () => {
     });
   };
 
-  // 11. ★ handleDeleteProduct を修正
   const handleDeleteProduct = async (product: Product) => {
     Alert.alert('グッズの削除', `「${product.name}」を本当に削除しますか？`, [
       { text: 'キャンセル', style: 'cancel' },
@@ -76,12 +141,7 @@ const ProductListScreen: React.FC = () => {
           try {
             await api.delete(`/products/${product.id}`);
             Alert.alert('削除完了', `「${product.name}」を削除しました。`);
-
-            // 12. ★★★★ (IMPORTANT) ★★★★
-            // 削除成功時、'products' のキャッシュを無効化する
-            // -> React Query が自動でデータを再取得（refetch）します
             queryClient.invalidateQueries({ queryKey: ['products'] });
-            // ★ (古い fetchProducts() 呼び出しは不要)
           } catch (error: any) {
             if (error.response && error.response.status === 403) {
               Alert.alert('エラー', 'このグッズを削除する権限がありません');
@@ -95,84 +155,107 @@ const ProductListScreen: React.FC = () => {
   };
 
   const handleEditProduct = (product: Product) => {
-    // 編集画面から戻ってきた時も、useQuery が
-    // 'refetchOnWindowFocus' (デフォルト) で自動で再取得してくれます
     navigation.navigate('ProductEdit', { productId: product.id });
   };
 
-  // renderItem は変更なし
+  const handleFavoritePress = (product: Product) => {
+    toggleFavoriteMutation.mutate(product.id);
+  };
+
   const renderItem = ({ item }: { item: Product }) => {
     return (
-    <TouchableOpacity
-      onPress={() => handleProductPress(item)}
-      disabled={isOwnerOrAdmin}
-    >
-      <View style={styles.productItem}>
-        {item.image_url && (
-          <Image source={{ uri: item.image_url }} style={styles.productImage} />
-        )}
-        <View style={styles.productInfo}>
-          <Text style={styles.productName}>{item.name}</Text>
-          <Text style={styles.productDescription}>{item.description}</Text>
-          <Text style={styles.productPrice}>
-            ¥{item.price.toLocaleString()}
-          </Text>
-          <Text style={styles.productStock}>在庫: {item.stock}</Text>
-        </View>
-
-        {isOwnerOrAdmin ? (
-          <View style={styles.adminButtonContainer}>
-            <Button
-              title="編集"
-              color="#0A84FF"
-              onPress={e => {
-                e.stopPropagation();
-                handleEditProduct(item);
-              }}
+      <TouchableOpacity
+        onPress={() => handleProductPress(item)}
+        disabled={isOwnerOrAdmin}
+        activeOpacity={0.8}
+      >
+        <View style={styles.productItem}>
+          {item.image_url && (
+            <Image
+              source={{ uri: item.image_url }}
+              style={styles.productImage}
             />
-            <View style={{ marginLeft: 5 }}>
+          )}
+
+          <View style={styles.productInfo}>
+            <View style={styles.headerRow}>
+              <Text style={styles.productName} numberOfLines={1}>
+                {item.name}
+              </Text>
+
+              {/* ★ ハートボタン + 数字 (縦並び) */}
+              {!isOwnerOrAdmin && (
+                <TouchableOpacity
+                  style={styles.heartButton}
+                  onPress={() => handleFavoritePress(item)}
+                >
+                  <View style={styles.heartContainer}>
+                    <Text style={styles.heartIcon}>
+                      {item.is_liked ? '❤️' : '🤍'}
+                    </Text>
+                    <Text style={styles.likeCountText}>
+                      {item.likes_count || 0}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <Text style={styles.productDescription} numberOfLines={2}>
+              {item.description}
+            </Text>
+            <Text style={styles.productPrice}>
+              ¥{item.price.toLocaleString()}
+            </Text>
+            <Text style={styles.productStock}>在庫: {item.stock}</Text>
+          </View>
+
+          {isOwnerOrAdmin && (
+            <View style={styles.adminButtonContainer}>
               <Button
-                title="削除"
-                color="#FF3B30"
+                title="編集"
+                color="#0A84FF"
                 onPress={e => {
                   e.stopPropagation();
-                  handleDeleteProduct(item);
+                  handleEditProduct(item);
                 }}
               />
+              <View style={{ marginLeft: 5 }}>
+                <Button
+                  title="削除"
+                  color="#FF3B30"
+                  onPress={e => {
+                    e.stopPropagation();
+                    handleDeleteProduct(item);
+                  }}
+                />
+              </View>
             </View>
-          </View>
-        ) : (
-          <View style={styles.adminButtonContainer} />
-        )}
-      </View>
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 13. ★ ローディング判定を 'isLoading' に変更 */}
       {isLoading ? (
-        // 14. ★ ActivityIndicator を中央に配置 (styles.center を追加)
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#FFFFFF" />
         </View>
       ) : isError ? (
-        // 15. ★ エラー表示
         <View style={styles.center}>
           <Text style={styles.emptyText}>グッズの取得に失敗しました。</Text>
         </View>
       ) : (products || []).length === 0 ? (
-        // 16. ★ 空のメッセージ
         <View style={styles.center}>
           <Text style={styles.emptyText}>販売中のグッズはありません</Text>
         </View>
       ) : (
         <FlatList
-          data={products || []} // 17. ★ data は {products || []}
+          data={products || []}
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
-          // 18. ★★★ (NEW) RefreshControl を追加 ★★★
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -186,10 +269,8 @@ const ProductListScreen: React.FC = () => {
   );
 };
 
-// --- スタイルシート (変更なし) ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000', padding: 10 },
-  // 19. ★ (NEW) 中央配置用のスタイル (EventListScreen からコピー)
   center: {
     flex: 1,
     justifyContent: 'center',
@@ -208,7 +289,18 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 15,
   },
-  productName: { fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start', // 上揃えにする
+  },
+  productName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    flex: 1,
+    marginRight: 10,
+  },
   productDescription: { fontSize: 14, color: '#BBBBBB', marginTop: 5 },
   productPrice: {
     fontSize: 16,
@@ -222,6 +314,25 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     alignItems: 'center',
     minWidth: 120,
+  },
+  heartButton: {
+    padding: 0, // 余白は heartContainer で調整
+  },
+  // ★ (NEW) ハートと数字をまとめるコンテナ
+  heartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 30,
+  },
+  heartIcon: {
+    fontSize: 20,
+  },
+  // ★ (NEW) 数字のスタイル
+  likeCountText: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: -2,
   },
   emptyText: {
     color: '#FFFFFF',

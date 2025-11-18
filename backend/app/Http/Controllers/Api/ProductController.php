@@ -15,7 +15,9 @@ class ProductController extends Controller
      */
     public function index()
     {
-        $products = Product::orderBy('created_at', 'desc')->get();
+        $products = Product::withCount('favoritedBy as likes_count')
+            ->orderBy('created_at', 'desc')
+            ->get();
         return response()->json($products);
     }
 
@@ -58,6 +60,8 @@ class ProductController extends Controller
      */
     public function show(Product $product)
     {
+        // ★ 詳細取得時もカウントを追加 (loadCount を使用)
+        $product->loadCount('favoritedBy as likes_count');
         return response()->json($product);
     }
 

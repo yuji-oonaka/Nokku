@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\ImageUploadController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\ArtistController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\FavoriteController;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,4 +69,7 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/artists/{artist}/follow', [ArtistController::class, 'follow']);
     Route::delete('/artists/{artist}/unfollow', [ArtistController::class, 'unfollow']);
     Route::get('/artists/{artist}', [ArtistController::class, 'show']);
+    // お気に入り機能
+    Route::post('/products/{product}/favorite', [FavoriteController::class, 'toggle']); // いいね切替
+    Route::get('/my-favorites', [FavoriteController::class, 'index']); // 一覧取得
 });

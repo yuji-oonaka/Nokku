@@ -91,6 +91,13 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
 
             <TouchableOpacity
               style={styles.menuButton}
+              onPress={() => navigation.navigate('FavoriteProducts')}
+            >
+              <Text style={styles.menuButtonText}>お気に入りグッズ一覧 ❤️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
               onPress={() => navigation.navigate('OrderHistory')}
             >
               <Text style={styles.menuButtonText}>グッズ購入履歴</Text>
