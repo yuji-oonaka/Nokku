@@ -200,3 +200,20 @@ export const fetchMyOrders = async (): Promise<Order[]> => {
   const response = await api.get<Order[]>('/my-orders');
   return response.data;
 };
+
+// queries.ts の Product 定義
+export interface Product {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  stock: number;
+  image_url: string | null;
+  is_liked?: boolean;
+  likes_count: number; // ★ 追加 (Backendに合わせて必須にしてもOKですが、初期値0で扱います)
+}
+
+export const fetchMyFavorites = async (): Promise<Product[]> => {
+  const response = await api.get<Product[]>('/my-favorites');
+  return response.data;
+};
