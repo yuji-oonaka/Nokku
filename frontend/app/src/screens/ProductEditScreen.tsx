@@ -16,6 +16,7 @@ import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import api from '../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Product } from '../api/queries';
 
 type ProductEditScreenRouteProp = RouteProp<
   { params: { productId: number } },
@@ -32,6 +33,7 @@ const ProductEditScreen = () => {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
+  const [limitPerUser, setLimitPerUser] = useState('');
 
   // 4. ★ 画像の State を2つに分離
   // (a) APIから読み込んだ既存の画像URL
@@ -42,24 +44,26 @@ const ProductEditScreen = () => {
   const [loading, setLoading] = useState(true); // 読み込み中
   const [updating, setUpdating] = useState(false); // 更新中
 
-  // 1. 初回読み込み (ほぼ変更なし)
   useEffect(() => {
     const fetchProduct = async () => {
-      // [・・・(productId がない場合のアラートは省略)・・・]
       try {
         setLoading(true);
-        const response = await api.get(`/products/${productId}`);
+        // 型を指定して取得
+        const response = await api.get<Product>(`/products/${productId}`);
         const product = response.data;
 
         setName(product.name);
         setDescription(product.description);
         setPrice(String(product.price));
         setStock(String(product.stock));
+        // ★ 追加: limit_per_user があれば文字列に変換、なければ空文字
+        setLimitPerUser(
+          product.limit_per_user ? String(product.limit_per_user) : '',
+        );
 
-        // 5. ★ 既存の画像URLを 'existingImageUrl' state に保存
         setExistingImageUrl(product.image_url);
       } catch (error) {
-        // [・・・(エラーアラートは省略)・・・]
+        // ...
       } finally {
         setLoading(false);
       }
@@ -100,6 +104,12 @@ const ProductEditScreen = () => {
 
     // 9. ★【重要】Laravelに 'PUT' として扱わせるための "おまじない"
     formData.append('_method', 'PUT');
+
+    if (limitPerUser) {
+      formData.append('limit_per_user', limitPerUser);
+    } else {
+      formData.append('limit_per_user', ''); // 制限解除
+    }
 
     // 10. ★ 新しい画像 (newImage) が選択されている場合のみ、FormData に追加
     if (newImage && newImage.uri && newImage.fileName && newImage.type) {
@@ -171,6 +181,16 @@ const ProductEditScreen = () => {
             value={stock}
             onChangeText={setStock}
             keyboardType="numeric"
+          />
+
+          <Text style={styles.label}>お一人様購入制限 (任意)</Text>
+          <TextInput
+            style={styles.input}
+            value={limitPerUser}
+            onChangeText={setLimitPerUser}
+            keyboardType="numeric"
+            placeholder="例: 3 (未入力で無制限)"
+            placeholderTextColor="#888"
           />
 
           {/* 13. ★ 画像URL入力欄を削除し、画像選択UIに変更 */}

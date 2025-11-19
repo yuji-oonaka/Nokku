@@ -45,6 +45,7 @@ const ProductCreateScreen: React.FC = () => {
       setImage(result.assets[0]);
     }
   };
+  const [limitPerUser, setLimitPerUser] = useState('');
 
   // 6. ★ handleSubmit を FormData を使うように大幅修正
   const handleSubmit = async () => {
@@ -64,6 +65,9 @@ const ProductCreateScreen: React.FC = () => {
     formData.append('description', description);
     formData.append('price', price); // 文字列のままでOK (Laravel側で整数として扱われる)
     formData.append('stock', stock);
+    if (limitPerUser) {
+      formData.append('limit_per_user', limitPerUser);
+    }
 
     // 8. ★ 画像が選択されていれば、FormData に追加
     if (image && image.uri && image.fileName && image.type) {
@@ -134,6 +138,16 @@ const ProductCreateScreen: React.FC = () => {
             value={stock}
             onChangeText={setStock}
             keyboardType="numeric"
+            placeholderTextColor="#888"
+          />
+
+          <Text style={styles.label}>お一人様購入制限 (任意)</Text>
+          <TextInput
+            style={styles.input}
+            value={limitPerUser}
+            onChangeText={setLimitPerUser}
+            keyboardType="numeric"
+            placeholder="例: 3 (未入力で無制限)"
             placeholderTextColor="#888"
           />
 

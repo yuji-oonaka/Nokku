@@ -50,16 +50,14 @@ const ProductDetailScreen: React.FC = () => {
     enabled: !!productId,
   });
 
-  // ★★★ (NEW) いいね切り替え Mutation (詳細画面用) ★★★
+  // いいね切り替え Mutation
   const toggleFavoriteMutation = useMutation({
     mutationFn: () => api.post(`/products/${productId}/favorite`),
 
     onMutate: async () => {
-      // キャンセル
       await queryClient.cancelQueries({ queryKey: ['product', productId] });
-      await queryClient.cancelQueries({ queryKey: ['products'] }); // ★ 追加
+      await queryClient.cancelQueries({ queryKey: ['products'] });
 
-      // 1. 詳細データの更新 (既存)
       const previousProduct = queryClient.getQueryData<Product>([
         'product',
         productId,
@@ -75,7 +73,6 @@ const ProductDetailScreen: React.FC = () => {
         });
       }
 
-      // 2. ★★★ 一覧データの更新 (ここを追加！) ★★★
       const previousProductsList = queryClient.getQueryData<Product[]>([
         'products',
       ]);
@@ -83,8 +80,7 @@ const ProductDetailScreen: React.FC = () => {
         queryClient.setQueryData<Product[]>(['products'], oldList => {
           return oldList?.map(p => {
             if (p.id === productId) {
-              // 詳細データと同じ計算ロジック
-              const wasLiked = p.is_liked; // ※注意: リスト側の古い値を基準にする
+              const wasLiked = p.is_liked;
               return {
                 ...p,
                 is_liked: !wasLiked,
@@ -102,7 +98,6 @@ const ProductDetailScreen: React.FC = () => {
     },
 
     onError: (err, variables, context) => {
-      // 戻す処理
       if (context?.previousProduct) {
         queryClient.setQueryData(
           ['product', productId],
@@ -110,14 +105,12 @@ const ProductDetailScreen: React.FC = () => {
         );
       }
       if (context?.previousProductsList) {
-        // ★ 追加
         queryClient.setQueryData(['products'], context.previousProductsList);
       }
       Alert.alert('エラー', 'お気に入りの更新に失敗しました');
     },
 
     onSettled: () => {
-      // ★★★ 両方無効化 ★★★
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['myFavorites'] });
@@ -229,9 +222,22 @@ const ProductDetailScreen: React.FC = () => {
     });
   };
 
+  // ★★★ (UPDATE) 数量増加ロジックの修正 ★★★
   const incrementQuantity = () => {
-    if (product && quantity < product.stock) setQuantity(prev => prev + 1);
+    if (!product) return;
+
+    // 1. 在庫チェック
+    if (quantity >= product.stock) return;
+
+    // 2. 購入制限チェック
+    if (product.limit_per_user && quantity >= product.limit_per_user) {
+      Alert.alert('制限', `お一人様 ${product.limit_per_user} 点までです。`);
+      return;
+    }
+
+    setQuantity(prev => prev + 1);
   };
+
   const decrementQuantity = () => {
     if (quantity > 1) setQuantity(prev => prev - 1);
   };
@@ -295,7 +301,6 @@ const ProductDetailScreen: React.FC = () => {
                 style={styles.heartButton}
                 onPress={() => toggleFavoriteMutation.mutate()}
               >
-                {/* ★ 縦並びコンテナ */}
                 <View style={styles.heartContainer}>
                   <Text style={styles.heartIcon}>
                     {product?.is_liked ? '❤️' : '🤍'}
@@ -311,9 +316,14 @@ const ProductDetailScreen: React.FC = () => {
           <Text style={styles.productPrice}>
             ¥{product?.price.toLocaleString()}
           </Text>
+
+          {/* ★★★ (UPDATE) 在庫数と制限数の表示 ★★★ */}
           <Text style={styles.productStock}>
             {isSoldOut ? '在庫切れ' : `在庫: ${product?.stock}`}
+            {product?.limit_per_user &&
+              ` (お一人様${product.limit_per_user}点まで)`}
           </Text>
+
           <Text style={styles.productDescription}>{product?.description}</Text>
         </View>
 
@@ -331,7 +341,14 @@ const ProductDetailScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.quantityButton}
               onPress={incrementQuantity}
-              disabled={product ? quantity >= product.stock : false}
+              // ★★★ 在庫か制限のどちらかに達したら無効化 ★★★
+              disabled={
+                product
+                  ? quantity >= product.stock ||
+                    (product.limit_per_user != null &&
+                      quantity >= product.limit_per_user)
+                  : false
+              }
             >
               <Text style={styles.quantityButtonText}>+</Text>
             </TouchableOpacity>
@@ -482,11 +499,10 @@ const styles = StyleSheet.create({
   productImage: { width: '100%', height: 300, resizeMode: 'cover' },
   imagePlaceholder: { backgroundColor: '#333' },
   infoContainer: { padding: 20, paddingBottom: 0 },
-  // ★ ヘッダー (名前+ハート)
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start', // 名前が複数行になってもハートは上に
+    alignItems: 'flex-start',
     marginBottom: 10,
   },
   productName: {
@@ -499,8 +515,19 @@ const styles = StyleSheet.create({
   heartButton: {
     padding: 5,
   },
+  heartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 40,
+  },
   heartIcon: {
-    fontSize: 32, // 詳細画面なので大きめに
+    fontSize: 32,
+  },
+  likeCountText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: -4,
   },
   productPrice: {
     fontSize: 22,
@@ -658,17 +685,6 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 24,
     fontWeight: 'bold',
-  },
-  heartContainer: {
-    alignItems: 'center', // 中央揃え
-    justifyContent: 'center',
-    minWidth: 40,
-  },
-  likeCountText: {
-    color: '#888',
-    fontSize: 14, // 大きめ
-    fontWeight: 'bold',
-    marginTop: -4,
   },
 });
 

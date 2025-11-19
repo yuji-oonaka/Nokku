@@ -39,6 +39,7 @@ class ProductController extends Controller
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // image (ファイル)
+            'limit_per_user' => 'nullable|integer|min:1',
         ]);
 
         $productData = $validatedData;
@@ -83,7 +84,8 @@ class ProductController extends Controller
             'description' => 'required|string',
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // 👈 'image_url' から 'image' に変更
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'limit_per_user' => 'nullable|integer|min:1',
         ]);
 
         // 5. ★ 画像更新ロジックを追加
