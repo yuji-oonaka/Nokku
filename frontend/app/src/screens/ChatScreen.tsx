@@ -23,23 +23,19 @@ import { EventStackParamList } from '../navigators/EventStackNavigator';
 
 type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
 
-// メッセージの型拡張
 interface ChatMessage {
   id: string;
   text: string;
   createdAt: FirebaseFirestoreTypes.Timestamp;
   userId: number;
   userName: string;
-  // ★ 追加フィールド
-  deletedAt?: FirebaseFirestoreTypes.Timestamp; // 削除日時
+  deletedAt?: FirebaseFirestoreTypes.Timestamp;
   replyTo?: {
-    // リプライ元の情報
     id: string;
     userName: string;
     text: string;
   };
   reactions?: {
-    // リアクション { userId: '❤️' }
     [userId: number]: string;
   };
 }
@@ -53,10 +49,11 @@ const ChatScreen = () => {
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
 
-  // ★ リプライ状態管理
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  // ★ ページネーション用の件数管理 (初期値100)
+  const [limitCount, setLimitCount] = useState(100);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // ★ 長押しメニュー用
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(
     null,
   );
@@ -69,37 +66,80 @@ const ChatScreen = () => {
     .doc(threadId)
     .collection('messages');
 
-  // 1. リアルタイム購読
+  // 1. リアルタイム購読 (limitCount に依存)
   useEffect(() => {
     if (!eventId) return;
-    const subscriber = messagesRef.orderBy('createdAt', 'desc').onSnapshot(
-      querySnapshot => {
-        if (!querySnapshot) return;
-        const fetchedMessages: ChatMessage[] = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            text: data.text,
-            createdAt: data.createdAt,
-            userId: data.userId,
-            userName: data.userName,
-            deletedAt: data.deletedAt, // 追加
-            replyTo: data.replyTo, // 追加
-            reactions: data.reactions, // 追加
-          } as ChatMessage;
-        });
-        setMessages(fetchedMessages);
-        setLoading(false);
-      },
-      error => {
-        console.error('Firestore error:', error);
-        setLoading(false);
-      },
-    );
-    return () => subscriber();
-  }, [eventId]);
 
-  // 2. 送信処理
+    const subscriber = messagesRef
+      .orderBy('createdAt', 'desc')
+      .limit(limitCount) // ★ ここで件数を制限
+      .onSnapshot(
+        querySnapshot => {
+          if (!querySnapshot) return;
+          const fetchedMessages: ChatMessage[] = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              text: data.text,
+              createdAt: data.createdAt,
+              userId: data.userId,
+              userName: data.userName,
+              deletedAt: data.deletedAt,
+              replyTo: data.replyTo,
+              reactions: data.reactions,
+            } as ChatMessage;
+          });
+          setMessages(fetchedMessages);
+          setLoading(false);
+          setIsLoadingMore(false); // 追加読み込み完了
+        },
+        error => {
+          console.error('Firestore error:', error);
+          setLoading(false);
+          setIsLoadingMore(false);
+        },
+      );
+    return () => subscriber();
+  }, [eventId, limitCount]); // ★ limitCount が変わると再購読される
+
+  // ★ 過去ログ読み込み (スクロールで呼ばれる)
+  const loadMoreMessages = () => {
+    if (!loading && !isLoadingMore && messages.length >= limitCount) {
+      // 現在の表示数が limitCount に達している場合のみ、さらに読み込む
+      // (達していない＝もう過去ログがない)
+      console.log('Load more messages...');
+      setIsLoadingMore(true);
+      setLimitCount(prev => prev + 100); // 100件増やす
+    }
+  };
+
+  // ★ 日付フォーマット関数 (改善版)
+  const formatMessageTime = (timestamp: FirebaseFirestoreTypes.Timestamp) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    const now = new Date();
+
+    const isToday = date.toDateString() === now.toDateString();
+    const isThisYear = date.getFullYear() === now.getFullYear();
+
+    const timeString = date.toLocaleTimeString('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    if (isToday) {
+      return timeString; // "14:30"
+    } else if (isThisYear) {
+      // "11/19 14:30"
+      return `${date.getMonth() + 1}/${date.getDate()} ${timeString}`;
+    } else {
+      // "2024/11/19 14:30"
+      return `${date.getFullYear()}/${
+        date.getMonth() + 1
+      }/${date.getDate()} ${timeString}`;
+    }
+  };
+
   const handleSend = useCallback(() => {
     if (inputText.trim().length === 0 || !authUser) return;
 
@@ -110,21 +150,19 @@ const ChatScreen = () => {
       userName: authUser.nickname,
     };
 
-    // リプライがある場合
     if (replyingTo) {
       messageData.replyTo = {
         id: replyingTo.id,
         userName: replyingTo.userName,
-        text: replyingTo.text, // 元のメッセージ本文
+        text: replyingTo.text,
       };
     }
 
     messagesRef.add(messageData);
     setInputText('');
-    setReplyingTo(null); // リプライ状態リセット
+    setReplyingTo(null);
   }, [inputText, authUser, messagesRef, replyingTo]);
 
-  // 3. メッセージ削除 (論理削除)
   const handleDelete = async (messageId: string) => {
     try {
       await messagesRef.doc(messageId).update({
@@ -132,16 +170,12 @@ const ChatScreen = () => {
       });
       Alert.alert('完了', 'メッセージを削除しました');
     } catch (error) {
-      console.error('削除エラー:', error);
       Alert.alert('エラー', '削除に失敗しました');
     }
   };
 
-  // 4. リアクション追加/削除
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!authUser) return;
-    // トグル動作 (既に同じリアクションがあれば消す、なければ上書き)
-    // Firestoreのマップ更新: `reactions.${userId}`
     const fieldPath = `reactions.${authUser.id}`;
     await messagesRef.doc(messageId).update({
       [fieldPath]: emoji,
@@ -149,9 +183,8 @@ const ChatScreen = () => {
     setMenuVisible(false);
   };
 
-  // 5. 長押しメニュー操作
   const onLongPressMessage = (message: ChatMessage) => {
-    if (message.deletedAt) return; // 削除済みならメニュー出さない
+    if (message.deletedAt) return;
     setSelectedMessage(message);
     setMenuVisible(true);
   };
@@ -180,15 +213,12 @@ const ChatScreen = () => {
     }
   };
 
-  // ★ メンションのハイライト表示
   const renderTextWithMentions = (text: string) => {
-    // 空白などで分割し、@で始まる単語を探す
     const parts = text.split(/(\s+)/);
     return (
       <Text style={styles.messageText}>
         {parts.map((part, index) => {
           if (part.startsWith('@')) {
-            // @メンション部分は色を変える
             return (
               <Text key={index} style={styles.mentionText}>
                 {part}
@@ -201,7 +231,6 @@ const ChatScreen = () => {
     );
   };
 
-  // ★ メッセージ描画
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isMyMessage = authUser && item.userId === authUser.id;
     const isDeleted = !!item.deletedAt;
@@ -215,7 +244,6 @@ const ChatScreen = () => {
             : styles.otherMessageContainer,
         ]}
       >
-        {/* リプライ元の表示 */}
         {item.replyTo && !isDeleted && (
           <View style={styles.replyBubble}>
             <Text style={styles.replySender}>@{item.replyTo.userName}</Text>
@@ -231,7 +259,7 @@ const ChatScreen = () => {
           style={[
             styles.messageBubble,
             isMyMessage && styles.myMessageBubble,
-            isDeleted && styles.deletedBubble, // 削除済みスタイル
+            isDeleted && styles.deletedBubble,
           ]}
         >
           {!isDeleted && (
@@ -253,16 +281,11 @@ const ChatScreen = () => {
             renderTextWithMentions(item.text)
           )}
 
+          {/* ★ 日付フォーマット関数を使用 */}
           <Text style={styles.messageTime}>
-            {item.createdAt
-              ?.toDate()
-              .toLocaleTimeString('ja-JP', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+            {formatMessageTime(item.createdAt)}
           </Text>
 
-          {/* リアクション表示 */}
           {item.reactions &&
             Object.keys(item.reactions).length > 0 &&
             !isDeleted && (
@@ -279,7 +302,7 @@ const ChatScreen = () => {
     );
   };
 
-  if (loading || !authUser) {
+  if (loading && messages.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0A84FF" />
@@ -294,9 +317,21 @@ const ChatScreen = () => {
         renderItem={renderMessage}
         keyExtractor={item => item.id}
         inverted
+        // ★ ページネーション用設定
+        onEndReached={loadMoreMessages} // リストの端（過去ログ側）に来たら発火
+        onEndReachedThreshold={0.1} // 端の少し手前で発火
+        ListFooterComponent={
+          // 読み込み中にスピナーを表示
+          isLoadingMore ? (
+            <ActivityIndicator
+              size="small"
+              color="#888"
+              style={{ padding: 10 }}
+            />
+          ) : null
+        }
       />
 
-      {/* リプライ中の表示バー */}
       {replyingTo && (
         <View style={styles.replyingBar}>
           <View>
@@ -339,7 +374,6 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* --- カスタムメニューモーダル --- */}
       <Modal
         visible={menuVisible}
         transparent
@@ -349,7 +383,6 @@ const ChatScreen = () => {
         <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.menuContainer}>
-              {/* リアクション */}
               <View style={styles.reactionRow}>
                 {['❤️', '👍', '😂', '🙏'].map(emoji => (
                   <TouchableOpacity
@@ -367,7 +400,6 @@ const ChatScreen = () => {
 
               <View style={styles.menuDivider} />
 
-              {/* アクション */}
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => handleMenuAction('reply')}
@@ -375,8 +407,7 @@ const ChatScreen = () => {
                 <Text style={styles.menuText}>↩️ 返信する</Text>
               </TouchableOpacity>
 
-              {/* 自分のメッセージなら削除、他人なら通報 */}
-              {selectedMessage?.userId === authUser.id ? (
+              {selectedMessage?.userId === authUser?.id ? (
                 <TouchableOpacity
                   style={styles.menuItem}
                   onPress={() => handleMenuAction('delete')}
@@ -411,7 +442,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#000000',
   },
-  // メッセージ
   messageContainer: {
     paddingHorizontal: 10,
     marginVertical: 4,
@@ -429,7 +459,7 @@ const styles = StyleSheet.create({
   messageSender: { fontSize: 12, color: '#BBBBBB', marginBottom: 2 },
   myMessageSender: { color: '#EFEFEF' },
   messageText: { fontSize: 16, color: '#FFFFFF' },
-  mentionText: { fontWeight: 'bold', color: '#64D2FF' }, // メンション色
+  mentionText: { fontWeight: 'bold', color: '#64D2FF' },
   deletedText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
   messageTime: {
     fontSize: 10,
@@ -438,7 +468,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     opacity: 0.7,
   },
-  // リプライ表示
   replyBubble: {
     backgroundColor: '#333',
     borderLeftWidth: 3,
@@ -450,14 +479,13 @@ const styles = StyleSheet.create({
   },
   replySender: { fontSize: 11, color: '#AAA', fontWeight: 'bold' },
   replyText: { fontSize: 12, color: '#DDD' },
-  // 入力エリア
   inputContainer: {
     flexDirection: 'row',
     padding: 10,
     backgroundColor: '#1C1C1E',
     borderTopWidth: 1,
     borderTopColor: '#333',
-    alignItems: 'flex-end', // 入力欄が広がった時にボタンを下揃え
+    alignItems: 'flex-end',
   },
   input: {
     flex: 1,
@@ -465,11 +493,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     borderRadius: 20,
     paddingHorizontal: 15,
-    paddingTop: 10, // multiline用
+    paddingTop: 10,
     paddingBottom: 10,
     fontSize: 16,
     marginRight: 10,
-    maxHeight: 100, // 長くなりすぎないように
+    maxHeight: 100,
   },
   sendButton: {
     backgroundColor: '#0A84FF',
@@ -481,7 +509,6 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: { backgroundColor: '#555' },
   sendButtonText: { color: '#FFFFFF', fontWeight: 'bold' },
-  // リプライ中のバー
   replyingBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -494,7 +521,6 @@ const styles = StyleSheet.create({
   replyingTitle: { color: '#AAA', fontSize: 12 },
   replyingMessage: { color: '#FFF', fontSize: 14 },
   cancelReply: { color: '#AAA', fontSize: 20, padding: 5 },
-  // リアクション
   reactionsContainer: {
     flexDirection: 'row',
     marginTop: 5,
@@ -504,7 +530,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   reactionEmoji: { fontSize: 12, marginHorizontal: 1 },
-  // モーダルメニュー
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
