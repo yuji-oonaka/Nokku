@@ -19,6 +19,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Product, fetchProducts } from '../api/queries';
+import SoundService from '../services/SoundService';
 
 type ProductListNavigationProp = StackNavigationProp<
   ProductStackParamList,
@@ -159,6 +160,8 @@ const ProductListScreen: React.FC = () => {
   };
 
   const handleFavoritePress = (product: Product) => {
+    // 2. ★ 振動フィードバックを追加 (プチッ)
+    SoundService.triggerHaptic('impactLight');
     toggleFavoriteMutation.mutate(product.id);
   };
 

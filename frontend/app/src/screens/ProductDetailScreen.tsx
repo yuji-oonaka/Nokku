@@ -20,6 +20,8 @@ import { useStripe } from '@stripe/stripe-react-native';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, fetchProductById } from '../api/queries';
+// 1. ★ SoundService をインポート
+import SoundService from '../services/SoundService';
 
 type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
 type PaymentMethod = 'stripe' | 'cash';
@@ -50,13 +52,12 @@ const ProductDetailScreen: React.FC = () => {
     enabled: !!productId,
   });
 
-  // いいね切り替え Mutation
   const toggleFavoriteMutation = useMutation({
     mutationFn: () => api.post(`/products/${productId}/favorite`),
-
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['product', productId] });
       await queryClient.cancelQueries({ queryKey: ['products'] });
+      await queryClient.cancelQueries({ queryKey: ['myFavorites'] });
 
       const previousProduct = queryClient.getQueryData<Product>([
         'product',
@@ -93,23 +94,18 @@ const ProductDetailScreen: React.FC = () => {
           });
         });
       }
-
       return { previousProduct, previousProductsList };
     },
-
     onError: (err, variables, context) => {
-      if (context?.previousProduct) {
+      if (context?.previousProduct)
         queryClient.setQueryData(
           ['product', productId],
           context.previousProduct,
         );
-      }
-      if (context?.previousProductsList) {
+      if (context?.previousProductsList)
         queryClient.setQueryData(['products'], context.previousProductsList);
-      }
       Alert.alert('エラー', 'お気に入りの更新に失敗しました');
     },
-
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -130,21 +126,15 @@ const ProductDetailScreen: React.FC = () => {
         payment_method: orderData.paymentMethod,
         delivery_method: orderData.deliveryMethod,
       });
-
       const { clientSecret } = response.data;
 
       if (orderData.paymentMethod === 'stripe') {
-        if (!clientSecret) {
-          throw new Error(
-            '決済の準備に失敗しました (clientSecretがありません)',
-          );
-        }
+        if (!clientSecret) throw new Error('決済の準備に失敗しました');
         const { error: initError } = await initPaymentSheet({
           merchantDisplayName: 'NOKKU, Inc.',
           paymentIntentClientSecret: clientSecret,
         });
         if (initError) throw new Error('決済シートの初期化に失敗しました。');
-
         const { error: presentError } = await presentPaymentSheet();
         if (presentError) {
           if (presentError.code === 'Canceled') throw new Error('Canceled');
@@ -156,6 +146,8 @@ const ProductDetailScreen: React.FC = () => {
       }
     },
     onSuccess: data => {
+      // 2. ★ 注文成功音！
+      SoundService.playSuccess();
       if (data.paymentType === 'stripe') {
         Alert.alert('購入完了', 'ありがとうございます。購入が完了しました。');
       } else {
@@ -169,10 +161,9 @@ const ProductDetailScreen: React.FC = () => {
       navigation.goBack();
     },
     onError: (err: any) => {
-      if (err.message === 'Canceled') {
-        Alert.alert('キャンセル', '決済がキャンセルされました。');
-        return;
-      }
+      if (err.message === 'Canceled') return;
+      // 3. ★ 注文エラー音
+      SoundService.playError();
       const message =
         err.response?.data?.message ||
         err.message ||
@@ -199,20 +190,19 @@ const ProductDetailScreen: React.FC = () => {
         !user.city ||
         !user.address_line1)
     ) {
-      Alert.alert(
-        '住所がありません',
-        '「郵送」を選択するには、先にマイページからプロフィール（配送先住所）を登録してください。',
-        [
-          { text: '閉じる' },
-          {
-            text: 'プロフィールへ',
-            onPress: () =>
-              navigation.navigate('MyPageStack', { screen: 'ProfileEdit' }),
-          },
-        ],
-      );
+      Alert.alert('住所がありません', 'プロフィールを登録してください', [
+        { text: '閉じる' },
+        {
+          text: 'プロフィールへ',
+          onPress: () =>
+            navigation.navigate('MyPageStack', { screen: 'ProfileEdit' }),
+        },
+      ]);
       return;
     }
+
+    // 4. ★ 注文ボタンを押した感触
+    SoundService.triggerHaptic('impactMedium');
 
     createOrderMutation.mutate({
       productId: product.id,
@@ -222,24 +212,25 @@ const ProductDetailScreen: React.FC = () => {
     });
   };
 
-  // ★★★ (UPDATE) 数量増加ロジックの修正 ★★★
   const incrementQuantity = () => {
     if (!product) return;
-
-    // 1. 在庫チェック
     if (quantity >= product.stock) return;
-
-    // 2. 購入制限チェック
-    if (product.limit_per_user && quantity >= product.limit_per_user) {
+    if (product.limit_per_user != null && quantity >= product.limit_per_user) {
+      // 5. ★ 制限に引っかかった時のフィードバック (エラー音または振動)
+      SoundService.triggerHaptic('notificationWarning');
       Alert.alert('制限', `お一人様 ${product.limit_per_user} 点までです。`);
       return;
     }
-
+    // 6. ★ プラスボタンの軽いフィードバック
+    SoundService.triggerHaptic('impactLight');
     setQuantity(prev => prev + 1);
   };
 
   const decrementQuantity = () => {
-    if (quantity > 1) setQuantity(prev => prev - 1);
+    if (quantity > 1) {
+      SoundService.triggerHaptic('impactLight');
+      setQuantity(prev => prev - 1);
+    }
   };
 
   const isSoldOut = product ? product.stock <= 0 : false;
@@ -254,6 +245,13 @@ const ProductDetailScreen: React.FC = () => {
     isSoldOut ||
     createOrderMutation.isPending ||
     (deliveryMethod === 'mail' && !isAddressComplete);
+
+  // ★ ハートボタンのハンドラ
+  const handleFavoritePress = () => {
+    // 7. ★ いいねボタンの「プチッ」という感触
+    SoundService.triggerHaptic('impactLight');
+    toggleFavoriteMutation.mutate();
+  };
 
   if (isLoading || !user) {
     return (
@@ -295,11 +293,10 @@ const ProductDetailScreen: React.FC = () => {
         <View style={styles.infoContainer}>
           <View style={styles.headerRow}>
             <Text style={styles.productName}>{product?.name}</Text>
-
             {user.role !== 'artist' && user.role !== 'admin' && (
               <TouchableOpacity
                 style={styles.heartButton}
-                onPress={() => toggleFavoriteMutation.mutate()}
+                onPress={handleFavoritePress} // ★ ここで使用
               >
                 <View style={styles.heartContainer}>
                   <Text style={styles.heartIcon}>
@@ -316,14 +313,11 @@ const ProductDetailScreen: React.FC = () => {
           <Text style={styles.productPrice}>
             ¥{product?.price.toLocaleString()}
           </Text>
-
-          {/* ★★★ (UPDATE) 在庫数と制限数の表示 ★★★ */}
           <Text style={styles.productStock}>
             {isSoldOut ? '在庫切れ' : `在庫: ${product?.stock}`}
             {product?.limit_per_user &&
               ` (お一人様${product.limit_per_user}点まで)`}
           </Text>
-
           <Text style={styles.productDescription}>{product?.description}</Text>
         </View>
 
@@ -341,7 +335,6 @@ const ProductDetailScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.quantityButton}
               onPress={incrementQuantity}
-              // ★★★ 在庫か制限のどちらかに達したら無効化 ★★★
               disabled={
                 product
                   ? quantity >= product.stock ||
@@ -354,7 +347,7 @@ const ProductDetailScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         )}
-
+        {/* ... (Options, Button) ... */}
         {!isSoldOut && (
           <View style={styles.optionsSection}>
             <Text style={styles.groupTitle}>お受取り方法</Text>
@@ -489,7 +482,7 @@ const ProductDetailScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000000' },
+  container: { flex: 1, backgroundColor: '#000000', padding: 10 },
   center: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -512,17 +505,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
-  heartButton: {
-    padding: 5,
-  },
+  heartButton: { padding: 5 },
   heartContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 40,
   },
-  heartIcon: {
-    fontSize: 32,
-  },
+  heartIcon: { fontSize: 32 },
   likeCountText: {
     color: '#888',
     fontSize: 14,
@@ -562,15 +551,8 @@ const styles = StyleSheet.create({
     minWidth: 30,
     textAlign: 'center',
   },
-  buttonContainer: {
-    padding: 20,
-    paddingTop: 0,
-    paddingBottom: 40,
-  },
-  optionsSection: {
-    padding: 20,
-    paddingTop: 10,
-  },
+  buttonContainer: { padding: 20, paddingTop: 0, paddingBottom: 40 },
+  optionsSection: { padding: 20, paddingTop: 10 },
   groupTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -599,14 +581,8 @@ const styles = StyleSheet.create({
     borderColor: '#0A84FF',
     backgroundColor: '#0A84FF20',
   },
-  optionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  optionButtonDisabledText: {
-    color: '#555',
-  },
+  optionButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  optionButtonDisabledText: { color: '#555' },
   infoText: {
     color: '#888',
     fontSize: 12,
@@ -614,9 +590,7 @@ const styles = StyleSheet.create({
     marginTop: -15,
     marginBottom: 20,
   },
-  addressContainer: {
-    marginBottom: 20,
-  },
+  addressContainer: { marginBottom: 20 },
   addressLabel: {
     color: '#AAA',
     fontSize: 14,
@@ -630,11 +604,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 15,
   },
-  addressText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    lineHeight: 24,
-  },
+  addressText: { color: '#FFFFFF', fontSize: 16, lineHeight: 24 },
   addressChangeLink: {
     color: '#0A84FF',
     fontSize: 16,
@@ -662,11 +632,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     marginTop: 15,
   },
-  warningButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  warningButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
   totalContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -676,16 +642,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#333',
   },
-  totalLabel: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  totalPrice: {
-    color: '#4CAF50',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
+  totalLabel: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
+  totalPrice: { color: '#4CAF50', fontSize: 24, fontWeight: 'bold' },
 });
 
 export default ProductDetailScreen;

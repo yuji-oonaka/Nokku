@@ -76,9 +76,9 @@ class OrderController extends Controller
             }
         }
 
-        // 7. ★ 合計金額の計算 (Stripeはセント単位なので * 100 します)
+        // 7. ★ 合計金額の計算
         $totalPrice = $product->price * $quantity;
-        $totalPriceInCents = $totalPrice * 100; // Stripe用
+        $totalPriceInCents = $totalPrice; // Stripe用
 
         // 8. ★ 配送先住所の準備
         $shippingAddress = null;
