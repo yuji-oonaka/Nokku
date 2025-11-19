@@ -210,7 +210,8 @@ export interface Product {
   stock: number;
   image_url: string | null;
   is_liked?: boolean;
-  likes_count: number; // ★ 追加 (Backendに合わせて必須にしてもOKですが、初期値0で扱います)
+  likes_count: number;
+  limit_per_user: number | null;
 }
 
 export const fetchMyFavorites = async (): Promise<Product[]> => {

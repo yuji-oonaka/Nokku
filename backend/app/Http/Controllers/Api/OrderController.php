@@ -13,6 +13,7 @@ use Illuminate\Validation\Rule; // 3. ★ バリデーション用に use
 use Stripe\Stripe; // 4. ★ Stripe を use
 use Stripe\PaymentIntent;
 use Illuminate\Support\Str;
+use App\Models\OrderItem;
 
 class OrderController extends Controller
 {
@@ -55,6 +56,24 @@ class OrderController extends Controller
         // 6. ★ 在庫チェック
         if ($product->stock < $quantity) {
             return response()->json(['message' => '在庫が不足しています'], 422); // 422 Unprocessable Entity
+        }
+
+        // 2. ★★★ 購入制限チェック (新規追加) ★★★
+        if ($product->limit_per_user) {
+            // 過去の購入数を集計 (キャンセルされた注文は除外)
+            $pastQuantity = OrderItem::where('product_id', $product->id)
+                ->whereHas('order', function ($query) use ($user) {
+                    $query->where('user_id', $user->id)
+                        ->where('status', '!=', 'cancelled'); // キャンセル以外
+                })
+                ->sum('quantity');
+
+            // 今回の注文数を足して上限を超えるか？
+            if (($pastQuantity + $quantity) > $product->limit_per_user) {
+                return response()->json([
+                    'message' => "お一人様 {$product->limit_per_user} 点までです。(過去の購入数: {$pastQuantity})"
+                ], 409);
+            }
         }
 
         // 7. ★ 合計金額の計算 (Stripeはセント単位なので * 100 します)
