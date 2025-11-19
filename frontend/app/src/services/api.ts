@@ -1,7 +1,7 @@
 import axios from 'axios';
 import auth from '@react-native-firebase/auth';
 
-const baseURL = 'http://10.0.2.2/api'; // (ポートが80番の場合)
+const baseURL = 'http://192.168.11.7/api'; // (ポートが80番の場合)
 // const baseURL = 'http://10.0.2.2:8000/api'; // (ポートが8000番の場合)
 
 

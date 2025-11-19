@@ -17,6 +17,8 @@ import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 import OrderDetailScreen, { Order } from '../screens/OrderDetailScreen';
 import FavoriteProductsScreen from '../screens/FavoriteProductsScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
+import { UserTicket } from '../api/queries';
+import TicketDetailScreen from '../screens/TicketDetailScreen';
 
 // 2. ★ 型定義を修正
 export type MyPageStackParamList = {
@@ -34,6 +36,7 @@ export type MyPageStackParamList = {
   OrderDetail: { order: Order };
   FavoriteProducts: undefined;
   ProductDetail: { productId: number };
+  TicketDetail: { ticket: UserTicket };
 };
 
 // 3. ★ Props (変更なし)
@@ -126,6 +129,12 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         name="ProductDetail"
         component={ProductDetailScreen}
         options={{ title: 'グッズ詳細' }}
+      />
+
+      <Stack.Screen
+        name="TicketDetail"
+        component={TicketDetailScreen}
+        options={{ title: 'チケット詳細' }}
       />
     </Stack.Navigator>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import QRCode from 'react-native-qrcode-svg'; // 1. ★ QRコードライブラリ
 import { MyPageStackParamList } from '../navigators/MyPageStackNavigator'; // 2. ★ 型をインポート
+import firestore from '@react-native-firebase/firestore';
+import SoundService from '../services/SoundService';
 
 // --- 3. ★ 型定義 (OrderHistoryScreen とほぼ同じ) ---
 // (APIから返ってくる Order の型)
@@ -43,8 +45,7 @@ export interface Order {
 
 const OrderDetailScreen: React.FC = () => {
   const route = useRoute<OrderDetailRouteProp>();
-  // 4. ★ route.params から 'order' オブジェクトを丸ごと受け取る
-  // (OrderHistoryScreen からの遷移時に order を渡すよう、後で修正します)
+  const navigation = useNavigation();
   const { order } = route.params;
 
   if (!order) {
@@ -54,6 +55,38 @@ const OrderDetailScreen: React.FC = () => {
       </SafeAreaView>
     );
   }
+
+  useEffect(() => {
+    if (
+      order.delivery_method !== 'venue' ||
+      !order.qr_code_id ||
+      order.status === 'redeemed'
+    ) {
+      return;
+    }
+
+    const unsubscribe = firestore()
+      .collection('order_status')
+      .doc(order.qr_code_id)
+      .onSnapshot(snapshot => {
+        // ★ 修正: snapshot.exists ではなく data() の中身で判定
+        const data = snapshot.data();
+
+        if (data?.status === 'redeemed') {
+          SoundService.playSuccess();
+          Alert.alert('引換完了', 'グッズの受け取りが完了しました！', [
+            {
+              text: 'OK',
+              onPress: () => {
+                navigation.goBack();
+              },
+            },
+          ]);
+        }
+      });
+
+    return () => unsubscribe();
+  }, [order, navigation]);
 
   // --- 5. ★ 描画用のヘルパー ---
   const orderDate = new Date(order.created_at).toLocaleString('ja-JP');

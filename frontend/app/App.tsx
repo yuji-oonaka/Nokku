@@ -66,21 +66,14 @@ const App: React.FC = () => {
   }, [queryClient]); // queryClient を依存配列に追加
 
   // 11. ★ (NEW) /profile を React Query で取得
-  const {
-    data: user, // 取得した DbUser (または null)
-    isLoading: isProfileLoading, // /profile の取得中
-  } = useQuery({
-    // 11-a. ★ キャッシュキー
-    // fbUser が変わる (ログイン/ログアウト) と、このクエリは自動で再実行される
+  const { data: user, isLoading: isProfileLoading } = useQuery({
     queryKey: ['profile', firebaseUser?.uid],
-    // 11-b. ★ 実行する関数
     queryFn: () => fetchProfile(firebaseUser),
-    // 11-c. ★ (重要)
-    // isAuthLoading が false (Firebaseチェック完了) で、
-    // かつ fbUser が存在する (ログイン済み) の場合のみ、クエリを実行
     enabled: !isAuthLoading && !!firebaseUser,
-    staleTime: 1000 * 60 * 5, // 5分間はキャッシュを優先
-    retry: 1, // 失敗時のリトライは1回まで
+    staleTime: 1000 * 60 * 5,
+    // ★ 追加: 登録直後は404が出やすいので、数回リトライさせる
+    retry: 3,
+    retryDelay: 1000, // 1秒おきにリトライ
   });
 
   // 12. ★ ログアウト処理 (変更)

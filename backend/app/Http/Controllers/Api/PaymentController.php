@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB; // 👈 3. DBトランザクションを use 
 use Illuminate\Support\Str; // 👈 4. QRコード用のUUIDを use する
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
+use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
@@ -68,6 +69,10 @@ class PaymentController extends Controller
 
         // 2. モデル名 (Ticket -> TicketType に修正)
         $ticket = TicketType::findOrFail($validated['ticket_id']); // 👈 修正
+
+        if ($ticket->event && Carbon::parse($ticket->event->event_date)->endOfDay()->isPast()) {
+            return response()->json(['message' => 'このイベントは既に終了しています'], 400);
+        }
 
         // 3. 合計金額を計算
         $amount = $ticket->price * $validated['quantity'];

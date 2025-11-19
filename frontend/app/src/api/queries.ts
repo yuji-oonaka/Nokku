@@ -145,6 +145,11 @@ export const fetchProfile = async (
     const response = await api.get<DbUser>('/profile');
     return response.data;
   } catch (error: any) {
+    // ★ 404 (Not Found) の場合は、まだDB作成中かもしれないのでエラーを投げる
+    if (error.response && error.response.status === 404) {
+      throw error; // これで React Query がリトライを発動します
+    }
+    // その他のエラーはログに出して null
     console.error('fetchProfile: /profile の取得に失敗', error.response?.data);
     return null;
   }
