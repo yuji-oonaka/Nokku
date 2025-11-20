@@ -95,7 +95,13 @@ class EventController extends Controller
         // (変更なし)
         $user = Auth::user();
         if ($user->id !== $event->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'イベントの編集権限がありません'], 403);
+            return response()->json(['message' => '権限がありません'], 403);
+        }
+
+        // 2. ★★★ (NEW) 過去イベントチェック ★★★
+        // 開始日時を過ぎていたら編集禁止
+        if (Carbon::parse($event->event_date)->isPast()) {
+            return response()->json(['message' => '終了したイベントは編集できません'], 403);
         }
         $validatedData = $request->validate([
             'title' => 'required|string|max:255',
