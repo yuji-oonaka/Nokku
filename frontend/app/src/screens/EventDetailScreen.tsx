@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'; // 1. ★ useCallback は不要に
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,25 +9,19 @@ import {
   Button,
   ScrollView,
   TouchableOpacity,
-  RefreshControl, // 2. ★ RefreshControl をインポート
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native'; // 3. ★ useFocusEffect は不要に
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { useStripe } from '@stripe/stripe-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
-import api from '../services/api'; // (mutation でまだ使う)
+import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-// 4. ★ React Query と新しい型/関数をインポート
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Event, // (api/queries.ts から)
-  TicketType, // (api/queries.ts から)
-  fetchEventDetailData, // (api/queries.ts から)
-} from '../api/queries'; // 5. ★ 型定義は削除
+import { Event, TicketType, fetchEventDetailData } from '../api/queries';
 
-// route.params の型
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
 const EventDetailScreen = () => {
@@ -37,53 +31,38 @@ const EventDetailScreen = () => {
   const eventId = route.params?.eventId;
 
   const { user } = useAuth();
-  const queryClient = useQueryClient(); // 6. ★ QueryClient を取得
+  const queryClient = useQueryClient();
 
-  // 7. ★ (ローディング中も eventId は必要なので、外に出す)
   const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
-
   const [isManualRefetching, setIsManualRefetching] = useState(false);
 
-  // 9. ★★★ (NEW) useQuery フック ★★★
-  const {
-    data, // 👈 { event, tickets } が入る
-    isLoading, // 👈 最初のローディング
-    isRefetching, // 👈 スワイプ更新中のローディング
-    refetch,
-    isError,
-  } = useQuery({
-    // 10. ★ キャッシュキー (['eventDetail', 1] のように eventId と紐づける)
+  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
     queryKey: ['eventDetail', eventId],
-
-    // 11. ★ queries.ts の "Promise.all" 関数を呼び出す
-    queryFn: () => fetchEventDetailData(eventId!), // 13. ★ eventId! (nullでないことを保証)
-
-    // 12. ★ eventId が undefined の場合はクエリを実行しない
+    queryFn: () => fetchEventDetailData(eventId!),
     enabled: !!eventId,
   });
 
   const onRefresh = useCallback(async () => {
-    setIsManualRefetching(true); // 👈 クルクル開始
+    setIsManualRefetching(true);
     try {
-      await refetch(); // 👈 useQuery の refetch を実行
-    } catch (error) {
-      // (エラーは useQuery の isError が検知)
-    }
-    setIsManualRefetching(false); // 👈 クルクル停止
+      await refetch();
+    } catch (error) {}
+    setIsManualRefetching(false);
   }, [refetch]);
 
-  // 14. ★ data から event と tickets を取り出す
   const event: Event | undefined = data?.event;
   const tickets: TicketType[] = data?.tickets || [];
 
-  // 15. ★★★ (NEW) イベント削除の useMutation ★★★
+  // ★★★ (NEW) 過去イベント判定 ★★★
+  // 現在時刻よりもイベント日時が前なら true
+  const isPastEvent = event ? new Date(event.event_date) < new Date() : false;
+
   const deleteEventMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/events/${id}`),
     onSuccess: () => {
-      // 削除成功時、イベント一覧 (['events']) のキャッシュを無効化
       queryClient.invalidateQueries({ queryKey: ['events'] });
       Alert.alert('削除完了', `「${event?.title}」を削除しました。`);
-      navigation.goBack(); // 16. ★ 一覧画面に戻る
+      navigation.goBack();
     },
     onError: (error: any) => {
       Alert.alert(
@@ -93,11 +72,9 @@ const EventDetailScreen = () => {
     },
   });
 
-  // 17. ★★★ (NEW) 券種削除の useMutation ★★★
   const deleteTicketTypeMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/ticket-types/${id}`),
     onSuccess: () => {
-      // ★ 成功したらキャッシュを無効化する "だけ" にする
       queryClient.invalidateQueries({ queryKey: ['eventDetail', eventId] });
     },
     onError: (error: any) => {
@@ -110,9 +87,7 @@ const EventDetailScreen = () => {
 
   // --- ハンドラ ---
 
-  // ★ チケット購入処理 (変更なし)
   const handleBuyTicket = async (ticket: TicketType) => {
-    // ... (元のコードと全く同じ) ...
     setBuyingTicketId(ticket.id);
     let paymentIntentClientSecret: string | null = null;
     try {
@@ -153,7 +128,6 @@ const EventDetailScreen = () => {
         '購入確定！',
         `「${ticket.name}」のチケット（${confirmResponse.data.tickets[0].seat_number}）を購入しました！`,
       );
-      // (オプション) マイチケットのキャッシュも無効化
       queryClient.invalidateQueries({ queryKey: ['myTickets'] });
       navigation.navigate('MyPageStack', { screen: 'MyTickets' });
     } catch (error: any) {
@@ -168,20 +142,23 @@ const EventDetailScreen = () => {
     }
   };
 
-  // 19. ★ イベント削除ハンドラ (mutation を呼ぶだけ)
+  // ★★★ (Update) 削除時の警告メッセージを強化 ★★★
   const handleDeleteEvent = async () => {
     if (!event) return;
-    Alert.alert('イベントの削除', `「${event.title}」を本当に削除しますか？`, [
-      { text: 'キャンセル', style: 'cancel' },
-      {
-        text: '削除する',
-        style: 'destructive',
-        onPress: () => deleteEventMutation.mutate(event.id), // 👈
-      },
-    ]);
+    Alert.alert(
+      'イベントの削除',
+      `「${event.title}」を本当に削除しますか？\n\n⚠️ 紐づくチャット履歴やチケット情報も全て削除されます。`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: () => deleteEventMutation.mutate(event.id),
+        },
+      ],
+    );
   };
 
-  // ★ 「券種を追加」ボタンの処理 (変更なし)
   const handleAddTicketType = () => {
     if (!event) return;
     navigation.navigate('TicketTypeCreate', {
@@ -189,7 +166,6 @@ const EventDetailScreen = () => {
     });
   };
 
-  // 20. ★ 券種削除ハンドラ (mutation を呼ぶだけ)
   const handleDeleteTicketType = async (ticketType: TicketType) => {
     if (buyingTicketId !== null) return;
     Alert.alert('券種の削除', `「${ticketType.name}」を本当に削除しますか？`, [
@@ -199,10 +175,7 @@ const EventDetailScreen = () => {
         style: 'destructive',
         onPress: () =>
           deleteTicketTypeMutation.mutate(ticketType.id, {
-            // ★ (NEW) 'onSuccess' をここで定義する
             onSuccess: () => {
-              // (ここで invalidateQueries を呼んでも良いが、Aで呼んでいるので不要)
-              // ★ 'ticketType' がスコープ内にあるので、ここでアラートを出す
               Alert.alert('削除完了', `「${ticketType.name}」を削除しました。`);
             },
           }),
@@ -210,7 +183,6 @@ const EventDetailScreen = () => {
     ]);
   };
 
-  // ★ イベント編集ボタン (変更なし)
   const handleEditEvent = () => {
     if (!event) return;
     navigation.navigate('EventEdit', { eventId: event.id });
@@ -219,7 +191,6 @@ const EventDetailScreen = () => {
   const isOwnerOrAdmin =
     user && event && (user.id === event.artist_id || user.role === 'admin');
 
-  // リストの各アイテム
   const renderTicketItem = ({ item }: { item: TicketType }) => (
     <View style={styles.ticketItem}>
       <View>
@@ -233,7 +204,7 @@ const EventDetailScreen = () => {
             color="#FF3B30"
             onPress={() => handleDeleteTicketType(item)}
             disabled={
-              buyingTicketId !== null || deleteTicketTypeMutation.isPending // 21. ★ 削除中も無効化
+              buyingTicketId !== null || deleteTicketTypeMutation.isPending
             }
           />
         ) : (
@@ -255,7 +226,6 @@ const EventDetailScreen = () => {
     });
   };
 
-  // 22. ★ ローディング/エラー表示 (isLoading, isError, !data を使用)
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -273,20 +243,27 @@ const EventDetailScreen = () => {
     );
   }
 
-  // 23. ★ メインのJSX
   return (
     <SafeAreaView style={styles.container}>
-      {/* 24. ★ ScrollView に RefreshControl を追加 */}
       <ScrollView
         refreshControl={
           <RefreshControl
-            refreshing={isManualRefetching} // 👈 'isManualRefetching' を渡す
-            onRefresh={onRefresh} // 👈 'onRefresh' (自作した関数) を渡す
+            refreshing={isManualRefetching}
+            onRefresh={onRefresh}
             tintColor="#FFFFFF"
           />
         }
       >
         <View style={styles.detailCard}>
+          {/* ★★★ (NEW) 終了イベントの場合の表示 ★★★ */}
+          {isPastEvent && (
+            <View style={styles.pastEventBadge}>
+              <Text style={styles.pastEventText}>
+                ⚠️ このイベントは終了しました
+              </Text>
+            </View>
+          )}
+
           <Text style={styles.title}>{event.title}</Text>
           <Text style={styles.venue}>{event.venue}</Text>
           <Text style={styles.date}>
@@ -301,42 +278,52 @@ const EventDetailScreen = () => {
           </Text>
         </TouchableOpacity>
 
-        <View style={styles.ticketHeaderContainer}>
-          <Text style={styles.ticketHeader}>チケットを選択</Text>
-          {isOwnerOrAdmin && (
-            <TouchableOpacity onPress={handleAddTicketType}>
-              <Text style={styles.addButton}>＋ 券種を追加</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* ★★★ (Update) 過去イベントならチケットエリア全体を隠す ★★★ */}
+        {!isPastEvent && (
+          <>
+            <View style={styles.ticketHeaderContainer}>
+              <Text style={styles.ticketHeader}>チケットを選択</Text>
+              {/* アーティスト/管理者のみ「券種を追加」を表示 */}
+              {isOwnerOrAdmin && (
+                <TouchableOpacity onPress={handleAddTicketType}>
+                  <Text style={styles.addButton}>＋ 券種を追加</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-        {tickets.length === 0 ? (
-          <Text style={styles.emptyText}>
-            このイベントにはまだ券種が登録されていません。
-          </Text>
-        ) : (
-          <FlatList
-            data={tickets}
-            renderItem={renderTicketItem}
-            keyExtractor={item => item.id.toString()}
-            scrollEnabled={false}
-          />
+            {tickets.length === 0 ? (
+              <Text style={styles.emptyText}>
+                このイベントにはまだ券種が登録されていません。
+              </Text>
+            ) : (
+              <FlatList
+                data={tickets}
+                renderItem={renderTicketItem}
+                keyExtractor={item => item.id.toString()}
+                scrollEnabled={false}
+              />
+            )}
+          </>
         )}
 
         {isOwnerOrAdmin && (
           <View style={styles.adminButtonContainer}>
-            <Button
-              title="イベントを編集する"
-              onPress={handleEditEvent}
-              color="#0A84FF"
-              disabled={deleteEventMutation.isPending} // 25. ★ 削除中も無効化
-            />
+            {/* ★★★ (Update) 過去イベントなら編集ボタンを隠す ★★★ */}
+            {!isPastEvent && (
+              <Button
+                title="イベントを編集する"
+                onPress={handleEditEvent}
+                color="#0A84FF"
+                disabled={deleteEventMutation.isPending}
+              />
+            )}
+
             <View style={{ marginTop: 10 }}>
               <Button
                 title="イベントを削除する"
                 onPress={handleDeleteEvent}
                 color="#FF3B30"
-                disabled={deleteEventMutation.isPending} // 25. ★ 削除中も無効化
+                disabled={deleteEventMutation.isPending}
               />
             </View>
           </View>
@@ -346,10 +333,8 @@ const EventDetailScreen = () => {
   );
 };
 
-// スタイル (変更なし ... 1点だけ 'center' を追加)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
-  // 26. ★ (NEW) 中央配置用のスタイル
   center: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -359,6 +344,20 @@ const styles = StyleSheet.create({
     padding: 20,
     margin: 15,
     borderRadius: 8,
+  },
+  // ★★★ (NEW) 終了バッジのスタイル ★★★
+  pastEventBadge: {
+    backgroundColor: '#333333',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+  },
+  pastEventText: {
+    color: '#FFD700', // ゴールドっぽい黄色で注意喚起
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   title: {
     fontSize: 24,
