@@ -10,7 +10,7 @@ const hapticOptions = {
   ignoreAndroidSystemSettings: false,
 };
 
-// ★★★ (NEW) 許可する振動タイプの定義を追加 ★★★
+// 許可する振動タイプの定義
 type HapticType =
   | 'impactLight'
   | 'impactMedium'
@@ -25,44 +25,65 @@ class SoundService {
   private errorSound: Sound | null = null;
 
   constructor() {
-    this.successSound = new Sound('success.mp3', Sound.MAIN_BUNDLE, error => {
+    this.initializeSounds();
+  }
+
+  private initializeSounds() {
+    this.successSound = new Sound('success.mp3', Sound.MAIN_BUNDLE, (error) => {
       if (error) console.log('failed to load success sound', error);
     });
 
-    this.errorSound = new Sound('error.mp3', Sound.MAIN_BUNDLE, error => {
+    this.errorSound = new Sound('error.mp3', Sound.MAIN_BUNDLE, (error) => {
       if (error) console.log('failed to load error sound', error);
     });
   }
 
   /**
-   * 成功時の演出 (音 + 軽快な振動)
+   * 成功時の音声を再生
+   * (振動は vibrateSuccess で行うため、ここでは音のみ)
    */
   public playSuccess() {
-    ReactNativeHapticFeedback.trigger('notificationSuccess', hapticOptions);
     if (this.successSound) {
-      this.successSound.stop(() => {
-        this.successSound?.play();
+      this.successSound.setCurrentTime(0);
+      this.successSound.play((success) => {
+        if (!success) console.log('success sound playback failed');
       });
     }
   }
 
   /**
-   * エラー時の演出 (音 + 重い振動)
+   * エラー時の音声を再生
+   * (振動は vibrateError で行うため、ここでは音のみ)
    */
   public playError() {
-    ReactNativeHapticFeedback.trigger('notificationError', hapticOptions);
     if (this.errorSound) {
-      this.errorSound.stop(() => {
-        this.errorSound?.play();
+      this.errorSound.setCurrentTime(0);
+      this.errorSound.play((success) => {
+        if (!success) console.log('error sound playback failed');
       });
     }
   }
 
   /**
-   * ボタンタップ時の触感フィードバック
-   * ★ 引数の型を HapticType に変更し、notificationWarning も受け取れるように修正
+   * 成功時の振動（軽快な2回振動など）
+   * ★ ScannerScreenのエラー解消のために追加
    */
-  public triggerHaptic(type: HapticType = 'impactLight') {
+  public vibrateSuccess() {
+    this.triggerHaptic('notificationSuccess');
+  }
+
+  /**
+   * エラー時の振動（重めの振動）
+   * ★ ScannerScreenのエラー解消のために追加
+   */
+  public vibrateError() {
+    this.triggerHaptic('notificationError');
+  }
+
+  /**
+   * 汎用的なハプティックフィードバック
+   */
+  public triggerHaptic(type: HapticType = 'impactMedium') {
     ReactNativeHapticFeedback.trigger(type, hapticOptions);
   }
 }
