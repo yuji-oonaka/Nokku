@@ -9,7 +9,6 @@ class UserTicket extends Model
 {
     use HasFactory;
 
-    // ↓↓↓ この行を追記 ↓↓↓
     protected $fillable = [
         'user_id',
         'ticket_type_id',
@@ -18,6 +17,7 @@ class UserTicket extends Model
         'seat_number',
         'qr_code_id',
         'is_used',
+        'used_at', // 使用日時も記録できるように追加しておくと便利です
     ];
 
     /**
@@ -34,5 +34,13 @@ class UserTicket extends Model
     public function ticketType()
     {
         return $this->belongsTo(TicketType::class);
+    }
+
+    /**
+     * チケットの持ち主（User）を取得 (多対1)
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }

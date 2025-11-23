@@ -2,32 +2,31 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 
-
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
      */
-    // ↓↓↓ このブロックを追記・または編集 ↓↓↓
     protected $fillable = [
         'real_name',
         'nickname',
         'email',
         'firebase_uid',
-        'role',
+        'role',      // 'admin', 'artist', 'user'
         'password',
         'phone_number',
         'postal_code',
@@ -36,63 +35,9 @@ class User extends Authenticatable
         'address_line1',
         'address_line2',
         'image_url',
+        'avatar',    // 念のため残しておく
+        'bio',       // 念のため残しておく
     ];
-    /**
-     * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
-     */
-    public function userTickets()
-    {
-        return $this->hasMany(UserTicket::class);
-    }
-
-    public function posts(): HasMany // 2. メソッド追加
-    {
-        return $this->hasMany(Post::class);
-    }
-
-    /**
-     * このアーティストが作成したイベント (1対多)
-     */
-    public function events(): HasMany
-    {
-        // 'artist_id' カラムで Event と紐付け
-        return $this->hasMany(Event::class, 'artist_id');
-    }
-
-    /**
-     * このアーティストが作成したグッズ (1対多)
-     */
-    public function products(): HasMany
-    {
-        // 'artist_id' カラムで Product と紐付け
-        return $this->hasMany(Product::class, 'artist_id');
-    }
-
-    /**
-     * このユーザーがフォローしているアーティスト (多対多)
-     */
-    public function following(): BelongsToMany
-    {
-        return $this->belongsToMany(
-            User::class,     // 関連するモデル (User)
-            'follows',       // 中間テーブル名
-            'user_id',       // 中間テーブルの「自分」の外部キー
-            'artist_id'    // 中間テーブルの「相手」の外部キー
-        );
-    }
-
-    /**
-     * このアーティストをフォローしているユーザー (ファン) (多対多)
-     */
-    public function followers(): BelongsToMany
-    {
-        return $this->belongsToMany(
-            User::class,
-            'follows',
-            'artist_id',   // 「自分」の外部キー (自分がアーティスト側)
-            'user_id'      // 「相手」の外部キー (相手がファン側)
-        );
-    }
 
     /**
      * The attributes that should be hidden for serialization.
@@ -117,11 +62,89 @@ class User extends Authenticatable
         ];
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | リレーション定義
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
+     * ★ これで UserTicketController のエラーが解消されます
+     */
+    public function userTickets()
+    {
+        return $this->hasMany(UserTicket::class);
+    }
+
+    /**
+     * ユーザーが投稿したお知らせ
+     */
+    public function posts(): HasMany
+    {
+        return $this->hasMany(Post::class);
+    }
+
+    /**
+     * このアーティストが作成したイベント (1対多)
+     */
+    public function events(): HasMany
+    {
+        // DBのカラム名が artist_id の場合はこちら
+        return $this->hasMany(Event::class, 'artist_id');
+
+        // ※もし events テーブルが user_id を使っている場合は以下になります
+        // return $this->hasMany(Event::class, 'user_id');
+    }
+
+    /**
+     * このアーティストが作成したグッズ (1対多)
+     */
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class, 'artist_id');
+    }
+
+    /**
+     * このユーザーがフォローしているアーティスト (多対多)
+     */
+    public function following(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'follows',
+            'user_id',
+            'artist_id'
+        );
+    }
+
+    /**
+     * このアーティストをフォローしているユーザー (ファン) (多対多)
+     */
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'follows',
+            'artist_id',
+            'user_id'
+        );
+    }
+
+    /**
+     * お気に入りしたグッズ (Productとの多対多)
+     */
     public function favorites()
     {
         return $this->belongsToMany(Product::class, 'favorites', 'user_id', 'product_id')
             ->withTimestamps();
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | アクセサ
+    |--------------------------------------------------------------------------
+    */
 
     protected function imageUrl(): Attribute
     {
