@@ -8,6 +8,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Support\Facades\Storage;
+
 
 class User extends Authenticatable
 {
@@ -26,14 +29,13 @@ class User extends Authenticatable
         'firebase_uid',
         'role',
         'password',
-        // ↓↓↓ ここから6行を追記してください ↓↓↓
         'phone_number',
         'postal_code',
         'prefecture',
         'city',
         'address_line1',
         'address_line2',
-        // ↑↑↑ ここまで追記 ↑↑↑
+        'image_url',
     ];
     /**
      * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
@@ -119,5 +121,16 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Product::class, 'favorites', 'user_id', 'product_id')
             ->withTimestamps();
+    }
+
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if (!$value) return null;
+                if (str_starts_with($value, 'http')) return $value;
+                return asset(Storage::url($value));
+            }
+        );
     }
 }

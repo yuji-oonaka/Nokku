@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // 1. ★ useEffect をインポート
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,25 +8,24 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  TouchableOpacity, // 2. ★ TouchableOpacity をインポート
-  Platform, // 3. ★ Platform をインポート
+  TouchableOpacity,
+  Image, // ★ 追加
 } from 'react-native';
 import api from '../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// 4. ★ DateTimePicker をインポート
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import { Event } from '../api/queries';
+// ★ 追加: 自作フック
+import { useImageUpload } from '../hooks/useImageUpload';
 
-// (EventEditScreenRouteProp の型定義は変更なし)
 type EventEditScreenRouteProp = RouteProp<
   { params: { eventId: number } },
   'params'
 >;
 
-// 5. ★ 日付フォーマット関数 (CreateScreen と共通)
 const formatDateTimeForAPI = (date: Date): string => {
   const dateString = date.toISOString().split('T')[0];
   const timeString = date.toLocaleTimeString('ja-JP', {
@@ -43,20 +42,26 @@ const EventEditScreen = () => {
   const route = useRoute<EventEditScreenRouteProp>();
   const { eventId } = route.params;
 
-  // フォームの状態
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [venue, setVenue] = useState('');
-
-  // 6. ★ 日付入力ロジック (CreateScreen と共通)
-  const [date, setDate] = useState(new Date()); // 初期値
+  const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
 
-  const [loading, setLoading] = useState(true); // 読み込み中
-  const [updating, setUpdating] = useState(false); // 更新中
+  // ★ 追加: useImageUpload フック
+  const {
+    imageUri,
+    uploadedPath,
+    isUploading,
+    selectImage,
+    setImageFromUrl, // 既存画像のセット用
+  } = useImageUpload('event');
 
-  // 7. ★ 初回読み込み (useEffect) を修正
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+
+  // 1. 初回読み込み
   useEffect(() => {
     const fetchEvent = async () => {
       if (!eventId) {
@@ -66,18 +71,17 @@ const EventEditScreen = () => {
       }
       try {
         setLoading(true);
-        const response = await api.get(`/events/${eventId}`);
+        // 型を指定して取得
+        const response = await api.get<Event>(`/events/${eventId}`);
         const event = response.data;
 
         setTitle(event.title);
         setDescription(event.description);
         setVenue(event.venue);
-
-        // 8. ★★★ 修正点 ★★★
-        // APIから取得した日付文字列 (YYYY-MM-DD HH:MM:SS) を
-        // Date オブジェクトに変換して State にセットする
         setDate(new Date(event.event_date));
-        // (古い eventDate State は削除)
+
+        // ★ 既存の画像URLをフックにセット (プレビュー用)
+        setImageFromUrl(event.image_url);
       } catch (error) {
         console.error('イベント取得エラー:', error);
         Alert.alert('エラー', 'イベント情報の取得に失敗しました。');
@@ -88,9 +92,8 @@ const EventEditScreen = () => {
     };
 
     fetchEvent();
-  }, [eventId, navigation]);
+  }, [eventId, navigation, setImageFromUrl]);
 
-  // 9. ★ ピッカーの処理 (CreateScreen と共通)
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowPicker(false);
     if (selectedDate) {
@@ -103,7 +106,7 @@ const EventEditScreen = () => {
     setPickerMode(currentMode);
   };
 
-  // 10. ★ 更新処理 (handleUpdate) を修正
+  // 2. 更新処理
   const handleUpdate = async () => {
     if (!title || !description || !venue) {
       Alert.alert('エラー', 'すべての項目を入力してください。');
@@ -112,15 +115,22 @@ const EventEditScreen = () => {
 
     setUpdating(true);
     try {
-      // 11. ★ Date オブジェクトを API 用の文字列にフォーマット
       const formattedEventDate = formatDateTimeForAPI(date);
 
-      await api.put(`/events/${eventId}`, {
-        title: title,
-        description: description,
-        venue: venue,
-        event_date: formattedEventDate, // フォーマットした文字列を送信
-      });
+      // ★ 変更: JSON形式で送信
+      const payload: any = {
+        title,
+        description,
+        venue,
+        event_date: formattedEventDate,
+      };
+
+      // ★ 新しい画像がアップロードされていればパスを追加
+      if (uploadedPath) {
+        payload.image_url = uploadedPath;
+      }
+
+      await api.put(`/events/${eventId}`, payload);
 
       Alert.alert('成功', 'イベント情報を更新しました。', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -135,9 +145,9 @@ const EventEditScreen = () => {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </SafeAreaView>
     );
   }
 
@@ -173,7 +183,6 @@ const EventEditScreen = () => {
             placeholderTextColor="#888"
           />
 
-          {/* 12. ★★★ 日付/時刻ピッカーのUI (CreateScreen と共通) ★★★ */}
           <Text style={styles.label}>開催日時</Text>
           <TouchableOpacity
             onPress={() => showMode('date')}
@@ -207,13 +216,43 @@ const EventEditScreen = () => {
               onChange={onDateChange}
             />
           )}
-          {/* ★★★ ここまで ★★★ */}
 
-          {updating ? ( // 13. ★ loading -> updating に修正
+          {/* ★ 追加: 画像選択 UI */}
+          <Text style={styles.label}>イベント画像 (任意)</Text>
+          <TouchableOpacity
+            style={styles.imagePickerButton}
+            onPress={selectImage}
+            disabled={isUploading}
+          >
+            <Text style={styles.imagePickerButtonText}>
+              {imageUri ? '画像を変更' : '画像を選択'}
+            </Text>
+          </TouchableOpacity>
+
+          {isUploading && (
+            <ActivityIndicator
+              size="small"
+              color="#0A84FF"
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+          ) : (
+            <View style={[styles.imagePreview, styles.imagePlaceholder]} />
+          )}
+          {/* ★★★ */}
+
+          {updating ? (
             <ActivityIndicator size="large" style={styles.buttonSpacing} />
           ) : (
             <View style={styles.buttonSpacing}>
-              <Button title="更新する" onPress={handleUpdate} />
+              <Button
+                title="更新する"
+                onPress={handleUpdate}
+                disabled={isUploading}
+              />
             </View>
           )}
         </View>
@@ -222,7 +261,6 @@ const EventEditScreen = () => {
   );
 };
 
-// 14. ★ スタイルを更新 (CreateScreen と共通化)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -236,8 +274,8 @@ const styles = StyleSheet.create({
   },
   form: {
     padding: 20,
-    margin: 15,
     backgroundColor: '#1C1C1E',
+    margin: 15,
     borderRadius: 8,
   },
   label: {
@@ -273,6 +311,29 @@ const styles = StyleSheet.create({
   },
   buttonSpacing: {
     marginTop: 20,
+  },
+  // ★ 追加スタイル
+  imagePickerButton: {
+    backgroundColor: '#0A84FF',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  imagePickerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 5,
+    marginBottom: 20,
+    resizeMode: 'cover',
+  },
+  imagePlaceholder: {
+    backgroundColor: '#333',
   },
 });
 

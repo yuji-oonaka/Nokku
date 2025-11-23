@@ -94,7 +94,7 @@ class ArtistController extends Controller
         return response()->json([
             'id' => $artistData->id,
             'nickname' => $artistData->nickname,
-            'profile_image_url' => $artistData->profile_image_url,
+            'image_url' => $artistData->image_url,
             'bio' => $artistData->bio,
             'posts' => $artistData->posts,
             'events' => $artistData->events,

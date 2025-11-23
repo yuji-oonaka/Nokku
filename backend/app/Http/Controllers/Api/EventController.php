@@ -15,30 +15,27 @@ class EventController extends Controller
      * イベント一覧を取得 (index)
      * ★ 改造: 'filter' クエリパラメータ (upcoming / past) に対応
      */
-    public function index(Request $request) // 3. ★ Request $request を引数に追加
+    public function index(Request $request)
     {
-        // 4. ★ フィルターの値を取得 (デフォルトは 'upcoming')
         $filter = $request->input('filter', 'upcoming');
-        $now = Carbon::now(); // 現在時刻を取得
+        $now = Carbon::now();
 
-        // 5. ★ クエリを組み立てる
-        $query = Event::query();
+        // ★★★ 変更: query() ではなく with('artist') で開始 ★★★
+        // これで artist 情報が JSON に含まれるようになります
+        $query = Event::with('artist');
 
         if ($filter === 'past') {
             // 【過去のイベント】
-            // 開催日時が現在より前
             $query->where('event_date', '<', $now)
-                  ->orderBy('event_date', 'desc'); // 開催日が新しい順 (最近終わった順)
+                ->orderBy('event_date', 'desc');
         } else {
             // 【開催予定のイベント (デフォルト)】
-            // 開催日時が現在以降
             $query->where('event_date', '>=', $now)
-                  ->orderBy('event_date', 'asc'); // 開催日が近い順
+                ->orderBy('event_date', 'asc');
         }
 
-        // 6. ★ データを取得して返す
         $events = $query->get();
-        
+
         return response()->json($events);
     }
 
@@ -49,7 +46,7 @@ class EventController extends Controller
     {
         // ( ... 既存の store メソッド ... )
         // (変更なし)
-        $user = Auth::user(); 
+        $user = Auth::user();
         if ($user->role !== 'artist' && $user->role !== 'admin') {
             return response()->json(['message' => 'イベントを作成する権限がありません'], 403);
         }
@@ -58,6 +55,7 @@ class EventController extends Controller
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
             'event_date' => 'required|date',
+            'image_url' => 'nullable|string',
         ]);
         $eventData = $validatedData;
         $eventData['artist_id'] = $user->id;
@@ -79,10 +77,9 @@ class EventController extends Controller
     /**
      * 特定のイベント詳細を取得 (show)
      */
-    public function show(Event $event) 
+    public function show(Event $event)
     {
-        // ( ... 既存の show メソッド ... )
-        // (変更なし - 権限チェックは削除済み)
+        $event->load('artist');
         return response()->json($event);
     }
 
@@ -108,6 +105,7 @@ class EventController extends Controller
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
             'event_date' => 'required|date',
+            'image_url' => 'nullable|string',
         ]);
         $event->update($validatedData);
         return response()->json($event);

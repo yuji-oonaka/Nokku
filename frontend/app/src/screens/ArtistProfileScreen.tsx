@@ -1,4 +1,3 @@
-// ArtistProfileScreen.tsx
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -9,16 +8,15 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// 4. ★ React Query と新しい型/関数をインポート
 import { useQuery } from '@tanstack/react-query';
 import {
   ArtistPostMin,
   ArtistEventMin,
   ArtistProductMin,
-  ArtistProfileData,
   fetchArtistProfileData,
 } from '../api/queries';
 
@@ -32,7 +30,6 @@ type ArtistProfileRouteProp = RouteProp<
 
 type TabKey = 'posts' | 'events' | 'products';
 
-// --- コンポーネント ---
 const ArtistProfileScreen = () => {
   const route = useRoute<ArtistProfileRouteProp>();
   const navigation = useNavigation<any>();
@@ -41,53 +38,39 @@ const ArtistProfileScreen = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
   const [isManualRefetching, setIsManualRefetching] = useState(false);
 
-  // 8. ★ (NEW) useQuery フック (useEffect の代わり)
   const {
-    data: artistData, // 👈 artistData state の代わり
-    isLoading, // 👈 loading state の代わり
-    isRefetching, // 👈 裏での更新中
+    data: artistData,
+    isLoading,
     refetch,
-    isError,
   } = useQuery({
     queryKey: ['artistProfile', artistId],
     queryFn: () => fetchArtistProfileData(artistId),
     enabled: !!artistId,
   });
 
-  // 9. ★ (NEW) RefreshControl が呼び出す "専用" の関数
   const onRefresh = useCallback(async () => {
     setIsManualRefetching(true);
     try {
       await refetch();
-    } catch (error) {
-      /* (エラーは useQuery の isError が検知) */
-    }
+    } catch (error) {}
     setIsManualRefetching(false);
   }, [refetch]);
 
-  /**
-   * イベント詳細ページ（EventsStack）へ遷移する
-   * (タブ跨ぎナビゲーション)
-   */
+  // 1. ★ 修正: メインタブのスタック名を経由して遷移するように変更
   const handleEventPress = (eventId: number) => {
     navigation.navigate('EventsStack', {
       screen: 'EventDetail',
-      params: { eventId: eventId },
+      params: { eventId },
     });
   };
 
-  /**
-   * グッズ詳細ページ（ProductsStack）へ遷移する
-   * (タブ跨ぎナビゲーション)
-   */
   const handleProductPress = (productId: number) => {
     navigation.navigate('ProductsStack', {
       screen: 'ProductDetail',
-      params: { productId: productId },
+      params: { productId },
     });
   };
 
-  // --- タブコンテンツレンダリング ---
   const renderTabContent = () => {
     if (!artistData) return null;
 
@@ -100,7 +83,6 @@ const ArtistProfileScreen = () => {
         data = artistData.posts;
         emptyText = 'お知らせはありません';
         renderItem = ({ item }: { item: ArtistPostMin }) => (
-          // お知らせはタップ不要なので <View> のまま
           <View style={styles.listItem}>
             <Text style={styles.listText}>{item.content}</Text>
             <Text style={styles.subText}>
@@ -114,10 +96,9 @@ const ArtistProfileScreen = () => {
         data = artistData.events;
         emptyText = 'イベントはありません';
         renderItem = ({ item }: { item: ArtistEventMin }) => (
-          // 5. ★ <View> を <TouchableOpacity> に変更
           <TouchableOpacity
             style={styles.listItem}
-            onPress={() => handleEventPress(item.id)} // 👈 遷移ハンドラを呼ぶ
+            onPress={() => handleEventPress(item.id)}
           >
             <Text style={styles.listText}>{item.title}</Text>
             <Text style={styles.subText}>
@@ -131,13 +112,31 @@ const ArtistProfileScreen = () => {
         data = artistData.products;
         emptyText = 'グッズはありません';
         renderItem = ({ item }: { item: ArtistProductMin }) => (
-          // 6. ★ <View> を <TouchableOpacity> に変更
           <TouchableOpacity
-            style={styles.listItem}
-            onPress={() => handleProductPress(item.id)} // 👈 遷移ハンドラを呼ぶ
+            style={styles.listItem} // スタイルは共通ですが、中身をRowレイアウトにします
+            onPress={() => handleProductPress(item.id)}
           >
-            <Text style={styles.listText}>{item.name}</Text>
-            <Text style={styles.subText}>¥{item.price.toLocaleString()}</Text>
+            {/* 2. ★ 追加: グッズ画像の表示エリア */}
+            <View style={styles.productRow}>
+              {item.image_url ? (
+                <Image
+                  source={{ uri: item.image_url }}
+                  style={styles.productImage}
+                />
+              ) : (
+                <View
+                  style={[styles.productImage, styles.productPlaceholder]}
+                />
+              )}
+
+              {/* テキスト情報 */}
+              <View style={styles.productInfo}>
+                <Text style={styles.listText}>{item.name}</Text>
+                <Text style={styles.subText}>
+                  ¥{item.price.toLocaleString()}
+                </Text>
+              </View>
+            </View>
           </TouchableOpacity>
         );
         break;
@@ -148,14 +147,24 @@ const ArtistProfileScreen = () => {
         data={data}
         keyExtractor={item => item.id.toString()}
         renderItem={renderItem}
-        ListEmptyComponent={<Text style={styles.emptyText}>{emptyText}</Text>}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>{emptyText}</Text>
+          </View>
+        }
         style={styles.tabContent}
         contentContainerStyle={data.length === 0 ? { flex: 1 } : undefined}
+        refreshControl={
+          <RefreshControl
+            refreshing={isManualRefetching}
+            onRefresh={onRefresh}
+            tintColor="#FFFFFF"
+          />
+        }
       />
     );
   };
 
-  // --- ローディング中 ---
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -164,13 +173,15 @@ const ArtistProfileScreen = () => {
     );
   }
 
-  // --- データ取得失敗 ---
   if (!artistData) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <Text style={styles.errorText}>
           アーティスト情報の取得に失敗しました。
         </Text>
+        <TouchableOpacity onPress={() => refetch()} style={styles.retryButton}>
+          <Text style={styles.retryText}>再試行</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -179,7 +190,26 @@ const ArtistProfileScreen = () => {
     <SafeAreaView style={styles.container}>
       {/* ヘッダー */}
       <View style={styles.header}>
+        <View style={styles.avatarContainer}>
+          {artistData.image_url ? (
+            <Image
+              source={{ uri: artistData.image_url }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+              <Text style={styles.avatarInitials}>
+                {artistData.nickname.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
         <Text style={styles.artistName}>{artistData.nickname}</Text>
+
+        {artistData.bio && (
+          <Text style={styles.artistBio}>{artistData.bio}</Text>
+        )}
       </View>
 
       {/* タブ */}
@@ -188,13 +218,27 @@ const ArtistProfileScreen = () => {
           style={[styles.tabButton, activeTab === 'posts' && styles.activeTab]}
           onPress={() => setActiveTab('posts')}
         >
-          <Text style={styles.tabText}>お知らせ</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'posts' && styles.activeTabText,
+            ]}
+          >
+            お知らせ
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'events' && styles.activeTab]}
           onPress={() => setActiveTab('events')}
         >
-          <Text style={styles.tabText}>イベント</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'events' && styles.activeTabText,
+            ]}
+          >
+            イベント
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -203,7 +247,14 @@ const ArtistProfileScreen = () => {
           ]}
           onPress={() => setActiveTab('products')}
         >
-          <Text style={styles.tabText}>グッズ</Text>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'products' && styles.activeTabText,
+            ]}
+          >
+            グッズ
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -213,35 +264,87 @@ const ArtistProfileScreen = () => {
   );
 };
 
-// --- スタイル ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: '#FF3B30', fontSize: 16 },
+  errorText: { color: '#FF3B30', fontSize: 16, marginBottom: 10 },
+  retryButton: { padding: 10 },
+  retryText: { color: '#0A84FF', fontSize: 16 },
 
   header: {
     padding: 20,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#222',
+    backgroundColor: '#111',
   },
-  artistName: { fontSize: 24, fontWeight: 'bold', color: '#FFF' },
+  avatarContainer: {
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: '#0A84FF',
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    fontSize: 32,
+    color: '#888',
+    fontWeight: 'bold',
+  },
+  artistName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 5,
+  },
+  artistBio: {
+    fontSize: 14,
+    color: '#AAA',
+    textAlign: 'center',
+    marginTop: 5,
+    lineHeight: 20,
+    paddingHorizontal: 20,
+  },
 
   tabContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     backgroundColor: '#1C1C1E',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
   },
   tabButton: {
+    flex: 1,
     paddingVertical: 15,
-    paddingHorizontal: 20,
+    alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  activeTab: { borderBottomColor: '#0A84FF' },
-  tabText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  activeTab: {
+    borderBottomColor: '#0A84FF',
+  },
+  tabText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: '#FFF',
+  },
 
-  contentWrapper: { flex: 1 }, // タブコンテンツを残り全体に広げる
+  contentWrapper: { flex: 1 },
   tabContent: { flex: 1 },
   listItem: {
     backgroundColor: '#1C1C1E',
@@ -250,9 +353,41 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
     borderRadius: 8,
   },
-  listText: { color: '#FFF', fontSize: 16 },
-  subText: { color: '#888', fontSize: 14, marginTop: 5 },
-  emptyText: { color: '#888', textAlign: 'center', marginTop: 50, fontSize: 16 },
+  listText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  subText: { color: '#888', fontSize: 12 },
+
+  // 3. ★ 追加: グッズ表示用のスタイル
+  productRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  productImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 4,
+    marginRight: 15,
+    backgroundColor: '#333',
+  },
+  productPlaceholder: {
+    backgroundColor: '#333',
+  },
+  productInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  emptyText: { color: '#888', fontSize: 16 },
 });
 
 export default ArtistProfileScreen;

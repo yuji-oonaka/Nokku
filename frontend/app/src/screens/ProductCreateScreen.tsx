@@ -8,14 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  TouchableOpacity, // 1. ★ TouchableOpacity をインポート
-  Image, // 2. ★ Image をインポート
+  TouchableOpacity,
+  Image,
 } from 'react-native';
-// 3. ★ react-native-image-picker から必要なモジュールをインポート
-import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import api from '../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// ★ 追加: 自作フック
+import { useImageUpload } from '../hooks/useImageUpload';
 
 const ProductCreateScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -24,30 +24,15 @@ const ProductCreateScreen: React.FC = () => {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
-  // 4. ★ imageUrl (文字列) ではなく image (Assetオブジェクト) を保持
-  const [image, setImage] = useState<Asset | null>(null);
+  const [limitPerUser, setLimitPerUser] = useState('');
+
+  // ★ 変更: useImageUpload フックを使用
+  // (selectImage を呼ぶと自動でアップロードされ、uploadedPath にパスが入る)
+  const { imageUri, uploadedPath, isUploading, selectImage } =
+    useImageUpload('product');
 
   const [loading, setLoading] = useState(false);
 
-  // 5. ★ 画像選択のロジック (PostCreateScreen と同様)
-  const handleSelectImage = async () => {
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      quality: 0.7, // 画質を少し落としてファイルサイズを抑える
-    });
-
-    if (result.didCancel || result.errorCode) {
-      console.log('画像選択がキャンセルまたは失敗しました。');
-      return;
-    }
-
-    if (result.assets && result.assets.length > 0) {
-      setImage(result.assets[0]);
-    }
-  };
-  const [limitPerUser, setLimitPerUser] = useState('');
-
-  // 6. ★ handleSubmit を FormData を使うように大幅修正
   const handleSubmit = async () => {
     const priceNum = parseInt(price, 10);
     const stockNum = parseInt(stock, 10);
@@ -59,32 +44,19 @@ const ProductCreateScreen: React.FC = () => {
 
     setLoading(true);
 
-    // 7. ★ FormData を作成
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('description', description);
-    formData.append('price', price); // 文字列のままでOK (Laravel側で整数として扱われる)
-    formData.append('stock', stock);
-    if (limitPerUser) {
-      formData.append('limit_per_user', limitPerUser);
-    }
-
-    // 8. ★ 画像が選択されていれば、FormData に追加
-    if (image && image.uri && image.fileName && image.type) {
-      formData.append('image', {
-        uri: image.uri,
-        name: image.fileName,
-        type: image.type,
-      });
-    }
-
     try {
-      // 9. ★ FormData を api.post で送信 (ヘッダー指定)
-      await api.post('/products', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // ★ 変更: FormData ではなく JSON で送信
+      // (画像は既にアップロード済みなので、パス文字列を送るだけ)
+      const payload = {
+        name,
+        description,
+        price: priceNum,
+        stock: stockNum,
+        limit_per_user: limitPerUser ? parseInt(limitPerUser, 10) : null,
+        image_url: uploadedPath, // ★ 取得したパスを送る
+      };
+
+      await api.post('/products', payload);
 
       Alert.alert('成功', '新しいグッズを作成しました。');
       navigation.goBack();
@@ -151,27 +123,41 @@ const ProductCreateScreen: React.FC = () => {
             placeholderTextColor="#888"
           />
 
-          {/* 10. ★ 画像URL入力欄を削除し、画像選択UIに変更 */}
+          {/* ★ 画像選択ボタン */}
           <Text style={styles.label}>画像 (任意)</Text>
           <TouchableOpacity
             style={styles.imagePickerButton}
-            onPress={handleSelectImage}
+            onPress={selectImage}
+            disabled={isUploading} // アップロード中は押せない
           >
             <Text style={styles.imagePickerButtonText}>
-              {image ? '画像を変更' : '画像を選択'}
+              {imageUri ? '画像を変更' : '画像を選択'}
             </Text>
           </TouchableOpacity>
 
-          {/* 11. ★ 画像プレビュー */}
-          {image && image.uri && (
-            <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+          {/* ★ アップロード中のインジケータ */}
+          {isUploading && (
+            <ActivityIndicator
+              size="small"
+              color="#0A84FF"
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {/* ★ 画像プレビュー */}
+          {imageUri && (
+            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
           )}
 
           {loading ? (
             <ActivityIndicator size="large" style={styles.buttonSpacing} />
           ) : (
             <View style={styles.buttonSpacing}>
-              <Button title="グッズを作成" onPress={handleSubmit} />
+              <Button
+                title="グッズを作成"
+                onPress={handleSubmit}
+                disabled={isUploading}
+              />
             </View>
           )}
         </View>
@@ -180,7 +166,6 @@ const ProductCreateScreen: React.FC = () => {
   );
 };
 
-// 12. ★ スタイルを追加
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -215,7 +200,6 @@ const styles = StyleSheet.create({
   buttonSpacing: {
     marginTop: 20,
   },
-  // --- ↓↓↓ ここから追加 ↓↓↓ ---
   imagePickerButton: {
     backgroundColor: '#0A84FF',
     padding: 15,
@@ -235,7 +219,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     resizeMode: 'cover',
   },
-  // --- ↑↑↑ ここまで追加 ---
 });
 
 export default ProductCreateScreen;

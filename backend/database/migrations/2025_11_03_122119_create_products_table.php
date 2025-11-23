@@ -14,20 +14,20 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $table) {
             $table->id();
 
-            // ↓↓↓ ここから追記 ↓↓↓
-
-            $table->string('name'); // グッズ名
-            $table->text('description'); // グッズ詳細
+            $table->string('name');        // グッズ名
+            $table->text('description');   // グッズ詳細
             $table->unsignedInteger('price'); // 価格
             $table->unsignedInteger('stock'); // 在庫数
-            $table->string('image_url')->nullable(); // 商品画像URL (後でS3などに変更も可)
 
-            // 'role'が'artist'のユーザーIDが入ることを想定
-            $table->foreignId('artist_id')->constrained('users');
+            // ★ 統合: 購入制限 (null = 無制限)
+            $table->integer('limit_per_user')->nullable();
 
-            // ↑↑↑ ここまで追記 ↑↑↑
+            $table->string('image_url')->nullable(); // 商品画像URL
 
-            $table->timestamps(); // created_at と updated_at
+            // アーティストID (ユーザーが消えたらグッズも消える設定を追加)
+            $table->foreignId('artist_id')->constrained('users')->cascadeOnDelete();
+
+            $table->timestamps();
         });
     }
 

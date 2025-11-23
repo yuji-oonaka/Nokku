@@ -6,39 +6,29 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
-/**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
- */
 class UserFactory extends Factory
 {
-    /**
-     * The current password being used by the factory.
-     */
-    protected static ?string $password;
-
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            'real_name' => $this->faker->name(),
+            'nickname' => $this->faker->unique()->userName,
+            'email' => $this->faker->unique()->safeEmail(),
+            'role' => 'user',
+            'password' => Hash::make('password'),
+            // firebase_uid はSeederで上書きするのでダミーでOK
+            'firebase_uid' => Str::uuid(),
+            'image_url' => 'https://i.pravatar.cc/150?u=' . $this->faker->unique()->safeEmail(),
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
+    // アーティスト用の状態
+    public function artist(): Factory
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(function (array $attributes) {
+            return [
+                'role' => 'artist',
+            ];
+        });
     }
 }
