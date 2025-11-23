@@ -8,15 +8,15 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  TouchableOpacity, // 1. ★ インポート
-  Image, // 2. ★ インポート
+  TouchableOpacity,
+  Image,
 } from 'react-native';
-// 3. ★ react-native-image-picker をインポート
-import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import api from '../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Product } from '../api/queries';
+// ★ 追加: 自作フック
+import { useImageUpload } from '../hooks/useImageUpload';
 
 type ProductEditScreenRouteProp = RouteProp<
   { params: { productId: number } },
@@ -28,27 +28,29 @@ const ProductEditScreen = () => {
   const route = useRoute<ProductEditScreenRouteProp>();
   const { productId } = route.params;
 
-  // フォームの状態
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('');
   const [limitPerUser, setLimitPerUser] = useState('');
 
-  // 4. ★ 画像の State を2つに分離
-  // (a) APIから読み込んだ既存の画像URL
-  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
-  // (b) ユーザーが新しく選択した画像ファイル
-  const [newImage, setNewImage] = useState<Asset | null>(null);
+  // ★ 変更: useImageUpload フックを使用
+  const {
+    imageUri,
+    uploadedPath,
+    isUploading,
+    selectImage,
+    setImageFromUrl, // 既存画像のセット用
+  } = useImageUpload('product');
 
-  const [loading, setLoading] = useState(true); // 読み込み中
-  const [updating, setUpdating] = useState(false); // 更新中
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
+  // 1. 初回読み込み
   useEffect(() => {
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        // 型を指定して取得
         const response = await api.get<Product>(`/products/${productId}`);
         const product = response.data;
 
@@ -56,34 +58,24 @@ const ProductEditScreen = () => {
         setDescription(product.description);
         setPrice(String(product.price));
         setStock(String(product.stock));
-        // ★ 追加: limit_per_user があれば文字列に変換、なければ空文字
         setLimitPerUser(
           product.limit_per_user ? String(product.limit_per_user) : '',
         );
 
-        setExistingImageUrl(product.image_url);
+        // ★ 既存の画像URLをフックにセット (プレビュー用)
+        // uploadedPath は null のままなので、変更がなければ送信されない
+        setImageFromUrl(product.image_url);
       } catch (error) {
-        // ...
+        Alert.alert('エラー', '商品情報の取得に失敗しました');
+        navigation.goBack();
       } finally {
         setLoading(false);
       }
     };
     fetchProduct();
-  }, [productId, navigation]);
+  }, [productId, navigation, setImageFromUrl]);
 
-  // 6. ★ 画像選択のロジック (Create と同じ)
-  const handleSelectImage = async () => {
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      quality: 0.7,
-    });
-    if (result.didCancel || result.errorCode) return;
-    if (result.assets && result.assets.length > 0) {
-      setNewImage(result.assets[0]); // 👈 'newImage' state を更新
-    }
-  };
-
-  // 7. ★ 更新処理 (handleUpdate) を FormData 方式に大改造
+  // 7. 更新処理
   const handleUpdate = async () => {
     const priceNum = parseInt(price, 10);
     const stockNum = parseInt(stock, 10);
@@ -95,38 +87,24 @@ const ProductEditScreen = () => {
 
     setUpdating(true);
 
-    // 8. ★ FormData を作成
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('description', description);
-    formData.append('price', price);
-    formData.append('stock', stock);
-
-    // 9. ★【重要】Laravelに 'PUT' として扱わせるための "おまじない"
-    formData.append('_method', 'PUT');
-
-    if (limitPerUser) {
-      formData.append('limit_per_user', limitPerUser);
-    } else {
-      formData.append('limit_per_user', ''); // 制限解除
-    }
-
-    // 10. ★ 新しい画像 (newImage) が選択されている場合のみ、FormData に追加
-    if (newImage && newImage.uri && newImage.fileName && newImage.type) {
-      formData.append('image', {
-        uri: newImage.uri,
-        name: newImage.fileName,
-        type: newImage.type,
-      });
-    }
-
     try {
-      // 11. ★ 'api.put' ではなく 'api.post' を使う (Laravelの仕様のため)
-      await api.post(`/products/${productId}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // ★ 変更: FormData ではなく JSON で送信
+      // 画像パスは文字列で送れるため、通常の PUT リクエストが使える
+      const payload: any = {
+        name,
+        description,
+        price: priceNum,
+        stock: stockNum,
+        limit_per_user: limitPerUser ? parseInt(limitPerUser, 10) : null,
+      };
+
+      // ★ 画像が新しくアップロードされている場合のみ、image_url を送信
+      // (uploadedPath が null なら、画像は変更しない＝キーを送らない)
+      if (uploadedPath) {
+        payload.image_url = uploadedPath;
+      }
+
+      await api.put(`/products/${productId}`, payload);
 
       Alert.alert('成功', 'グッズ情報を更新しました。', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -143,27 +121,34 @@ const ProductEditScreen = () => {
     }
   };
 
-  // 12. ★ プレビュー用のURLを決定
-  // 新しい画像 (newImage) があればそれ、なければ既存の画像 (existingImageUrl) を使う
-  const previewUri = newImage?.uri || existingImageUrl;
-
   if (loading) {
-    // [・・・(ローディング表示は省略)・・・]
+    return (
+      <SafeAreaView style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
         <View style={styles.form}>
-          {/* --- Name, Description, Price, Stock の TextInput (変更なし) --- */}
           <Text style={styles.label}>グッズ名</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} />
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Tシャツ"
+            placeholderTextColor="#888"
+          />
 
           <Text style={styles.label}>グッズ説明</Text>
           <TextInput
             style={[styles.input, styles.textarea]}
             value={description}
             onChangeText={setDescription}
+            placeholder="グッズの詳細..."
+            placeholderTextColor="#888"
             multiline
           />
 
@@ -173,6 +158,7 @@ const ProductEditScreen = () => {
             value={price}
             onChangeText={setPrice}
             keyboardType="numeric"
+            placeholderTextColor="#888"
           />
 
           <Text style={styles.label}>在庫数</Text>
@@ -181,6 +167,7 @@ const ProductEditScreen = () => {
             value={stock}
             onChangeText={setStock}
             keyboardType="numeric"
+            placeholderTextColor="#888"
           />
 
           <Text style={styles.label}>お一人様購入制限 (任意)</Text>
@@ -193,18 +180,28 @@ const ProductEditScreen = () => {
             placeholderTextColor="#888"
           />
 
-          {/* 13. ★ 画像URL入力欄を削除し、画像選択UIに変更 */}
+          {/* ★ 画像選択 UI (Createと同じ) */}
           <Text style={styles.label}>画像</Text>
           <TouchableOpacity
             style={styles.imagePickerButton}
-            onPress={handleSelectImage}
+            onPress={selectImage}
+            disabled={isUploading}
           >
-            <Text style={styles.imagePickerButtonText}>画像を変更</Text>
+            <Text style={styles.imagePickerButtonText}>
+              {imageUri ? '画像を変更' : '画像を選択'}
+            </Text>
           </TouchableOpacity>
 
-          {/* 14. ★ 画像プレビュー (previewUri を使用) */}
-          {previewUri ? (
-            <Image source={{ uri: previewUri }} style={styles.imagePreview} />
+          {isUploading && (
+            <ActivityIndicator
+              size="small"
+              color="#0A84FF"
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
           ) : (
             <View style={[styles.imagePreview, styles.imagePlaceholder]} />
           )}
@@ -213,7 +210,11 @@ const ProductEditScreen = () => {
             <ActivityIndicator size="large" style={styles.buttonSpacing} />
           ) : (
             <View style={styles.buttonSpacing}>
-              <Button title="更新する" onPress={handleUpdate} />
+              <Button
+                title="更新する"
+                onPress={handleUpdate}
+                disabled={isUploading}
+              />
             </View>
           )}
         </View>
@@ -222,10 +223,11 @@ const ProductEditScreen = () => {
   );
 };
 
-// 15. ★ スタイルに画像関連のものを追加
 const styles = StyleSheet.create({
-  // [・・・(container, center, form, label, input, textarea は省略)・・・]
-  container: { flex: 1, backgroundColor: '#000000' },
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
   center: {
     flex: 1,
     justifyContent: 'center',
@@ -254,11 +256,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 20,
   },
-  textarea: { minHeight: 100, textAlignVertical: 'top' },
+  textarea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
   buttonSpacing: {
     marginTop: 20,
   },
-  // --- ↓↓↓ ここから追加 (Create と同じ) ↓↓↓ ---
   imagePickerButton: {
     backgroundColor: '#0A84FF',
     padding: 15,
@@ -279,7 +283,7 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   imagePlaceholder: {
-    backgroundColor: '#333', // 画像がない場合のプレースホルダ
+    backgroundColor: '#333',
   },
 });
 

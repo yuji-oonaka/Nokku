@@ -7,24 +7,20 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  TouchableOpacity, // 1. ★ TouchableOpacity をインポート
-  Platform, // 2. ★ Platform をインポート
+  TouchableOpacity,
+  Image,
+  ScrollView, // ★ 追加: ScrollViewをインポート
 } from 'react-native';
 import api from '../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// 3. ★ DateTimePicker をインポート
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import { useImageUpload } from '../hooks/useImageUpload';
 
-// 4. ★ 日付をフォーマットするヘルパー関数
-// (例: 2025-12-24 18:00:00)
 const formatDateTimeForAPI = (date: Date): string => {
-  // YYYY-MM-DD
   const dateString = date.toISOString().split('T')[0];
-  // HH:MM:SS
   const timeString = date.toLocaleTimeString('ja-JP', {
     hour12: false,
     hour: '2-digit',
@@ -36,34 +32,29 @@ const formatDateTimeForAPI = (date: Date): string => {
 
 const EventCreateScreen = () => {
   const navigation = useNavigation();
-  // (authToken は useAuth 導入により不要になっているはずなので削除)
-
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [venue, setVenue] = useState('');
-
-  // 5. ★ 日付入力ロジック
-  const [date, setDate] = useState(new Date()); // 選択された Date オブジェクト
-  const [showPicker, setShowPicker] = useState(false); // ピッカーの表示状態
-  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date'); // 'date'か'time'か
-
+  const [date, setDate] = useState(new Date());
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
   const [loading, setLoading] = useState(false);
 
-  // 6. ★ ピッカーで日付/時刻が選択されたときの処理
+  const { imageUri, uploadedPath, isUploading, selectImage } =
+    useImageUpload('event');
+
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    setShowPicker(false); // ピッカーを閉じる (Android は常時表示ではないため)
+    setShowPicker(false);
     if (selectedDate) {
-      setDate(selectedDate); // 選択された日付を State に保存
+      setDate(selectedDate);
     }
   };
 
-  // 7. ★ ピッカーを表示する関数
   const showMode = (currentMode: 'date' | 'time') => {
     setShowPicker(true);
     setPickerMode(currentMode);
   };
 
-  // 8. ★ 投稿処理 (handleSubmit) を修正
   const handleSubmit = async () => {
     if (!title || !description || !venue) {
       Alert.alert('エラー', 'すべての項目を入力してください。');
@@ -72,18 +63,18 @@ const EventCreateScreen = () => {
 
     setLoading(true);
     try {
-      // 9. ★ Date オブジェクトを API 用の文字列にフォーマット
       const formattedEventDate = formatDateTimeForAPI(date);
 
       await api.post('/events', {
         title: title,
         description: description,
         venue: venue,
-        event_date: formattedEventDate, // フォーマットした文字列を送信
+        event_date: formattedEventDate,
+        image_url: uploadedPath,
       });
 
       Alert.alert('成功', '新しいイベントを作成しました。');
-      navigation.goBack(); // マイページに戻る
+      navigation.goBack();
     } catch (error) {
       console.error('イベント作成エラー:', error);
       Alert.alert('エラー', 'イベントの作成に失敗しました。');
@@ -94,85 +85,111 @@ const EventCreateScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.form}>
-        <Text style={styles.label}>イベント名</Text>
-        <TextInput
-          style={styles.input}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="NOKKU SPECIAL LIVE"
-          placeholderTextColor="#888"
-        />
-
-        <Text style={styles.label}>イベント説明</Text>
-        <TextInput
-          style={[styles.input, styles.textarea]}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="イベントの詳細..."
-          placeholderTextColor="#888"
-          multiline
-        />
-
-        <Text style={styles.label}>会場</Text>
-        <TextInput
-          style={styles.input}
-          value={venue}
-          onChangeText={setVenue}
-          placeholder="Zepp Fukuoka"
-          placeholderTextColor="#888"
-        />
-
-        {/* 10. ★★★ 日付/時刻ピッカーのUI ★★★ */}
-        <Text style={styles.label}>開催日時</Text>
-        <TouchableOpacity
-          onPress={() => showMode('date')}
-          style={styles.datePickerButton}
-        >
-          <Text style={styles.datePickerText}>
-            日付を選択: {date.toLocaleDateString('ja-JP')}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => showMode('time')}
-          style={styles.datePickerButton}
-        >
-          <Text style={styles.datePickerText}>
-            時刻を選択:{' '}
-            {date.toLocaleTimeString('ja-JP', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
-        </TouchableOpacity>
-
-        {/* showPicker が true の時だけ DateTimePicker を表示 */}
-        {showPicker && (
-          <DateTimePicker
-            testID="dateTimePicker"
-            value={date}
-            mode={pickerMode}
-            is24Hour={true}
-            display="default" // Android は 'default', iOS は 'spinner' など
-            onChange={onDateChange}
+      {/* ★ 追加: ScrollView で全体をラップし、コンテンツ下部に余白を追加 */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={styles.form}>
+          <Text style={styles.label}>イベント名</Text>
+          <TextInput
+            style={styles.input}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="NOKKU SPECIAL LIVE"
+            placeholderTextColor="#888"
           />
-        )}
-        {/* ★★★ ここまで ★★★ */}
 
-        {loading ? (
-          <ActivityIndicator size="large" style={styles.buttonSpacing} />
-        ) : (
-          <View style={styles.buttonSpacing}>
-            <Button title="イベントを作成" onPress={handleSubmit} />
-          </View>
-        )}
-      </View>
+          <Text style={styles.label}>イベント説明</Text>
+          <TextInput
+            style={[styles.input, styles.textarea]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="イベントの詳細..."
+            placeholderTextColor="#888"
+            multiline
+          />
+
+          <Text style={styles.label}>会場</Text>
+          <TextInput
+            style={styles.input}
+            value={venue}
+            onChangeText={setVenue}
+            placeholder="Zepp Fukuoka"
+            placeholderTextColor="#888"
+          />
+
+          <Text style={styles.label}>開催日時</Text>
+          <TouchableOpacity
+            onPress={() => showMode('date')}
+            style={styles.datePickerButton}
+          >
+            <Text style={styles.datePickerText}>
+              日付を選択: {date.toLocaleDateString('ja-JP')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => showMode('time')}
+            style={styles.datePickerButton}
+          >
+            <Text style={styles.datePickerText}>
+              時刻を選択:{' '}
+              {date.toLocaleTimeString('ja-JP', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </TouchableOpacity>
+
+          {showPicker && (
+            <DateTimePicker
+              testID="dateTimePicker"
+              value={date}
+              mode={pickerMode}
+              is24Hour={true}
+              display="default"
+              onChange={onDateChange}
+            />
+          )}
+
+          <Text style={styles.label}>イベント画像 (任意)</Text>
+          <TouchableOpacity
+            style={styles.imagePickerButton}
+            onPress={selectImage}
+            disabled={isUploading}
+          >
+            <Text style={styles.imagePickerButtonText}>
+              {imageUri ? '画像を変更' : '画像を選択'}
+            </Text>
+          </TouchableOpacity>
+
+          {isUploading && (
+            <ActivityIndicator
+              size="small"
+              color="#0A84FF"
+              style={{ marginBottom: 10 }}
+            />
+          )}
+
+          {imageUri && (
+            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+          )}
+
+          {loading ? (
+            <ActivityIndicator size="large" style={styles.buttonSpacing} />
+          ) : (
+            <View style={styles.buttonSpacing}>
+              <Button
+                title="イベントを作成"
+                onPress={handleSubmit}
+                disabled={isUploading}
+              />
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// 11. ★ スタイルを更新
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -204,7 +221,6 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
-  // --- ★ 日付ピッカー用 ---
   datePickerButton: {
     backgroundColor: '#333333',
     borderRadius: 5,
@@ -216,9 +232,27 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
   },
-  // ---
   buttonSpacing: {
-    marginTop: 20, // 隙間を調整
+    marginTop: 20,
+  },
+  imagePickerButton: {
+    backgroundColor: '#0A84FF',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  imagePickerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 5,
+    marginBottom: 20,
+    resizeMode: 'cover',
   },
 });
 

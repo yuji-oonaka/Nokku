@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -33,8 +34,6 @@ const EventListScreen: React.FC = () => {
   } = useQuery({
     queryKey: ['events', activeTab],
     queryFn: () => fetchEvents(activeTab),
-    // ★ (FIX) キャッシュ有効期間を設定 (5分)
-    // これにより、タブ切り替え時に毎回「クルクル」(RefreshControl) が出るのを防ぎます
     staleTime: 1000 * 60 * 5,
   });
 
@@ -45,20 +44,44 @@ const EventListScreen: React.FC = () => {
   };
 
   const renderItem = ({ item }: { item: Event }) => (
-    <TouchableOpacity onPress={() => handleEventPress(item)}>
+    <TouchableOpacity
+      onPress={() => handleEventPress(item)}
+      activeOpacity={0.9}
+    >
       <View style={styles.eventItem}>
-        <Text style={styles.eventTitle}>{item.title}</Text>
-        <Text style={styles.eventVenue}>{item.venue}</Text>
-        <Text style={styles.eventDate}>
-          {new Date(item.event_date).toLocaleString('ja-JP')}
-        </Text>
+        {/* ★ 左側: イベント画像 (あれば表示) */}
+        {item.image_url ? (
+          <Image source={{ uri: item.image_url }} style={styles.eventImage} />
+        ) : (
+          <View style={[styles.eventImage, styles.imagePlaceholder]} />
+        )}
+
+        {/* ★ 右側: 情報エリア */}
+        <View style={styles.eventInfo}>
+          {/* 1. 主催者名 (テキストのみでシンプルに) */}
+          {item.artist && (
+            <Text style={styles.organizerNameSimple} numberOfLines={1}>
+              {item.artist.nickname} presents
+            </Text>
+          )}
+
+          {/* 2. イベント情報 */}
+          <Text style={styles.eventTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={styles.eventVenue} numberOfLines={1}>
+            📍 {item.venue}
+          </Text>
+          <Text style={styles.eventDate}>
+            📅 {new Date(item.event_date).toLocaleString('ja-JP')}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* タブ切り替えUI */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[
@@ -96,9 +119,7 @@ const EventListScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* コンテンツ表示 */}
       {isLoading ? (
-        // 初回ロード中のみ中央スピナーを表示 (タブの下に出る)
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#FFFFFF" />
         </View>
@@ -112,7 +133,6 @@ const EventListScreen: React.FC = () => {
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
           contentContainerStyle={styles.listContent}
-          // データが空の場合の表示
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emptyText}>
@@ -122,7 +142,6 @@ const EventListScreen: React.FC = () => {
               </Text>
             </View>
           }
-          // 引っ張って更新 (手動更新の時だけクルクルが出る)
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -173,20 +192,46 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
+  // カードレイアウト
   eventItem: {
     backgroundColor: '#1C1C1E',
-    padding: 15,
-    marginVertical: 8,
+    marginVertical: 6,
     marginHorizontal: 10,
     borderRadius: 8,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    height: 110,
+  },
+  eventImage: {
+    width: 110,
+    height: '100%',
+    resizeMode: 'cover',
+    backgroundColor: '#333',
+  },
+  imagePlaceholder: {
+    backgroundColor: '#333',
+  },
+  eventInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'center',
+  },
+  // ★ シンプルな主催者名スタイル
+  organizerNameSimple: {
+    color: '#AAA',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   eventTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    marginBottom: 4,
+    flex: 1,
   },
-  eventVenue: { fontSize: 16, color: '#BBBBBB', marginTop: 5 },
-  eventDate: { fontSize: 14, color: '#888888', marginTop: 5 },
+  eventVenue: { fontSize: 12, color: '#BBBBBB', marginBottom: 2 },
+  eventDate: { fontSize: 12, color: '#0A84FF', fontWeight: 'bold' },
   emptyText: {
     color: '#FFFFFF',
     textAlign: 'center',

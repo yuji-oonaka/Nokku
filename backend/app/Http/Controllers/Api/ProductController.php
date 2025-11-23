@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage; // use されていることを確認
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
@@ -15,15 +15,31 @@ class ProductController extends Controller
      */
     public function index()
     {
-        $products = Product::withCount('favoritedBy as likes_count')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        // 現在のユーザーIDを取得（未ログインなら null）
+        $userId = Auth::id();
+
+        $query = Product::with('artist')
+            ->withCount('favoritedBy as likes_count')
+            ->orderBy('created_at', 'desc');
+
+        // ログインしている場合、自分が「いいね」しているかどうかのフラグ (is_liked) を追加
+        if ($userId) {
+            $query->withExists(['favoritedBy as is_liked' => function ($q) use ($userId) {
+                $q->where('user_id', $userId);
+            }]);
+        }
+
+        $products = $query->get();
+
+        // JSONレスポンスの整形（必要に応じて）
+        // ここで is_liked がない場合（未ログイン時）は false をセットするなどの加工も可能ですが、
+        // フロントエンドの型定義で optional (?) になっているため、このままでも動作します。
+
         return response()->json($products);
     }
 
     /**
      * 新しいグッズを作成 (store)
-     * (ここは既に修正済みです)
      */
     public function store(Request $request)
     {
@@ -38,17 +54,12 @@ class ProductController extends Controller
             'description' => 'required|string',
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // image (ファイル)
             'limit_per_user' => 'nullable|integer|min:1',
+            'image_url' => 'nullable|string',
         ]);
 
         $productData = $validatedData;
         $productData['artist_id'] = $user->id;
-
-        if ($request->hasFile('image')) {
-            $path = Storage::disk('public')->put('products', $request->file('image'));
-            $productData['image_url'] = $path;
-        }
 
         $product = Product::create($productData);
 
@@ -57,19 +68,24 @@ class ProductController extends Controller
 
     /**
      * 特定のグッズ詳細を取得 (show)
-     * (変更なし)
      */
     public function show(Product $product)
     {
-        // ★ 詳細取得時もカウントを追加 (loadCount を使用)
-        $product->loadCount('favoritedBy as likes_count');
+        $userId = Auth::id();
+
+        $product->load(['artist'])
+            ->loadCount('favoritedBy as likes_count');
+
+        // showでも is_liked を判定
+        $product->is_liked = $userId
+            ? $product->favoritedBy()->where('user_id', $userId)->exists()
+            : false;
+
         return response()->json($product);
     }
 
     /**
      * グッズ情報を更新 (update)
-     *
-     * ★★★ ここからが修正箇所です ★★★
      */
     public function update(Request $request, Product $product)
     {
@@ -78,29 +94,15 @@ class ProductController extends Controller
             return response()->json(['message' => 'グッズの編集権限がありません'], 403);
         }
 
-        // 4. ★ バリデーションを修正 (store と同じ)
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'price' => 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'limit_per_user' => 'nullable|integer|min:1',
+            'image_url' => 'nullable|string',
         ]);
 
-        // 5. ★ 画像更新ロジックを追加
-        if ($request->hasFile('image')) {
-            // 5-a. 既存の画像があれば削除
-            if ($product->image_url) {
-                Storage::disk('public')->delete($product->image_url);
-            }
-
-            // 5-b. 新しい画像を保存
-            $path = Storage::disk('public')->put('products', $request->file('image'));
-            $validatedData['image_url'] = $path; // 👈 'image_url' カラムにパスをセット
-        }
-
-        // データを更新
         $product->update($validatedData);
 
         return response()->json($product);
@@ -108,8 +110,6 @@ class ProductController extends Controller
 
     /**
      * グッズを削除 (destroy)
-     *
-     * ★★★ ここも修正箇所です ★★★
      */
     public function destroy(Product $product)
     {
@@ -119,12 +119,10 @@ class ProductController extends Controller
             return response()->json(['message' => 'このグッズを削除する権限がありません'], 403);
         }
 
-        // 6. ★ 画像ファイルも Storage から削除
         if ($product->image_url) {
             Storage::disk('public')->delete($product->image_url);
         }
 
-        // DBからレコードを削除
         $product->delete();
 
         return response()->json(null, 204);

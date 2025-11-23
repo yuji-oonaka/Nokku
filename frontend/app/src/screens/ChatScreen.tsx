@@ -8,17 +8,21 @@ import {
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
-  Platform,
+  Platform, // Platformをインポート
   Alert,
   Modal,
   TouchableWithoutFeedback,
+  Image,
+  StatusBar, // ステータスバーの高さを取得するためにインポート
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import firestore, {
   FirebaseFirestoreTypes,
 } from '@react-native-firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// ★ 変更1: SafeAreaViewではなく、Insetsを取得するフックを使う
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
 
 type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
@@ -29,6 +33,7 @@ interface ChatMessage {
   createdAt: FirebaseFirestoreTypes.Timestamp;
   userId: number;
   userName: string;
+  userImage?: string;
   deletedAt?: FirebaseFirestoreTypes.Timestamp;
   replyTo?: {
     id: string;
@@ -45,14 +50,15 @@ const ChatScreen = () => {
   const { eventId, threadId } = route.params;
   const { user: authUser } = useAuth();
 
+  // ★ 変更2: 画面の安全領域（ノッチやホームバー）の高さを取得
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight ? useHeaderHeight() : 0;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
-
-  // ★ ページネーション用の件数管理 (初期値100)
   const [limitCount, setLimitCount] = useState(100);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(
     null,
@@ -66,13 +72,12 @@ const ChatScreen = () => {
     .doc(threadId)
     .collection('messages');
 
-  // 1. リアルタイム購読 (limitCount に依存)
   useEffect(() => {
     if (!eventId) return;
 
     const subscriber = messagesRef
       .orderBy('createdAt', 'desc')
-      .limit(limitCount) // ★ ここで件数を制限
+      .limit(limitCount)
       .onSnapshot(
         querySnapshot => {
           if (!querySnapshot) return;
@@ -84,6 +89,7 @@ const ChatScreen = () => {
               createdAt: data.createdAt,
               userId: data.userId,
               userName: data.userName,
+              userImage: data.userImage,
               deletedAt: data.deletedAt,
               replyTo: data.replyTo,
               reactions: data.reactions,
@@ -91,7 +97,7 @@ const ChatScreen = () => {
           });
           setMessages(fetchedMessages);
           setLoading(false);
-          setIsLoadingMore(false); // 追加読み込み完了
+          setIsLoadingMore(false);
         },
         error => {
           console.error('Firestore error:', error);
@@ -100,44 +106,32 @@ const ChatScreen = () => {
         },
       );
     return () => subscriber();
-  }, [eventId, limitCount]); // ★ limitCount が変わると再購読される
+  }, [eventId, limitCount]);
 
-  // ★ 過去ログ読み込み (スクロールで呼ばれる)
   const loadMoreMessages = () => {
     if (!loading && !isLoadingMore && messages.length >= limitCount) {
-      // 現在の表示数が limitCount に達している場合のみ、さらに読み込む
-      // (達していない＝もう過去ログがない)
-      console.log('Load more messages...');
       setIsLoadingMore(true);
-      setLimitCount(prev => prev + 100); // 100件増やす
+      setLimitCount(prev => prev + 100);
     }
   };
 
-  // ★ 日付フォーマット関数 (改善版)
   const formatMessageTime = (timestamp: FirebaseFirestoreTypes.Timestamp) => {
     if (!timestamp) return '';
     const date = timestamp.toDate();
     const now = new Date();
-
     const isToday = date.toDateString() === now.toDateString();
     const isThisYear = date.getFullYear() === now.getFullYear();
-
     const timeString = date.toLocaleTimeString('ja-JP', {
       hour: '2-digit',
       minute: '2-digit',
     });
 
-    if (isToday) {
-      return timeString; // "14:30"
-    } else if (isThisYear) {
-      // "11/19 14:30"
+    if (isToday) return timeString;
+    if (isThisYear)
       return `${date.getMonth() + 1}/${date.getDate()} ${timeString}`;
-    } else {
-      // "2024/11/19 14:30"
-      return `${date.getFullYear()}/${
-        date.getMonth() + 1
-      }/${date.getDate()} ${timeString}`;
-    }
+    return `${date.getFullYear()}/${
+      date.getMonth() + 1
+    }/${date.getDate()} ${timeString}`;
   };
 
   const handleSend = useCallback(() => {
@@ -148,6 +142,7 @@ const ChatScreen = () => {
       createdAt: firestore.Timestamp.now(),
       userId: authUser.id,
       userName: authUser.nickname,
+      userImage: authUser.image_url || null,
     };
 
     if (replyingTo) {
@@ -238,126 +233,148 @@ const ChatScreen = () => {
     return (
       <View
         style={[
-          styles.messageContainer,
-          isMyMessage
-            ? styles.myMessageContainer
-            : styles.otherMessageContainer,
+          styles.rowContainer,
+          isMyMessage ? styles.rowRight : styles.rowLeft,
         ]}
       >
-        {item.replyTo && !isDeleted && (
-          <View style={styles.replyBubble}>
-            <Text style={styles.replySender}>@{item.replyTo.userName}</Text>
-            <Text numberOfLines={1} style={styles.replyText}>
-              {item.replyTo.text}
-            </Text>
+        {!isMyMessage && (
+          <View style={styles.avatarContainer}>
+            {item.userImage ? (
+              <Image source={{ uri: item.userImage }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]} />
+            )}
           </View>
         )}
 
-        <TouchableOpacity
-          onLongPress={() => onLongPressMessage(item)}
-          activeOpacity={0.8}
-          style={[
-            styles.messageBubble,
-            isMyMessage && styles.myMessageBubble,
-            isDeleted && styles.deletedBubble,
-          ]}
-        >
-          {!isDeleted && (
-            <Text
-              style={[
-                styles.messageSender,
-                isMyMessage && styles.myMessageSender,
-              ]}
-            >
-              {item.userName}
-            </Text>
+        <View style={styles.bubbleWrapper}>
+          {!isMyMessage && !isDeleted && (
+            <Text style={styles.messageSenderName}>{item.userName}</Text>
           )}
 
-          {isDeleted ? (
-            <Text style={styles.deletedText}>
-              🚫 メッセージは削除されました
-            </Text>
-          ) : (
-            renderTextWithMentions(item.text)
-          )}
-
-          {/* ★ 日付フォーマット関数を使用 */}
-          <Text style={styles.messageTime}>
-            {formatMessageTime(item.createdAt)}
-          </Text>
-
-          {item.reactions &&
-            Object.keys(item.reactions).length > 0 &&
-            !isDeleted && (
-              <View style={styles.reactionsContainer}>
-                {Object.values(item.reactions).map((emoji, idx) => (
-                  <Text key={idx} style={styles.reactionEmoji}>
-                    {emoji}
-                  </Text>
-                ))}
+          <TouchableOpacity
+            onLongPress={() => onLongPressMessage(item)}
+            activeOpacity={0.8}
+            style={[
+              styles.messageBubble,
+              isMyMessage ? styles.myMessageBubble : styles.otherMessageBubble,
+              isDeleted && styles.deletedBubble,
+            ]}
+          >
+            {item.replyTo && !isDeleted && (
+              <View style={styles.replyBubble}>
+                <Text style={styles.replySender}>@{item.replyTo.userName}</Text>
+                <Text numberOfLines={1} style={styles.replyText}>
+                  {item.replyTo.text}
+                </Text>
               </View>
             )}
-        </TouchableOpacity>
+
+            {isDeleted ? (
+              <Text style={styles.deletedText}>
+                🚫 メッセージは削除されました
+              </Text>
+            ) : (
+              renderTextWithMentions(item.text)
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.metaContainer}>
+            {item.reactions &&
+              Object.keys(item.reactions).length > 0 &&
+              !isDeleted && (
+                <View style={styles.reactionsContainer}>
+                  {Object.values(item.reactions).map((emoji, idx) => (
+                    <Text key={idx} style={styles.reactionEmoji}>
+                      {emoji}
+                    </Text>
+                  ))}
+                </View>
+              )}
+            <Text style={styles.messageTime}>
+              {formatMessageTime(item.createdAt)}
+            </Text>
+          </View>
+        </View>
       </View>
     );
   };
 
   if (loading && messages.length === 0) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      // ★ 変更3: ここもSafeAreaViewではなくView + paddingTopで調整
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color="#0A84FF" />
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={item => item.id}
-        inverted
-        // ★ ページネーション用設定
-        onEndReached={loadMoreMessages} // リストの端（過去ログ側）に来たら発火
-        onEndReachedThreshold={0.1} // 端の少し手前で発火
-        ListFooterComponent={
-          // 読み込み中にスピナーを表示
-          isLoadingMore ? (
-            <ActivityIndicator
-              size="small"
-              color="#888"
-              style={{ padding: 10 }}
-            />
-          ) : null
-        }
-      />
-
-      {replyingTo && (
-        <View style={styles.replyingBar}>
-          <View>
-            <Text style={styles.replyingTitle}>
-              {replyingTo.userName} への返信
-            </Text>
-            <Text numberOfLines={1} style={styles.replyingMessage}>
-              {replyingTo.text}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => setReplyingTo(null)}>
-            <Text style={styles.cancelReply}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
+    // ★ 変更4: 一番外側をSafeAreaViewではなく通常のViewにし、上部の余白(insets.top)を付与
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        style={{ flex: 1 }}
+        // ★修正: Androidでも 'padding' を強制的に適用します
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        // iOSの場合、ヘッダーの高さ分（約60〜90）をオフセット
+        keyboardVerticalOffset={
+          Platform.OS === 'ios'
+            ? headerHeight
+            : headerHeight + (StatusBar.currentHeight || 0)
+        }
       >
-        <View style={styles.inputContainer}>
+        <FlatList
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          inverted
+          contentContainerStyle={{ paddingVertical: 10 }}
+          onEndReached={loadMoreMessages}
+          onEndReachedThreshold={0.1}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <ActivityIndicator
+                size="small"
+                color="#888"
+                style={{ padding: 10 }}
+              />
+            ) : null
+          }
+        />
+
+        {replyingTo && (
+          <View style={styles.replyingBar}>
+            <View>
+              <Text style={styles.replyingTitle}>
+                {replyingTo.userName} への返信
+              </Text>
+              <Text numberOfLines={1} style={styles.replyingMessage}>
+                {replyingTo.text}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyingTo(null)}>
+              <Text style={styles.cancelReply}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ★ 変更6: 入力エリアの下部に、ホームバーの高さ分(insets.bottom)の余白を与える */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              // ★修正: 'padding'挙動にする場合、iOSのみ下底の余白(Home Indicator)を確保
+              // AndroidはKeyboardAvoidingViewが押し上げるので余計なpaddingは不要
+              paddingBottom:
+                Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10,
+            },
+          ]}
+        >
           <TextInput
             style={styles.input}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="メッセージを入力... (@でメンション)"
+            placeholder="メッセージを入力..."
             placeholderTextColor="#888"
             multiline
           />
@@ -397,16 +414,13 @@ const ChatScreen = () => {
                   </TouchableOpacity>
                 ))}
               </View>
-
               <View style={styles.menuDivider} />
-
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => handleMenuAction('reply')}
               >
                 <Text style={styles.menuText}>↩️ 返信する</Text>
               </TouchableOpacity>
-
               {selectedMessage?.userId === authUser?.id ? (
                 <TouchableOpacity
                   style={styles.menuItem}
@@ -430,7 +444,7 @@ const ChatScreen = () => {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -442,46 +456,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#000000',
   },
-  messageContainer: {
+  rowContainer: {
+    flexDirection: 'row',
+    marginVertical: 6,
     paddingHorizontal: 10,
-    marginVertical: 4,
-    maxWidth: '80%',
+    alignItems: 'flex-start',
   },
-  otherMessageContainer: { alignSelf: 'flex-start' },
-  myMessageContainer: { alignSelf: 'flex-end' },
+  rowRight: {
+    justifyContent: 'flex-end',
+  },
+  rowLeft: {
+    justifyContent: 'flex-start',
+  },
+  avatarContainer: {
+    marginRight: 8,
+    marginTop: 0,
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#333',
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#555',
+  },
+  bubbleWrapper: {
+    maxWidth: '70%',
+  },
+  messageSenderName: {
+    fontSize: 11,
+    color: '#CCC',
+    marginBottom: 2,
+    marginLeft: 4,
+  },
   messageBubble: {
     padding: 10,
-    borderRadius: 15,
-    backgroundColor: '#1C1C1E',
+    borderRadius: 14,
+    minWidth: 40,
   },
-  myMessageBubble: { backgroundColor: '#0A84FF' },
+  myMessageBubble: {
+    backgroundColor: '#0A84FF',
+    borderTopRightRadius: 2,
+  },
+  otherMessageBubble: {
+    backgroundColor: '#2C2C2E',
+    borderTopLeftRadius: 2,
+  },
   deletedBubble: { backgroundColor: '#333', opacity: 0.8 },
-  messageSender: { fontSize: 12, color: '#BBBBBB', marginBottom: 2 },
-  myMessageSender: { color: '#EFEFEF' },
-  messageText: { fontSize: 16, color: '#FFFFFF' },
+
+  messageText: { fontSize: 15, color: '#FFFFFF', lineHeight: 20 },
   mentionText: { fontWeight: 'bold', color: '#64D2FF' },
   deletedText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
+
+  metaContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 2,
+    flexWrap: 'wrap',
+    marginRight: 2,
+  },
   messageTime: {
     fontSize: 10,
-    color: '#EEE',
-    textAlign: 'right',
-    marginTop: 4,
-    opacity: 0.7,
+    color: '#666',
+    marginLeft: 4,
   },
+
   replyBubble: {
-    backgroundColor: '#333',
+    backgroundColor: 'rgba(0,0,0,0.2)',
     borderLeftWidth: 3,
-    borderLeftColor: '#888',
+    borderLeftColor: '#CCC',
     padding: 5,
-    marginBottom: 2,
+    marginBottom: 5,
     borderRadius: 4,
-    opacity: 0.8,
   },
-  replySender: { fontSize: 11, color: '#AAA', fontWeight: 'bold' },
+  replySender: { fontSize: 11, color: '#EEE', fontWeight: 'bold' },
   replyText: { fontSize: 12, color: '#DDD' },
+
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
+    paddingHorizontal: 10, // 上下のパディングはインラインスタイルで制御するため削除
+    paddingTop: 10, // 上だけ固定
     backgroundColor: '#1C1C1E',
     borderTopWidth: 1,
     borderTopColor: '#333',
@@ -505,7 +561,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 15,
     height: 40,
-    marginBottom: 2,
+    marginBottom: 2, // ボタンの位置微調整
   },
   sendButtonDisabled: { backgroundColor: '#555' },
   sendButtonText: { color: '#FFFFFF', fontWeight: 'bold' },
@@ -523,13 +579,13 @@ const styles = StyleSheet.create({
   cancelReply: { color: '#AAA', fontSize: 20, padding: 5 },
   reactionsContainer: {
     flexDirection: 'row',
-    marginTop: 5,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 5,
+    backgroundColor: '#333',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 10,
+    marginRight: 4,
   },
-  reactionEmoji: { fontSize: 12, marginHorizontal: 1 },
+  reactionEmoji: { fontSize: 10, marginHorizontal: 1 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

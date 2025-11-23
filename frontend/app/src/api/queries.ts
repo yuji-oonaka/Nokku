@@ -7,7 +7,17 @@ interface User {
   id: number;
   nickname: string;
   role?: 'user' | 'artist' | 'admin';
+  // ★ 修正: DBカラム名に合わせる
+  image_url?: string | null;
 }
+
+export interface PublicArtistInfo {
+  id: number;
+  nickname: string;
+  // ★ 修正: DBカラム名に合わせる (profile_image_url -> image_url)
+  image_url: string | null;
+}
+
 export interface Post {
   id: number;
   title: string;
@@ -38,6 +48,8 @@ export interface Event {
   venue: string;
   event_date: string;
   artist_id: number;
+  image_url: string | null;
+  artist?: PublicArtistInfo;
 }
 export const fetchEvents = async (
   filter: 'upcoming' | 'past',
@@ -78,6 +90,10 @@ export interface Product {
   price: number;
   stock: number;
   image_url: string | null;
+  is_liked?: boolean;
+  likes_count: number;
+  limit_per_user: number | null;
+  artist?: PublicArtistInfo;
 }
 export const fetchProducts = async (): Promise<Product[]> => {
   const response = await api.get<Product[]>('/products');
@@ -92,12 +108,13 @@ export const fetchProductById = async (productId: number): Promise<Product> => {
 export interface Artist {
   id: number;
   nickname: string;
+  // ★ 修正
+  image_url?: string | null;
 }
 export interface ArtistListResponse {
   artists: Artist[];
   following_ids: number[];
 }
-// ★ (FIX) 検索引数 (search?: string) を復活させました
 export const fetchArtists = async (
   search?: string,
 ): Promise<ArtistListResponse> => {
@@ -119,10 +136,14 @@ export interface ArtistProductMin {
   id: number;
   name: string;
   price: number;
+  image_url: string | null;
 }
 export interface ArtistProfileData {
   id: number;
   nickname: string;
+  // ★ 修正
+  image_url?: string | null;
+  bio?: string;
   posts: ArtistPostMin[];
   events: ArtistEventMin[];
   products: ArtistProductMin[];
@@ -145,11 +166,9 @@ export const fetchProfile = async (
     const response = await api.get<DbUser>('/profile');
     return response.data;
   } catch (error: any) {
-    // ★ 404 (Not Found) の場合は、まだDB作成中かもしれないのでエラーを投げる
     if (error.response && error.response.status === 404) {
-      throw error; // これで React Query がリトライを発動します
+      throw error;
     }
-    // その他のエラーはログに出して null
     console.error('fetchProfile: /profile の取得に失敗', error.response?.data);
     return null;
   }
@@ -165,6 +184,7 @@ export interface UserTicket {
     title: string;
     venue: string;
     event_date: string;
+    image_url?: string | null;
   };
   ticket_type: {
     name: string;
@@ -205,19 +225,6 @@ export const fetchMyOrders = async (): Promise<Order[]> => {
   const response = await api.get<Order[]>('/my-orders');
   return response.data;
 };
-
-// queries.ts の Product 定義
-export interface Product {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  stock: number;
-  image_url: string | null;
-  is_liked?: boolean;
-  likes_count: number;
-  limit_per_user: number | null;
-}
 
 export const fetchMyFavorites = async (): Promise<Product[]> => {
   const response = await api.get<Product[]>('/my-favorites');

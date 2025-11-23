@@ -14,11 +14,24 @@ return new class extends Migration
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
 
-            // 外部キー制約 (usersテーブルのidを参照)
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            // 1. 投稿者 (usersテーブルのidを参照)
+            // 投稿者が削除されたら、その投稿も一緒に消える (cascadeOnDelete)
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
 
-            $table->text('content'); // 投稿本文
-            $table->string('image_url')->nullable(); // 添付画像 (任意)
+            // 2. タイトル (統合: add_title...)
+            $table->string('title');
+
+            // 3. 本文
+            $table->text('content');
+
+            // 4. 添付画像URL (任意)
+            $table->string('image_url')->nullable();
+
+            // 5. 公開日時 (予約投稿用) (統合: add_publishing_dates...)
+            $table->timestamp('publish_at')->nullable();
+
+            // 6. 有効期限 (自動で消す用) (統合: add_publishing_dates...)
+            $table->timestamp('expires_at')->nullable();
 
             $table->timestamps();
         });

@@ -20,7 +20,6 @@ import { useStripe } from '@stripe/stripe-react-native';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, fetchProductById } from '../api/queries';
-// 1. ★ SoundService をインポート
 import SoundService from '../services/SoundService';
 
 type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
@@ -146,7 +145,6 @@ const ProductDetailScreen: React.FC = () => {
       }
     },
     onSuccess: data => {
-      // 2. ★ 注文成功音！
       SoundService.playSuccess();
       if (data.paymentType === 'stripe') {
         Alert.alert('購入完了', 'ありがとうございます。購入が完了しました。');
@@ -162,7 +160,6 @@ const ProductDetailScreen: React.FC = () => {
     },
     onError: (err: any) => {
       if (err.message === 'Canceled') return;
-      // 3. ★ 注文エラー音
       SoundService.playError();
       const message =
         err.response?.data?.message ||
@@ -201,7 +198,6 @@ const ProductDetailScreen: React.FC = () => {
       return;
     }
 
-    // 4. ★ 注文ボタンを押した感触
     SoundService.triggerHaptic('impactMedium');
 
     createOrderMutation.mutate({
@@ -216,12 +212,10 @@ const ProductDetailScreen: React.FC = () => {
     if (!product) return;
     if (quantity >= product.stock) return;
     if (product.limit_per_user != null && quantity >= product.limit_per_user) {
-      // 5. ★ 制限に引っかかった時のフィードバック (エラー音または振動)
       SoundService.triggerHaptic('notificationWarning');
       Alert.alert('制限', `お一人様 ${product.limit_per_user} 点までです。`);
       return;
     }
-    // 6. ★ プラスボタンの軽いフィードバック
     SoundService.triggerHaptic('impactLight');
     setQuantity(prev => prev + 1);
   };
@@ -246,9 +240,7 @@ const ProductDetailScreen: React.FC = () => {
     createOrderMutation.isPending ||
     (deliveryMethod === 'mail' && !isAddressComplete);
 
-  // ★ ハートボタンのハンドラ
   const handleFavoritePress = () => {
-    // 7. ★ いいねボタンの「プチッ」という感触
     SoundService.triggerHaptic('impactLight');
     toggleFavoriteMutation.mutate();
   };
@@ -291,12 +283,20 @@ const ProductDetailScreen: React.FC = () => {
         )}
 
         <View style={styles.infoContainer}>
+          {/* ★★★ 追加: アーティスト名 (シンプル表示) ★★★ */}
+          {product?.artist && (
+            <Text style={styles.organizerNameSimple} numberOfLines={1}>
+              {product.artist.nickname}
+            </Text>
+          )}
+          {/* ★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
+
           <View style={styles.headerRow}>
             <Text style={styles.productName}>{product?.name}</Text>
             {user.role !== 'artist' && user.role !== 'admin' && (
               <TouchableOpacity
                 style={styles.heartButton}
-                onPress={handleFavoritePress} // ★ ここで使用
+                onPress={handleFavoritePress}
               >
                 <View style={styles.heartContainer}>
                   <Text style={styles.heartIcon}>
@@ -347,7 +347,6 @@ const ProductDetailScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         )}
-        {/* ... (Options, Button) ... */}
         {!isSoldOut && (
           <View style={styles.optionsSection}>
             <Text style={styles.groupTitle}>お受取り方法</Text>
@@ -492,6 +491,13 @@ const styles = StyleSheet.create({
   productImage: { width: '100%', height: 300, resizeMode: 'cover' },
   imagePlaceholder: { backgroundColor: '#333' },
   infoContainer: { padding: 20, paddingBottom: 0 },
+  // ★ 主催者名のスタイル (シンプル)
+  organizerNameSimple: {
+    color: '#AAA',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

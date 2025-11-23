@@ -61,7 +61,7 @@ Route::middleware('firebase.auth')->group(function () {
     Route::put('/profile', [UserController::class, 'update']);
 
     // --- その他 ---
-    Route::post('/upload-image', [ImageUploadController::class, 'store']);
+    Route::post('/upload', [ImageUploadController::class, 'store']);
     Route::post('/inquiries', [InquiryController::class, 'store']);
 
     // --- アーティスト関連 ---

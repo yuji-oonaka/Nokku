@@ -7,20 +7,28 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  ScrollView, // 1. ★ ScrollView をインポート
+  ScrollView,
+  TouchableOpacity,
+  Image,
 } from 'react-native';
 import api from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useImageUpload } from '../hooks/useImageUpload';
+// ★ 追加
+import { useQueryClient } from '@tanstack/react-query';
 
 const ProfileEditScreen = () => {
-  // 2. ★ 既存の State
+  // ★ firebaseUser を取得
+  const { user, firebaseUser, loading: authLoading } = useAuth();
+  // ★ QueryClient を取得
+  const queryClient = useQueryClient();
+
   const [realName, setRealName] = useState('');
   const [nickname, setNickname] = useState('');
+  // ... (他のstateは省略) ...
   const [email, setEmail] = useState('');
-
-  // 3. ★ 住所用の State を追加
   const [phone, setPhone] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [prefecture, setPrefecture] = useState('');
@@ -31,33 +39,30 @@ const ProfileEditScreen = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { imageUri, uploadedPath, isUploading, selectImage, setImageFromUrl } =
+    useImageUpload('avatar');
 
-  // 4. ★ useFocusEffect を修正
   useFocusEffect(
     useCallback(() => {
       if (user) {
         setRealName(user.real_name || '');
         setNickname(user.nickname || '');
         setEmail(user.email || '');
-
-        // 5. ★ 住所 State をセット (DBのカラム名に合わせる)
         setPhone(user.phone_number || '');
         setPostalCode(user.postal_code || '');
         setPrefecture(user.prefecture || '');
         setCity(user.city || '');
         setAddress1(user.address_line1 || '');
         setAddress2(user.address_line2 || '');
-
+        setImageFromUrl(user?.image_url || null);
         setLoading(false);
       } else if (!authLoading) {
         setLoading(false);
         Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
       }
-    }, [user, authLoading]),
+    }, [user, authLoading, setImageFromUrl]),
   );
 
-  // 6. ★ handleUpdate を修正
   const handleUpdate = async () => {
     if (realName.trim().length === 0 || nickname.trim().length === 0) {
       Alert.alert('エラー', '本名とニックネームを入力してください。');
@@ -66,8 +71,7 @@ const ProfileEditScreen = () => {
 
     setUpdating(true);
     try {
-      // 7. ★ 送信するデータに住所を追加 (DBのカラム名に合わせる)
-      const response = await api.put('/profile', {
+      const payload: any = {
         real_name: realName,
         nickname: nickname,
         phone_number: phone,
@@ -76,37 +80,37 @@ const ProfileEditScreen = () => {
         city: city,
         address_line1: address1,
         address_line2: address2,
-      });
+      };
 
-      // 8. ★ レスポンスから State を更新 (念のため)
-      setRealName(response.data.real_name);
-      setNickname(response.data.nickname);
-      setPhone(response.data.phone_number || '');
-      setPostalCode(response.data.postal_code || '');
-      setPrefecture(response.data.prefecture || '');
-      setCity(response.data.city || '');
-      setAddress1(response.data.address_line1 || '');
-      setAddress2(response.data.address_line2 || '');
+      if (user?.role === 'artist' && uploadedPath) {
+        payload.image_url = uploadedPath;
+      }
+
+      const response = await api.put('/profile', payload);
+      const updatedUser = response.data;
+
+      setRealName(updatedUser.real_name);
+      setNickname(updatedUser.nickname);
+      setImageFromUrl(updatedUser.image_url);
+
+      // ★★★ ここでキャッシュを更新 (App.tsxと連携) ★★★
+      if (firebaseUser?.uid) {
+        queryClient.setQueryData(['profile', firebaseUser.uid], updatedUser);
+      }
 
       Alert.alert('成功', 'プロフィールを更新しました。');
     } catch (error: any) {
       if (error.response && error.response.status === 422) {
-        // バリデーションエラー (ニックネーム重複など)
         const errors = error.response.data.errors;
         let message = '更新エラー';
-
         if (errors && errors.nickname) {
           message = 'そのニックネームは既に使用されています。';
         } else {
-          // 住所などの他のバリデーションエラー
           message = '入力内容を確認してください。';
         }
         Alert.alert('更新エラー', message);
       } else {
-        console.error(
-          'Profile update error:',
-          error.response?.data || error.message,
-        );
+        console.error('Profile update error:', error);
         Alert.alert('エラー', '更新に失敗しました。');
       }
     } finally {
@@ -115,28 +119,46 @@ const ProfileEditScreen = () => {
   };
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <ActivityIndicator size="large" style={styles.center} />;
   }
+
+  const isArtist = user?.role === 'artist';
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 9. ★ ScrollView で全体をラップ */}
       <ScrollView>
         <View style={styles.form}>
-          {/* --- 基本情報セクション --- */}
           <Text style={styles.groupTitle}>基本情報</Text>
+          {isArtist && (
+            <View style={styles.avatarSection}>
+              <TouchableOpacity onPress={selectImage} disabled={isUploading}>
+                {imageUri ? (
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+                    <Text style={styles.avatarPlaceholderText}>No Img</Text>
+                  </View>
+                )}
+                {isUploading && (
+                  <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator color="#FFF" />
+                  </View>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.avatarHint}>タップしてアイコンを変更</Text>
+            </View>
+          )}
 
+          {/* ... 残りの入力フォーム (省略なしで元のまま使用してください) ... */}
           <Text style={styles.label}>メールアドレス (変更不可)</Text>
           <TextInput
             style={[styles.input, styles.readOnly]}
             value={email}
             editable={false}
           />
-
           <Text style={styles.label}>本名 (非公開)</Text>
           <TextInput
             style={styles.input}
@@ -145,7 +167,6 @@ const ProfileEditScreen = () => {
             placeholder="（チケット購入・決済用）"
             placeholderTextColor="#888"
           />
-
           <Text style={styles.label}>ニックネーム (公開)</Text>
           <TextInput
             style={styles.input}
@@ -155,9 +176,7 @@ const ProfileEditScreen = () => {
             placeholderTextColor="#888"
           />
 
-          {/* 10. ★ 配送先住所フォームを追加 */}
           <Text style={styles.groupTitle}>配送先情報 (任意)</Text>
-
           <Text style={styles.label}>電話番号</Text>
           <TextInput
             style={styles.input}
@@ -166,9 +185,7 @@ const ProfileEditScreen = () => {
             placeholder="09012345678"
             placeholderTextColor="#888"
             keyboardType="phone-pad"
-            textContentType="telephoneNumber"
           />
-
           <Text style={styles.label}>郵便番号</Text>
           <TextInput
             style={styles.input}
@@ -177,9 +194,7 @@ const ProfileEditScreen = () => {
             placeholder="123-4567"
             placeholderTextColor="#888"
             keyboardType="number-pad"
-            textContentType="postalCode"
           />
-
           <Text style={styles.label}>都道府県</Text>
           <TextInput
             style={styles.input}
@@ -188,7 +203,6 @@ const ProfileEditScreen = () => {
             placeholder="東京都"
             placeholderTextColor="#888"
           />
-
           <Text style={styles.label}>市区町村</Text>
           <TextInput
             style={styles.input}
@@ -197,7 +211,6 @@ const ProfileEditScreen = () => {
             placeholder="渋谷区"
             placeholderTextColor="#888"
           />
-
           <Text style={styles.label}>番地など</Text>
           <TextInput
             style={styles.input}
@@ -205,9 +218,7 @@ const ProfileEditScreen = () => {
             onChangeText={setAddress1}
             placeholder="恵比寿1-2-3"
             placeholderTextColor="#888"
-            textContentType="streetAddressLine1"
           />
-
           <Text style={styles.label}>建物名・部屋番号</Text>
           <TextInput
             style={styles.input}
@@ -215,7 +226,6 @@ const ProfileEditScreen = () => {
             onChangeText={setAddress2}
             placeholder="アパート101号室"
             placeholderTextColor="#888"
-            textContentType="streetAddressLine2"
           />
 
           {updating ? (
@@ -231,17 +241,13 @@ const ProfileEditScreen = () => {
   );
 };
 
-// 11. ★ スタイルを更新
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000000', // ★ ローディング時も背景色を指定
+    backgroundColor: '#000000',
   },
   form: {
     padding: 20,
@@ -249,7 +255,6 @@ const styles = StyleSheet.create({
     margin: 15,
     borderRadius: 8,
   },
-  // 12. ★ グループタイトル用のスタイルを追加
   groupTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -258,6 +263,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#555',
     paddingBottom: 10,
+    marginTop: 10,
   },
   label: {
     fontSize: 16,
@@ -276,14 +282,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 20,
   },
-  readOnly: {
-    backgroundColor: '#444',
-    color: '#AAA',
+  readOnly: { backgroundColor: '#444', color: '#AAA' },
+  buttonSpacing: { marginTop: 20, paddingBottom: 20 },
+  avatarSection: { alignItems: 'center', marginBottom: 20 },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#333',
+    borderWidth: 2,
+    borderColor: '#0A84FF',
+    resizeMode: 'cover',
   },
-  buttonSpacing: {
-    marginTop: 20,
-    paddingBottom: 20, // ★ スクロール下部に余白
+  avatarPlaceholder: { justifyContent: 'center', alignItems: 'center' },
+  avatarPlaceholderText: { color: '#888', fontSize: 14 },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 50,
   },
+  avatarHint: { color: '#0A84FF', fontSize: 14, marginTop: 10 },
 });
 
 export default ProfileEditScreen;

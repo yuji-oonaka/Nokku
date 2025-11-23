@@ -31,11 +31,6 @@ const ProductListScreen: React.FC = () => {
   const navigation = useNavigation<ProductListNavigationProp>();
   const queryClient = useQueryClient();
 
-  const isOwnerOrAdmin = !!(
-    user &&
-    (user.role === 'artist' || user.role === 'admin')
-  );
-
   const {
     data: products,
     isLoading,
@@ -53,11 +48,9 @@ const ProductListScreen: React.FC = () => {
       api.post(`/products/${productId}/favorite`),
 
     onMutate: async productId => {
-      // キャンセル
       await queryClient.cancelQueries({ queryKey: ['products'] });
-      await queryClient.cancelQueries({ queryKey: ['product', productId] }); // ★ 追加
+      await queryClient.cancelQueries({ queryKey: ['product', productId] });
 
-      // 1. 一覧データの更新 (既存)
       const previousProducts = queryClient.getQueryData<Product[]>([
         'products',
       ]);
@@ -78,47 +71,17 @@ const ProductListScreen: React.FC = () => {
           });
         });
       }
-
-      // 2. ★★★ 詳細データの更新 (ここを追加！) ★★★
-      // (もし詳細ページを一度でも開いていてキャッシュがある場合のみ更新される)
-      const previousProductDetail = queryClient.getQueryData<Product>([
-        'product',
-        productId,
-      ]);
-      if (previousProductDetail) {
-        queryClient.setQueryData<Product>(['product', productId], old => {
-          if (!old) return undefined;
-          const wasLiked = old.is_liked;
-          return {
-            ...old,
-            is_liked: !wasLiked,
-            likes_count: wasLiked
-              ? (old.likes_count || 0) - 1
-              : (old.likes_count || 0) + 1,
-          };
-        });
-      }
-
-      return { previousProducts, previousProductDetail }; // コンテキストに両方保存
+      return { previousProducts };
     },
 
     onError: (err, productId, context) => {
-      // 失敗したら両方戻す
       if (context?.previousProducts) {
         queryClient.setQueryData(['products'], context.previousProducts);
-      }
-      if (context?.previousProductDetail) {
-        // ★ 追加
-        queryClient.setQueryData(
-          ['product', productId],
-          context.previousProductDetail,
-        );
       }
       Alert.alert('エラー', 'お気に入りの更新に失敗しました');
     },
 
     onSettled: (data, error, productId) => {
-      // ★★★ 両方無効化して、次回アクセス時に最新を取得するようにする ★★★
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       queryClient.invalidateQueries({ queryKey: ['myFavorites'] });
@@ -126,7 +89,7 @@ const ProductListScreen: React.FC = () => {
   });
 
   const handleProductPress = (product: Product) => {
-    if (isOwnerOrAdmin) return;
+    // ★ 修正: 誰でも詳細画面へ遷移できるようにする
     navigation.navigate('ProductDetail', {
       productId: product.id,
     });
@@ -160,34 +123,53 @@ const ProductListScreen: React.FC = () => {
   };
 
   const handleFavoritePress = (product: Product) => {
-    // 2. ★ 振動フィードバックを追加 (プチッ)
     SoundService.triggerHaptic('impactLight');
     toggleFavoriteMutation.mutate(product.id);
   };
 
   const renderItem = ({ item }: { item: Product }) => {
+    // ★★★ 修正: 権限チェックを厳密にする ★★★
+    // 管理者かどうか
+    const isAdmin = user?.role === 'admin';
+    // 自分が作成したグッズかどうか (item.artist.id と自分の id が一致するか)
+    const isMyProduct = user?.role === 'artist' && item.artist?.id === user.id;
+
+    // 編集・削除ボタンを表示するか
+    const canEdit = isAdmin || isMyProduct;
+
     return (
       <TouchableOpacity
         onPress={() => handleProductPress(item)}
-        disabled={isOwnerOrAdmin}
+        // ★ 修正: 常にタップ可能にする (詳細画面へ飛べるように)
+        disabled={false}
         activeOpacity={0.8}
       >
         <View style={styles.productItem}>
-          {item.image_url && (
+          {/* 左側：画像 */}
+          {item.image_url ? (
             <Image
               source={{ uri: item.image_url }}
               style={styles.productImage}
             />
+          ) : (
+            <View style={[styles.productImage, styles.imagePlaceholder]} />
           )}
 
+          {/* 右側：情報エリア */}
           <View style={styles.productInfo}>
+            {item.artist && (
+              <Text style={styles.organizerNameSimple} numberOfLines={1}>
+                {item.artist.nickname} presents
+              </Text>
+            )}
+
             <View style={styles.headerRow}>
-              <Text style={styles.productName} numberOfLines={1}>
+              <Text style={styles.productName} numberOfLines={2}>
                 {item.name}
               </Text>
 
-              {/* ★ ハートボタン + 数字 (縦並び) */}
-              {!isOwnerOrAdmin && (
+              {/* いいねボタン: 自分の商品でなければ表示 */}
+              {!isMyProduct && (
                 <TouchableOpacity
                   style={styles.heartButton}
                   onPress={() => handleFavoritePress(item)}
@@ -204,16 +186,17 @@ const ProductListScreen: React.FC = () => {
               )}
             </View>
 
-            <Text style={styles.productDescription} numberOfLines={2}>
-              {item.description}
-            </Text>
-            <Text style={styles.productPrice}>
-              ¥{item.price.toLocaleString()}
-            </Text>
-            <Text style={styles.productStock}>在庫: {item.stock}</Text>
+            {/* 価格と在庫 */}
+            <View style={styles.priceRow}>
+              <Text style={styles.productPrice}>
+                ¥{item.price.toLocaleString()}
+              </Text>
+              <Text style={styles.productStock}>/ 在庫: {item.stock}</Text>
+            </View>
           </View>
 
-          {isOwnerOrAdmin && (
+          {/* ★★★ 修正: 権限がある場合のみ編集・削除ボタンを表示 ★★★ */}
+          {canEdit && (
             <View style={styles.adminButtonContainer}>
               <Button
                 title="編集"
@@ -286,32 +269,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     overflow: 'hidden',
     alignItems: 'center',
+    height: 120,
   },
-  productImage: { width: 100, height: 100, backgroundColor: '#333' },
+  productImage: {
+    width: 100,
+    height: '100%',
+    backgroundColor: '#333',
+    resizeMode: 'cover',
+  },
+  imagePlaceholder: { width: 100, height: '100%', backgroundColor: '#333' },
+
   productInfo: {
     flex: 1,
-    padding: 15,
+    padding: 12,
+    justifyContent: 'center',
+    gap: 4,
   },
+
+  organizerNameSimple: {
+    color: '#FF9F0A',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start', // 上揃えにする
+    alignItems: 'flex-start',
   },
+
   productName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
     flex: 1,
     marginRight: 10,
+    marginBottom: 4,
   },
-  productDescription: { fontSize: 14, color: '#BBBBBB', marginTop: 5 },
+
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
   productPrice: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#4CAF50',
-    marginTop: 10,
+    marginRight: 8,
   },
-  productStock: { fontSize: 14, color: '#888888', marginTop: 5 },
+  productStock: {
+    fontSize: 12,
+    color: '#888888',
+  },
+
   adminButtonContainer: {
     flexDirection: 'row',
     paddingRight: 10,
@@ -319,21 +330,19 @@ const styles = StyleSheet.create({
     minWidth: 120,
   },
   heartButton: {
-    padding: 0, // 余白は heartContainer で調整
+    padding: 0,
   },
-  // ★ (NEW) ハートと数字をまとめるコンテナ
   heartContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 30,
   },
   heartIcon: {
-    fontSize: 20,
+    fontSize: 18,
   },
-  // ★ (NEW) 数字のスタイル
   likeCountText: {
     color: '#888',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
     marginTop: -2,
   },

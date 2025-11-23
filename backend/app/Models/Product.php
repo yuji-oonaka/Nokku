@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-// 1. ★ 2つを use
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
@@ -22,30 +21,36 @@ class Product extends Model
         'artist_id',
     ];
 
-    // 2. ★ このメソッドを追加
     /**
      * image_url 属性 (アクセサ)
-     *
-     * DBから 'image_url' を取得した際に、
-     * 自動でフルURL (Storage::url()) に変換する。
      */
     protected function imageUrl(): Attribute
     {
         return Attribute::make(
-            // get: fn($value) => $value ? Storage::url($value) : null, // 👈 この行を削除
-
-            // 1. ★ get 処理を {} を使う書き方(クロージャ)に変更
             get: function ($value) {
-                // 2. ★ $value (DBの値) が null なら、null を返す
                 if (!$value) {
                     return null;
                 }
 
-                // 3. ★ Storage::url() でパス (/storage/...) を取得し、
-                //    asset() でホスト (http://10.0.2.2) を付け足す
+                // ★ 修正: http から始まるURL（ダミーデータや外部画像）の場合はそのまま返す
+                if (str_starts_with($value, 'http')) {
+                    return $value;
+                }
+
+                // アップロードされた画像（ローカルパス）の場合はURLに変換する
                 return asset(Storage::url($value));
             }
         );
+    }
+
+    /**
+     * リレーション: 作成者（アーティスト）
+     * ★★★ これが抜けていたのが原因です！ ★★★
+     */
+    public function artist()
+    {
+        // products テーブルの artist_id は users テーブルの id に紐づく
+        return $this->belongsTo(User::class, 'artist_id');
     }
 
     /**
@@ -58,20 +63,15 @@ class Product extends Model
     }
 
     /**
-     * ★ アクセサ: 現在ログインしているユーザーが、この商品を「いいね」しているか？
-     * $product->is_liked で true/false が取れるようになります
+     * アクセサ: 現在ログインしているユーザーが、この商品を「いいね」しているか？
      */
-    protected $appends = ['is_liked']; // JSONに自動で含める
+    protected $appends = ['is_liked'];
 
     public function getIsLikedAttribute(): bool
     {
-        // ログインしていなければ false
         if (!Auth::check()) {
             return false;
         }
-        // 自分が favoritedBy のリストに含まれているかチェック
-        // (N+1問題対策のため、Controller側で withExists を使うのが本当は良いですが、
-        //  まずは手軽なこの方法で実装します)
         return $this->favoritedBy()->where('user_id', Auth::id())->exists();
     }
 }

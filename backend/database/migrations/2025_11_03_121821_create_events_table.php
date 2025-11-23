@@ -13,21 +13,20 @@ return new class extends Migration
     {
         Schema::create('events', function (Blueprint $table) {
             $table->id();
-            
-            // ↓↓↓ ここから追記 ↓↓↓
 
-            $table->string('title'); // イベントタイトル
-            $table->text('description'); // イベント詳細
-            $table->string('venue'); // 開催場所
+            $table->string('title');       // イベントタイトル
+            $table->text('description');   // イベント詳細
+            $table->string('venue');       // 開催場所
             $table->dateTime('event_date'); // 開催日時
 
-            // usersテーブルのidと関連付ける (外部キー)
-            // 'role'が'artist'のユーザーIDが入ることを想定
-            $table->foreignId('artist_id')->constrained('users');
+            // ★ 追加: イベント画像URL (nullable: 画像なしも許可)
+            $table->string('image_url')->nullable();
 
-            // ↑↑↑ ここまで追記 ↑↑↑
-            
-            $table->timestamps(); // created_at と updated_at
+            // usersテーブルのidと関連付ける (外部キー)
+            // onDelete('cascade') をつけると、アーティストが削除されたらイベントも消えるようになります（推奨）
+            $table->foreignId('artist_id')->constrained('users')->cascadeOnDelete();
+
+            $table->timestamps();
         });
     }
 

@@ -16,6 +16,7 @@ export interface DbUser {
   city: string | null;
   address_line1: string | null;
   address_line2: string | null;
+  image_url?: string | null;
 }
 
 // 2. Contextが提供する値の型

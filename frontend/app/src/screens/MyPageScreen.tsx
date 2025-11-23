@@ -1,4 +1,4 @@
-import React from 'react'; // 1. ★ useState, useCallback, useFocusEffect を削除
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,44 +6,52 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
-  // 2. ★ Alert を削除
+  Image,
+  RefreshControl, // ★ 追加
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-// 3. ★ api.ts と auth を削除
-
-// 4. ★ useAuth フックをインポート
 import { useAuth } from '../context/AuthContext';
-
-// 5. ★ User 型のインポート (DbUser に変更)
-import { DbUser } from '../context/AuthContext';
-
 import { SafeAreaView } from 'react-native-safe-area-context';
+// ★ 追加: キャッシュ操作用
+import { useQueryClient } from '@tanstack/react-query';
 
-// ログアウト処理の型
 interface MyPageScreenProps {
   onLogout: () => void;
 }
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   const navigation = useNavigation<any>();
+  // ★ 修正: firebaseUser も取得 (リフレッシュ時のキー指定に必要)
+  const { user, loading, firebaseUser } = useAuth();
 
-  // 6. ★ useAuth() フックから user と loading を取得
-  const { user, loading } = useAuth();
+  // ★ 追加: リフレッシュ用フック
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
 
-  // 7. ★ 全削除:
-  //    fetchProfile, useFocusEffect, useState(user), useState(loading)
-  //    は AuthContext が実行するため、すべて不要になります。
+  // ★ 追加: 引っ張って更新する処理
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (firebaseUser?.uid) {
+      try {
+        // App.tsx で使っているキー ['profile', uid] を無効化し、強制再取得させる
+        await queryClient.invalidateQueries({
+          queryKey: ['profile', firebaseUser.uid],
+        });
+      } catch (error) {
+        console.error('Refresh failed', error);
+      }
+    }
+    setRefreshing(false);
+  }, [queryClient, firebaseUser]);
 
-  // 読み込み中 (AuthContext が /profile を読み込んでいる間)
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#FFFFFF" />
       </SafeAreaView>
     );
   }
 
-  // ユーザー情報が取得できなかった場合 (ログアウト状態など)
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -55,19 +63,50 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
     );
   }
 
-  // 8. ★ user.role に基づいて判定 (ロジックは変更なし)
   const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        {/* 1. プロフィール情報表示 */}
+      <ScrollView
+        // ★ 追加: リフレッシュコントロールの設定
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#FFFFFF" // ローディングくるくるの色
+          />
+        }
+      >
+        {/* 1. プロフィール情報表示 (リッチ版) */}
         <View style={styles.profileHeader}>
+          {/* ★★★ アイコン表示エリア ★★★ */}
+          <View style={styles.avatarContainer}>
+            {user.image_url ? (
+              <Image
+                source={{ uri: user.image_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+                <Text style={styles.avatarInitials}>
+                  {user.nickname ? user.nickname.charAt(0).toUpperCase() : 'U'}
+                </Text>
+              </View>
+            )}
+            {/* アーティストバッジ */}
+            {isArtistOrAdmin && (
+              <View style={styles.badgeContainer}>
+                <Text style={styles.badgeText}>ARTIST</Text>
+              </View>
+            )}
+          </View>
+          {/* ★★★★★★★★★★★★★★★★★ */}
+
           <Text style={styles.profileName}>{user.nickname}</Text>
           <Text style={styles.profileEmail}>{user.email}</Text>
         </View>
 
-        {/* 2. 共通メニュー (プロフィール編集のみ) */}
+        {/* 2. 共通メニュー */}
         <View style={styles.menuGroup}>
           <Text style={styles.menuGroupTitle}>アカウント</Text>
           <TouchableOpacity
@@ -78,7 +117,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           </TouchableOpacity>
         </View>
 
-        {/* 3. ★ 一般ユーザー用メニューを追加 */}
+        {/* 3. 一般ユーザー用メニュー */}
         {!isArtistOrAdmin && (
           <View style={styles.menuGroup}>
             <Text style={styles.menuGroupTitle}>チケット・購入履歴</Text>
@@ -103,7 +142,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
               <Text style={styles.menuButtonText}>グッズ購入履歴</Text>
             </TouchableOpacity>
 
-            {/* ↓↓↓ 4. お問い合わせボタン ↓↓↓ */}
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => navigation.navigate('Inquiry')}
@@ -112,9 +150,8 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             </TouchableOpacity>
           </View>
         )}
-        {/* ★★★ ここまで ★★★ */}
 
-        {/* 4. ★ アーティスト/管理者用メニュー (番号が 3->4 にずれる) */}
+        {/* 4. アーティスト/管理者用メニュー */}
         {isArtistOrAdmin && (
           <View style={styles.menuGroup}>
             <Text style={styles.menuGroupTitle}>
@@ -140,7 +177,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.menuButton}
-              // 1. ★ 'scanMode: 'ticket'' を渡す
               onPress={() =>
                 navigation.navigate('Scan', { scanMode: 'ticket' })
               }
@@ -148,7 +184,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
               <Text style={styles.menuButtonText}>チケット入場スキャン</Text>
             </TouchableOpacity>
 
-            {/* 2. ★「グッズ引換スキャン」を新規追加 */}
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => navigation.navigate('Scan', { scanMode: 'order' })}
@@ -156,9 +191,8 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
               <Text style={styles.menuButtonText}>グッズ引換スキャン</Text>
             </TouchableOpacity>
 
-            {/* ↓↓↓ 5. 自動入場ゲートへのボタン */}
             <TouchableOpacity
-              style={[styles.menuButton, styles.gateButton]} // 6. ★ 特別なスタイルを適用
+              style={[styles.menuButton, styles.gateButton]}
               onPress={() => navigation.navigate('GateScanner')}
             >
               <Text style={styles.gateButtonText}>
@@ -182,7 +216,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   );
 };
 
-// ... (Styles は変更なし) ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -198,20 +231,63 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   profileHeader: {
-    padding: 20,
+    padding: 30,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: '#333',
+    backgroundColor: '#111',
+  },
+  avatarContainer: {
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 5,
+    position: 'relative',
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: '#0A84FF',
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    fontSize: 40,
+    color: '#888',
+    fontWeight: 'bold',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#0A84FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#000',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    marginBottom: 4,
   },
   profileEmail: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#888',
-    marginTop: 5,
   },
   menuGroup: {
     marginVertical: 15,
@@ -236,11 +312,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   gateButton: {
-    backgroundColor: '#34C759', // 目立つ緑色
+    backgroundColor: '#34C759',
     borderColor: '#34C759',
   },
   gateButtonText: {
-    color: '#FFFFFF', // 白文字
+    color: '#FFFFFF',
     fontSize: 17,
     fontWeight: 'bold',
     textAlign: 'center',

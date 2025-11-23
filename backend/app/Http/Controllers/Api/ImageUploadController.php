@@ -4,44 +4,46 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage; // 1. Storage ファサードを use
-use Illuminate\Support\Facades\Auth; // 2. Auth ファサードを use
+use Illuminate\Support\Facades\Storage;
 
 class ImageUploadController extends Controller
 {
     /**
-     * 画像をアップロードし、公開URLを返す
+     * 画像をアップロードし、保存パスとURLを返す (汎用版)
      */
     public function store(Request $request)
     {
         // 1. バリデーション
-        // 'image' というキーで、画像ファイル (jpg, png, gif) が
-        // 5MB (5120KB) 以内で送信されることを期待
         $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120',
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // 5MB
+            // ★ 追加: 何の画像か指定させる (必須)
+            'type'  => 'required|string|in:product,event,avatar,post',
         ]);
 
-        // 2. ログイン中のユーザーIDを取得 (フォルダ名として使用)
-        $userId = Auth::id();
+        // 2. 保存先フォルダの決定
+        $folder = match ($request->type) {
+            'product' => 'products',
+            'event'   => 'events',
+            'avatar'  => 'avatars',
+            'post'    => 'posts', // 既存の投稿用
+            default   => 'uploads',
+        };
 
-        // 3. ファイルを保存
-        // 'image' というキーで送信されたファイルを取得
-        $file = $request->file('image');
+        // 3. 画像保存処理
+        if ($request->hasFile('image')) {
+            // publicディスクの指定フォルダに保存 (ファイル名は自動生成される)
+            $path = $request->file('image')->store($folder, 'public');
 
-        // 保存先のパス: storage/app/public/uploads/user_{id}/
-        // ファイル名はランダムな一意の文字列
-        $path = $file->store("public/uploads/user_{$userId}");
+            // 4. レスポンス
+            // path: DB保存用 (例: products/abc.jpg)
+            // url:  即座にプレビュー表示するためのフルURL
+            return response()->json([
+                'message' => 'アップロード成功',
+                'path' => $path,
+                'url'  => asset(Storage::url($path)),
+            ], 201);
+        }
 
-        // 4. 公開URLを生成
-        // $path には 'public/uploads/...' が入っているため、
-        // 'public/' を 'storage/' に置換してURLを組み立てる
-        $url = Storage::url($path);
-
-        // 5. 完全なURLを返す
-        // (例: http://localhost/storage/uploads/user_1/image.jpg)
-        return response()->json([
-            'message' => '画像が正常にアップロードされました',
-            'url' => asset($url) // asset() ヘルパーでドメイン名を付与
-        ], 201);
+        return response()->json(['message' => '画像ファイルが見つかりません'], 400);
     }
 }
