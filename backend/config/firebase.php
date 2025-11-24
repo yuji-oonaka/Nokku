@@ -6,6 +6,6 @@ return [
     ],
     'firestore' => [
         'database' => env('FIREBASE_FIRESTORE_DATABASE'),
-        'transport' => 'rest',
+        // 'transport' => 'rest',
     ],
 ];
