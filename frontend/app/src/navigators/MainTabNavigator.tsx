@@ -11,7 +11,7 @@ import EventStackNavigator from './EventStackNavigator';
 import TimelineStackNavigator from './TimelineStackNavigator';
 import MyPageStackNavigator from './MyPageStackNavigator';
 import SearchStackNavigator from './SearchStackNavigator';
-
+import { StackActions, CommonActions } from '@react-navigation/native';
 // (Props, Tab の定義は変更なし)
 interface Props {
   onLogout: () => void;
@@ -115,7 +115,32 @@ const MainTabNavigator: React.FC<Props> = ({ onLogout }) => {
 
   return (
     // 6. ★ screenOptions を更新
-    <Tab.Navigator screenOptions={screenOptions}>
+    <Tab.Navigator
+      screenOptions={screenOptions}
+      screenListeners={({ navigation, route }) => ({
+        tabPress: e => {
+          const routeAny = route as any;
+
+          // 「すでにそのタブが開いている」かつ「履歴（スタック）が積まれている」場合
+          if (
+            navigation.isFocused() &&
+            routeAny.state &&
+            routeAny.state.index > 0
+          ) {
+            e.preventDefault(); // デフォルトの動作を止める
+
+            // そのスタックの「一番最初の画面名」を取得（例: MyPageTop）
+            const rootRouteName = routeAny.state.routes[0].name;
+
+            // ★ 修正: reset ではなく navigate を使う
+            // 「このタブ(route.name)の中にある、最初の画面(rootRouteName)に行け」と命令
+            navigation.navigate(route.name, {
+              screen: rootRouteName,
+            });
+          }
+        },
+      })}
+    >
       {/* 1. イベント一覧タブ */}
       <Tab.Screen
         name="EventsStack"

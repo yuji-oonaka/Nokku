@@ -7,14 +7,12 @@ interface User {
   id: number;
   nickname: string;
   role?: 'user' | 'artist' | 'admin';
-  // ★ 修正: DBカラム名に合わせる
   image_url?: string | null;
 }
 
 export interface PublicArtistInfo {
   id: number;
   nickname: string;
-  // ★ 修正: DBカラム名に合わせる (profile_image_url -> image_url)
   image_url: string | null;
 }
 
@@ -108,7 +106,6 @@ export const fetchProductById = async (productId: number): Promise<Product> => {
 export interface Artist {
   id: number;
   nickname: string;
-  // ★ 修正
   image_url?: string | null;
 }
 export interface ArtistListResponse {
@@ -141,7 +138,6 @@ export interface ArtistProductMin {
 export interface ArtistProfileData {
   id: number;
   nickname: string;
-  // ★ 修正
   image_url?: string | null;
   bio?: string;
   posts: ArtistPostMin[];
@@ -201,6 +197,8 @@ export interface OrderItem {
   product_name: string;
   quantity: number;
   price_at_purchase: number;
+  // 商品詳細画面で使うため product も定義しておくと便利です（任意）
+  product?: Product;
 }
 export interface ShippingAddress {
   postal_code: string | null;
@@ -208,6 +206,8 @@ export interface ShippingAddress {
   city: string | null;
   address_line1: string | null;
   address_line2: string | null;
+  // ★追加: これが不足していてエラーになっていました
+  name?: string | null;
 }
 export interface Order {
   id: number;
@@ -228,5 +228,10 @@ export const fetchMyOrders = async (): Promise<Order[]> => {
 
 export const fetchMyFavorites = async (): Promise<Product[]> => {
   const response = await api.get<Product[]>('/my-favorites');
+  return response.data;
+};
+// ★★★ 追加: 注文IDから1件取得 ★★★
+export const fetchOrderById = async (orderId: number): Promise<Order> => {
+  const response = await api.get<Order>(`/orders/${orderId}`);
   return response.data;
 };

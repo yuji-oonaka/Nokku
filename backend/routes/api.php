@@ -14,7 +14,9 @@ use App\Http\Controllers\Api\ImageUploadController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\ArtistController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\OrderScanController; // ★ 追加: 軽量コントローラー
 use App\Http\Controllers\Api\FavoriteController;
+use App\Http\Controllers\Api\StripeWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,6 +24,7 @@ use App\Http\Controllers\Api\FavoriteController;
 |--------------------------------------------------------------------------
 */
 
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle']);
 // --- 認証 ---
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -50,9 +53,10 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/my-orders', [OrderController::class, 'index']);
 
-    // ↓↓↓ 1. ★ ここに「グッズ引換用」のAPIルートを追加 ↓↓↓
-    Route::post('/orders/redeem', [OrderController::class, 'redeem']);
+    // ↓↓↓ 1. ★ 修正: グッズ引換スキャン (重いOrderControllerではなく、軽量なOrderScanControllerを使う) ↓↓↓
+    Route::post('/orders/redeem', [OrderScanController::class, 'redeem']);
 
+    Route::get('/orders/{order}', [OrderController::class, 'show']);   // ★ 詳細取得 (リロード用)
     // --- 投稿 (お知らせ) ---
     Route::apiResource('posts', PostController::class);
 

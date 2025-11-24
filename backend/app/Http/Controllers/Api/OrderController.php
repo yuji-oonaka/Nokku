@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
-// ★追加: 相互チェックのために UserTicket モデルを使えるようにする
-use App\Models\UserTicket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,23 +13,44 @@ use Illuminate\Validation\Rule;
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
 use Illuminate\Support\Str;
+// use Kreait\Laravel\Firebase\Facades\Firebase; // ★ 削除: このコントローラーではもう使いません
 
 class OrderController extends Controller
 {
+    /**
+     * ログイン中のユーザーの注文履歴を取得
+     */
     public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
         $orders = Order::where('user_id', $user->id)
-            ->with('items.product')
+            ->with('items.product.artist')
             ->orderBy('created_at', 'desc')
             ->get();
         return response()->json($orders);
     }
 
+    /**
+     * 注文詳細取得
+     */
+    public function show(Order $order)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        if ($order->user_id !== $user->id) {
+            return response()->json(['message' => '権限がありません'], 403);
+        }
+
+        return response()->json($order->load('items.product.artist'));
+    }
+
+    /**
+     * 注文作成
+     */
     public function store(Request $request)
     {
-        // (変更なしのため省略しますが、完全なファイルとして出力します)
         $validatedData = $request->validate([
             'product_id' => 'required|integer|exists:products,id',
             'quantity' => 'required|integer|min:1',
@@ -46,10 +65,12 @@ class OrderController extends Controller
         $paymentMethod = $validatedData['payment_method'];
         $deliveryMethod = $validatedData['delivery_method'];
 
+        // 在庫チェック
         if ($product->stock < $quantity) {
             return response()->json(['message' => '在庫が不足しています'], 422);
         }
 
+        // 購入制限チェック
         if ($product->limit_per_user) {
             $pastQuantity = OrderItem::where('product_id', $product->id)
                 ->whereHas('order', function ($query) use ($user) {
@@ -66,9 +87,9 @@ class OrderController extends Controller
         }
 
         $totalPrice = $product->price * $quantity;
-        $totalPriceInCents = $totalPrice;
-        $shippingAddress = null;
+        $stripeAmount = $totalPrice; // JPY
 
+        $shippingAddress = null;
         if ($deliveryMethod === 'mail') {
             if (empty($user->postal_code) || empty($user->prefecture) || empty($user->city) || empty($user->address_line1)) {
                 return response()->json(['message' => '配送先住所が登録されていません。プロフィールから登録してください。'], 422);
@@ -89,7 +110,18 @@ class OrderController extends Controller
 
         if ($paymentMethod === 'stripe') {
             try {
-                $paymentIntent = $this->createStripePaymentIntent($totalPriceInCents, $user);
+                Stripe::setApiKey(config('services.stripe.secret'));
+                $paymentIntent = PaymentIntent::create([
+                    'amount' => $stripeAmount,
+                    'currency' => 'jpy',
+                    'automatic_payment_methods' => ['enabled' => true],
+                    'description' => 'NOKKU グッズ購入',
+                    'metadata' => [
+                        'type' => 'order',
+                        'user_id' => $user->id,
+                    ]
+                ]);
+
                 $clientSecret = $paymentIntent->client_secret;
                 $stripePaymentIntentId = $paymentIntent->id;
             } catch (\Exception $e) {
@@ -99,7 +131,7 @@ class OrderController extends Controller
 
         $qrCodeId = null;
         if ($deliveryMethod === 'venue') {
-            $qrCodeId = Str::uuid();
+            $qrCodeId = (string) Str::uuid();
         }
 
         try {
@@ -123,6 +155,14 @@ class OrderController extends Controller
                 ]);
                 return $order;
             });
+
+            // Webhook用メタデータ更新
+            if ($paymentMethod === 'stripe' && $stripePaymentIntentId) {
+                Stripe::setApiKey(config('services.stripe.secret'));
+                PaymentIntent::update($stripePaymentIntentId, [
+                    'metadata' => ['order_id' => $order->id]
+                ]);
+            }
         } catch (\Exception $e) {
             return response()->json(['message' => '注文の作成に失敗しました: ' . $e->getMessage()], 500);
         }
@@ -134,95 +174,5 @@ class OrderController extends Controller
         ], 201);
     }
 
-    /**
-     * ★★★ QRコード引き換え処理 (redeem) ★★★
-     */
-    public function redeem(Request $request)
-    {
-        $targetId = $request->input('order_item_id') ?? $request->input('qr_code_id');
-
-        if (!$targetId) {
-            return response()->json(['message' => 'IDが必要です'], 422);
-        }
-
-        /** @var \App\Models\User $artist */
-        $artist = Auth::user();
-
-        if ($artist->role !== 'artist' && $artist->role !== 'admin') {
-            return response()->json(['message' => 'この操作を行う権限がありません'], 403);
-        }
-
-        $orderItem = null;
-
-        if (Str::isUuid($targetId)) {
-            $order = Order::where('qr_code_id', $targetId)->first();
-            if ($order) {
-                $orderItem = $order->items->first();
-            }
-        } else {
-            $orderItem = OrderItem::find($targetId);
-        }
-
-        if (!$orderItem) {
-            // ★★★ 親切設計: もし注文でなければ、チケットかどうか確認する ★★★
-            // targetId が UUID であれば UserTicket を探してみる
-            $isTicket = UserTicket::where('qr_code_id', $targetId)->exists();
-
-            if ($isTicket) {
-                return response()->json([
-                    'message' => 'これは入場チケット用のQRコードです。「チケット入場」モードに切り替えてください。'
-                ], 400); // 400 Bad Request
-            }
-
-            return response()->json(['message' => '該当する注文が見つかりません'], 404);
-        }
-
-        $orderItem->load('product');
-
-        if ($artist->role !== 'admin') {
-            $product = $orderItem->product;
-            if (!$product || $product->artist_id !== $artist->id) {
-                return response()->json([
-                    'message' => '権限がありません。他者のイベントのグッズは引き換えできません。'
-                ], 403);
-            }
-        }
-
-        if ($orderItem->is_redeemed) {
-            return response()->json(['message' => '既に引き換え済みの商品です'], 409);
-        }
-
-        if ($orderItem->order && $orderItem->order->delivery_method !== 'venue') {
-            return response()->json(['message' => 'この注文は会場受取りではありません'], 422);
-        }
-
-        $orderItem->update([
-            'is_redeemed' => true,
-            'redeemed_at' => now(),
-        ]);
-
-        if ($orderItem->order) {
-            $orderItem->order->update(['status' => 'redeemed']);
-        }
-
-        return response()->json([
-            'message' => '引き換えが完了しました',
-            'order' => $orderItem->order ? $orderItem->order->load('items', 'user') : null,
-            'data' => $orderItem
-        ]);
-    }
-
-    private function createStripePaymentIntent(int $totalPriceInCents, $user)
-    {
-        Stripe::setApiKey(env('STRIPE_SECRET'));
-
-        return PaymentIntent::create([
-            'amount' => $totalPriceInCents,
-            'currency' => 'jpy',
-            'automatic_payment_methods' => [
-                'enabled' => true,
-            ],
-            'description' => 'NOKKU グッズ購入',
-        ]);
-    }
+    // ★ redeem メソッドは OrderScanController に移動したため削除しました
 }
