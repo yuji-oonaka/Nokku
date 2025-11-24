@@ -127,13 +127,23 @@ const EventDetailScreen: React.FC = () => {
       });
 
       SoundService.playSuccess();
+      queryClient.invalidateQueries({ queryKey: ['myTickets'] });
 
       Alert.alert(
         '購入確定！',
-        `「${ticket.name}」のチケット（${confirmResponse.data.tickets[0].seat_number}）を購入しました！\nマイページから確認できます。`,
+        `「${ticket.name}」のチケットを購入しました！\nマイページから確認できます。`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // ★ シンプルな遷移に変更
+              navigation.navigate('MyPageStack', {
+                screen: 'MyTickets',
+              });
+            },
+          },
+        ],
       );
-      queryClient.invalidateQueries({ queryKey: ['myTickets'] });
-      navigation.navigate('MyPageStack', { screen: 'MyTickets' });
     } catch (error: any) {
       SoundService.playError();
       let message = '不明なエラーが発生しました。';
@@ -221,15 +231,13 @@ const EventDetailScreen: React.FC = () => {
           />
         }
       >
-        {/* ★ イベント画像 */}
         {event.image_url ? (
           <Image source={{ uri: event.image_url }} style={styles.eventImage} />
         ) : (
           <View style={[styles.eventImage, styles.imagePlaceholder]} />
         )}
 
-        {/* 情報コンテナ */}
-        <View style={styles.detailContainer}>
+        <View style={styles.detailCard}>
           {isFinished && (
             <View style={styles.finishedBadge}>
               <Text style={styles.finishedText}>
@@ -240,7 +248,6 @@ const EventDetailScreen: React.FC = () => {
 
           <Text style={styles.title}>{event.title}</Text>
 
-          {/* ★ 主催者情報 (アイコンあり) */}
           {event.artist && (
             <View style={styles.organizerRow}>
               {event.artist.image_url ? (
@@ -388,7 +395,7 @@ const styles = StyleSheet.create({
   eventImage: { width: '100%', height: 220, resizeMode: 'cover' },
   imagePlaceholder: { width: '100%', height: 220, backgroundColor: '#333' },
 
-  detailContainer: {
+  detailCard: {
     backgroundColor: '#1C1C1E',
     padding: 20,
     margin: 15,
@@ -410,7 +417,12 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
-  organizerAvatar: { width: 30, height: 30, borderRadius: 15, marginRight: 10 },
+  organizerAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 10,
+  },
   avatarPlaceholder: { backgroundColor: '#555' },
   organizerName: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
 
@@ -418,7 +430,12 @@ const styles = StyleSheet.create({
   label: { color: '#AAA', fontSize: 14, width: 60 },
   value: { color: '#FFF', fontSize: 14, flex: 1 },
 
-  description: { fontSize: 15, color: '#DDD', marginTop: 15, lineHeight: 24 },
+  description: {
+    fontSize: 15,
+    color: '#DDD',
+    marginTop: 15,
+    lineHeight: 24,
+  },
 
   finishedBadge: {
     backgroundColor: '#333',

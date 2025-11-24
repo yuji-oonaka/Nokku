@@ -1,20 +1,17 @@
-import React from 'react'; // 1. ★ useState, useCallback, useFocusEffect を削除
+import React from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  // Alert, // 2. ★ Alert は isError で処理
   TouchableOpacity,
+  RefreshControl, // ★追加
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// 3. ★ api.ts は不要
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
-
-// 4. ★ React Query と、queries.ts から型・関数をインポート
 import { useQuery } from '@tanstack/react-query';
 import { Order, fetchMyOrders } from '../api/queries';
 
@@ -26,34 +23,41 @@ type OrderHistoryNavigationProp = StackNavigationProp<
 const OrderHistoryScreen: React.FC = () => {
   const navigation = useNavigation<OrderHistoryNavigationProp>();
 
-  // 5. ★ (DELETE) useState(orders), useState(loading) を削除
-  // 6. ★ (DELETE) fetchOrders (useCallback) を削除
-  // 7. ★ (DELETE) useFocusEffect を削除
-
-  // 8. ★ (NEW) React Query で /my-orders を取得
   const {
-    data: orders, // 取得したデータ (Order[] | undefined)
-    isLoading, // 初回ロード中
-    isError, // エラー発生時
+    data: orders,
+    isLoading,
+    isError,
+    refetch, // ★追加: 再取得用関数
+    isRefetching, // ★追加: 再取得中フラグ
   } = useQuery({
-    queryKey: ['myOrders'], // キャッシュキー
+    queryKey: ['myOrders'],
     queryFn: fetchMyOrders,
-    staleTime: 1000 * 60 * 3, // 3分間はキャッシュを優先
+    staleTime: 1000 * 60 * 3,
   });
 
-  // 9. ★ リストの各アイテムを描画 (ロジックはほぼ変更なし)
+  // ★追加: 引っ張って更新時の処理
+  const onRefresh = React.useCallback(async () => {
+    await refetch();
+  }, [refetch]);
+
   const renderItem = ({ item }: { item: Order }) => {
-    const firstItemName = item.items[0]?.product_name || '商品情報なし';
+    const firstItem = item.items[0];
+    const firstItemName = firstItem?.product_name || '商品情報なし';
     const otherItemsCount = item.items.length - 1;
     const orderTitle = `${firstItemName}${
       otherItemsCount > 0 ? ` 他${otherItemsCount}点` : ''
     }`;
 
+    // ★追加: アーティスト名の取得
+    // OrderControllerで with('items.product.artist') しているので取得可能
+    // 型定義によっては any 経由が必要な場合がありますが、APIからは返ってきています
+    const artist = (firstItem as any)?.product?.artist;
+    const artistName = artist?.nickname || artist?.real_name || 'アーティスト';
+
     const orderDate = new Date(item.created_at).toLocaleDateString('ja-JP');
 
-    // 10. ★ (BUG FIX) ステータス表示のロジック (ここは元のままでOK)
     let statusText = '処理中';
-    let statusStyle = styles.orderStatusPending; // デフォルトは青
+    let statusStyle = styles.orderStatusPending;
 
     if (item.status === 'pending') {
       if (item.payment_method === 'cash') {
@@ -69,22 +73,34 @@ const OrderHistoryScreen: React.FC = () => {
       statusText = '受取済み';
       statusStyle = styles.orderStatusRedeemed;
     }
-    // (もし 'cancelled' などの他ステータスもあれば、ここに追加)
 
     return (
       <TouchableOpacity
         style={styles.orderItem}
         onPress={() => navigation.navigate('OrderDetail', { order: item })}
       >
-        <View>
-          <Text style={styles.orderTitle}>{orderTitle}</Text>
+        {/* 左側のテキストエリア */}
+        <View style={styles.textContainer}>
+          {/* ★追加: アーティスト名を表示 */}
+          <Text style={styles.artistName} numberOfLines={1}>
+            {artistName}
+          </Text>
+
+          <Text
+            style={styles.orderTitle}
+            numberOfLines={2}
+            ellipsizeMode="tail"
+          >
+            {orderTitle}
+          </Text>
           <Text style={styles.orderDate}>{orderDate}</Text>
         </View>
+
+        {/* 右側の詳細エリア */}
         <View style={styles.orderDetails}>
           <Text style={styles.orderPrice}>
             ¥{item.total_price.toLocaleString()}
           </Text>
-          {/* 11. ★ (BUG FIX) item.status -> statusText と statusStyle を使う */}
           <Text style={[styles.orderStatusBase, statusStyle]}>
             {statusText}
           </Text>
@@ -93,7 +109,6 @@ const OrderHistoryScreen: React.FC = () => {
     );
   };
 
-  // 12. ★ (MODIFY) ローディング判定を 'isLoading' に変更
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
@@ -102,11 +117,14 @@ const OrderHistoryScreen: React.FC = () => {
     );
   }
 
-  // 13. ★ (NEW) エラー表示
   if (isError) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <Text style={styles.emptyText}>注文履歴の取得に失敗しました。</Text>
+        {/* エラー時もリトライできるようにボタンを表示 */}
+        <TouchableOpacity onPress={() => refetch()} style={styles.retryButton}>
+          <Text style={styles.retryText}>再試行</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -114,13 +132,22 @@ const OrderHistoryScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
-        data={orders || []} // 14. ★ (MODIFY) data は {orders || []}
+        data={orders || []}
         renderItem={renderItem}
         keyExtractor={item => item.id.toString()}
         ListEmptyComponent={
           <View style={styles.center}>
             <Text style={styles.emptyText}>グッズの購入履歴はありません</Text>
           </View>
+        }
+        // ★追加: 引っ張って更新の設定
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={onRefresh}
+            tintColor="#FFFFFF" // iOSのインジケーター色
+            colors={['#7C4DFF']} // Androidのインジケーター色
+          />
         }
       />
     </SafeAreaView>
@@ -153,39 +180,61 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  textContainer: {
+    flex: 1,
+    marginRight: 10,
+  },
+  // ★追加: アーティスト名のスタイル
+  artistName: {
+    color: '#AAA',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
   orderTitle: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
+    lineHeight: 22,
   },
   orderDate: {
     color: '#888',
-    fontSize: 14,
-    marginTop: 5,
+    fontSize: 13,
+    marginTop: 4,
   },
   orderDetails: {
     alignItems: 'flex-end',
+    minWidth: 90,
+    flexShrink: 0,
   },
   orderPrice: {
     color: '#4CAF50',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  // 15. ★ (NEW) ステータスの共通スタイル
   orderStatusBase: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     marginTop: 5,
+    textAlign: 'right',
   },
-  // 16. ★ (RENAME) orderStatus -> orderStatusPending
   orderStatusPending: {
-    color: '#0A84FF', // 青
+    color: '#0A84FF',
   },
   orderStatusPaid: {
-    color: '#34C759', // 緑
+    color: '#34C759',
   },
   orderStatusRedeemed: {
-    color: '#888', // グレー
+    color: '#888',
+  },
+  retryButton: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#333',
+    borderRadius: 5,
+  },
+  retryText: {
+    color: '#FFF',
   },
 });
 

@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Alert,
-  TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
   Linking,
+  ActivityIndicator,
+  Dimensions,
+  TouchableOpacity,
 } from 'react-native';
 import {
   Camera,
@@ -16,12 +16,14 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 import { useIsFocused, useRoute, RouteProp } from '@react-navigation/native';
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
 import api from '../services/api';
+import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
 import SoundService from '../services/SoundService';
 
-// アイコンが使える環境であれば使用、なければTextで代用するための簡易コンポーネント
-// もし react-native-vector-icons が入っていれば import Icon from 'react-native-vector-icons/Feather'; に変えてください
+type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
+type ScanMode = 'ticket' | 'order';
+
+// アイコン代わりのコンポーネント
 const TabIcon = ({ name, active }: { name: string; active: boolean }) => (
   <Text
     style={{ color: active ? '#FFF' : '#CCC', fontSize: 20, marginRight: 8 }}
@@ -29,9 +31,6 @@ const TabIcon = ({ name, active }: { name: string; active: boolean }) => (
     {name === 'ticket' ? '🎫' : '🛍️'}
   </Text>
 );
-
-type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
-type ScanMode = 'ticket' | 'order'; // 'order' はグッズ引換を指します
 
 export default function ScannerScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -49,6 +48,21 @@ export default function ScannerScreen() {
 
   // 最後にスキャンしたコードと時間を記録して、短時間の重複スキャンを防ぐ
   const lastScanned = useRef<{ code: string; time: number } | null>(null);
+
+  const uiTexts = {
+    ticket: {
+      title: 'チケット入場スキャン',
+      loading: '認証中...',
+      successTitle: '認証成功',
+      instruction: '入場チケットのQRコードを\n枠内に合わせてください',
+    },
+    order: {
+      title: 'グッズ引換スキャン',
+      loading: '処理中...',
+      successTitle: '引換完了',
+      instruction: '注文詳細のQRコードを\n枠内に合わせてください',
+    },
+  };
 
   useEffect(() => {
     if (!hasPermission) {
@@ -79,80 +93,59 @@ export default function ScannerScreen() {
     console.log(`Scanned code (${scanMode}):`, codeValue);
 
     try {
+      let endpoint = '';
+      let successMessagePrefix = '';
+
       if (scanMode === 'ticket') {
-        await processTicketScan(codeValue);
-      } else {
-        await processProductScan(codeValue);
+        endpoint = '/tickets/scan';
+        successMessagePrefix = 'チケットを使用済みにしました。';
+      } else if (scanMode === 'order') {
+        endpoint = '/orders/redeem';
+        successMessagePrefix = '商品の引き換えが完了しました。';
       }
+
+      const response = await api.post(endpoint, {
+        qr_code_id: codeValue,
+      });
+
+      // 成功時の音と振動
+      SoundService.playSuccess();
+
+      Alert.alert(
+        uiTexts[scanMode].successTitle,
+        response.data.message || successMessagePrefix,
+        [{ text: 'OK', onPress: () => setIsProcessing(false) }],
+        { cancelable: false },
+      );
     } catch (error: any) {
-      handleScanError(error);
-    } finally {
-      // 少し待ってから次のスキャンを許可
-      setTimeout(() => {
-        setIsProcessing(false);
-      }, 1500);
+      // 失敗時の音と振動
+      SoundService.playError();
+
+      let errorMessage = '不明なエラーが発生しました。';
+
+      if (
+        error.response &&
+        error.response.data &&
+        error.response.data.message
+      ) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      if (errorMessage === 'Network Error') {
+        errorMessage =
+          '通信エラーが発生しました。サーバーの状態を確認してください。';
+      }
+
+      Alert.alert(
+        'エラー',
+        errorMessage,
+        [{ text: 'OK', onPress: () => setIsProcessing(false) }],
+        { cancelable: false },
+      );
     }
-  };
-
-  // チケットスキャン処理
-  const processTicketScan = async (qrCodeId: string) => {
-    const response = await api.post('/tickets/scan', {
-      qr_code_id: qrCodeId,
-    });
-
-    SoundService.playSuccess();
-    SoundService.vibrateSuccess();
-
-    const ticket = response.data.ticket;
-    const eventName = ticket.event?.title || 'イベント';
-
-    Alert.alert('入場確認OK', `${eventName}\n\n入場処理が完了しました！`);
-  };
-
-  // グッズ引き換え処理
-  const processProductScan = async (orderItemId: string) => {
-    const response = await api.post('/orders/redeem', {
-      order_item_id: orderItemId,
-    });
-
-    SoundService.playSuccess();
-    SoundService.vibrateSuccess();
-
-    const item = response.data.data;
-    const productName = item.product?.name || '商品';
-
-    Alert.alert('引き換えOK', `${productName}\n\n引き換え処理が完了しました！`);
-  };
-
-  // エラーハンドリング
-  const handleScanError = (error: any) => {
-    SoundService.playError();
-    SoundService.vibrateError();
-
-    console.error('Scan failed:', error);
-
-    const serverMessage = error.response?.data?.message;
-    const statusCode = error.response?.status;
-
-    let alertTitle = 'エラー';
-    let alertMessage = '読み取りに失敗しました。';
-
-    if (statusCode === 403) {
-      alertTitle = '権限エラー';
-      // バックエンドからの「他者のイベントのチケットは〜」を表示
-      alertMessage =
-        serverMessage || 'このチケット/グッズを操作する権限がありません。';
-    } else if (statusCode === 409) {
-      alertTitle = '使用不可';
-      alertMessage = serverMessage || '既に使用済みです。';
-    } else if (statusCode === 404) {
-      alertTitle = '見つかりません';
-      alertMessage = 'データが見つかりませんでした。';
-    } else if (serverMessage) {
-      alertMessage = serverMessage;
-    }
-
-    Alert.alert(alertTitle, alertMessage);
+    // finally で setIsProcessing(false) しないのは、アラートのOKを押すまでスキャンを止めるため
   };
 
   const codeScanner = useCodeScanner({
@@ -183,12 +176,14 @@ export default function ScannerScreen() {
 
   return (
     <View style={styles.container}>
+      {/* カメラビュー */}
       {isFocused && (
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
           isActive={!isProcessing} // 処理中はカメラを一時停止しても良い
           codeScanner={codeScanner}
+          enableZoomGesture={true}
         />
       )}
 
@@ -242,21 +237,20 @@ export default function ScannerScreen() {
             <View style={styles.cornerTopRight} />
             <View style={styles.cornerBottomLeft} />
             <View style={styles.cornerBottomRight} />
+            {/* 処理中インジケータ (枠の中に出す) */}
+            {isProcessing && (
+              <View style={styles.loadingInFrame}>
+                <ActivityIndicator size="large" color="#7C4DFF" />
+              </View>
+            )}
           </View>
           <Text style={styles.scanInstruction}>
-            {scanMode === 'ticket'
-              ? '入場チケットのQRコードを\n枠内に合わせてください'
-              : '注文詳細のQRコードを\n枠内に合わせてください'}
+            {uiTexts[scanMode].instruction}
           </Text>
         </View>
 
-        {/* 処理中インジケータ */}
-        {isProcessing && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#FFF" />
-            <Text style={styles.loadingText}>処理中...</Text>
-          </View>
-        )}
+        {/* 下部の余白調整用ダミービュー */}
+        <View style={{ height: 50 }} />
       </View>
     </View>
   );
@@ -322,6 +316,8 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // スキャン枠の四隅の装飾
   cornerTopLeft: {
@@ -364,6 +360,12 @@ const styles = StyleSheet.create({
     borderRightWidth: 4,
     borderColor: '#7C4DFF',
   },
+  loadingInFrame: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
 
   scanInstruction: {
     color: '#FFF',
@@ -375,18 +377,5 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
     lineHeight: 24,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  loadingText: {
-    color: '#FFF',
-    marginTop: 15,
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });
