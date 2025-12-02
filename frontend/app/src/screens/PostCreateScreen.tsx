@@ -158,12 +158,13 @@ const PostCreateScreen = () => {
       if (selectedImage) {
         // [・・・(FormData, api.post('/upload-image') は変更なし)・・・]
         const formData = new FormData();
+        formData.append('type', 'post');
         formData.append('image', {
           uri: selectedImage.uri,
           type: selectedImage.type,
           name: selectedImage.fileName,
         });
-        const uploadResponse = await api.post('/upload-image', formData, {
+        const uploadResponse = await api.post('/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         uploadedImageUrl = uploadResponse.data.url;

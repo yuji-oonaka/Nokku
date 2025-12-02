@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+// ▼ 基本的なインポート
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -12,7 +13,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 
-class User extends Authenticatable
+// ▼ Filament用のインポート
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasName; // ★これが重要でした
+use Filament\Panel;
+
+// ▼ implements に HasName を追加
+class User extends Authenticatable implements FilamentUser, HasName
 {
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -26,7 +33,7 @@ class User extends Authenticatable
         'nickname',
         'email',
         'firebase_uid',
-        'role',      // 'admin', 'artist', 'user'
+        'role',
         'password',
         'phone_number',
         'postal_code',
@@ -35,8 +42,8 @@ class User extends Authenticatable
         'address_line1',
         'address_line2',
         'image_url',
-        'avatar',    // 念のため残しておく
-        'bio',       // 念のため残しておく
+        'avatar',
+        'bio',
     ];
 
     /**
@@ -64,80 +71,59 @@ class User extends Authenticatable
 
     /*
     |--------------------------------------------------------------------------
-    | リレーション定義
+    | Filament用の設定
     |--------------------------------------------------------------------------
     */
 
-    /**
-     * このユーザーが持つ購入済みチケット（UserTicket）を取得 (1対多)
-     * ★ これで UserTicketController のエラーが解消されます
-     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->email === 'admin@nokku.com' || $this->role === 'admin';
+    }
+
+    // HasNameインターフェースを実装したので、Filamentはこのメソッドを使ってくれるようになります
+    public function getFilamentName(): string
+    {
+        return (string) ($this->real_name ?? $this->nickname ?? $this->email);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | リレーション定義
+    |--------------------------------------------------------------------------
+    */
     public function userTickets()
     {
         return $this->hasMany(UserTicket::class);
     }
 
-    /**
-     * ユーザーが投稿したお知らせ
-     */
     public function posts(): HasMany
     {
         return $this->hasMany(Post::class);
     }
 
-    /**
-     * このアーティストが作成したイベント (1対多)
-     */
     public function events(): HasMany
     {
-        // DBのカラム名が artist_id の場合はこちら
         return $this->hasMany(Event::class, 'artist_id');
-
-        // ※もし events テーブルが user_id を使っている場合は以下になります
-        // return $this->hasMany(Event::class, 'user_id');
     }
 
-    /**
-     * このアーティストが作成したグッズ (1対多)
-     */
     public function products(): HasMany
     {
         return $this->hasMany(Product::class, 'artist_id');
     }
 
-    /**
-     * このユーザーがフォローしているアーティスト (多対多)
-     */
     public function following(): BelongsToMany
     {
-        return $this->belongsToMany(
-            User::class,
-            'follows',
-            'user_id',
-            'artist_id'
-        );
+        return $this->belongsToMany(User::class, 'follows', 'user_id', 'artist_id');
     }
 
-    /**
-     * このアーティストをフォローしているユーザー (ファン) (多対多)
-     */
     public function followers(): BelongsToMany
     {
-        return $this->belongsToMany(
-            User::class,
-            'follows',
-            'artist_id',
-            'user_id'
-        );
+        return $this->belongsToMany(User::class, 'follows', 'artist_id', 'user_id');
     }
 
-    /**
-     * お気に入りしたグッズ (Productとの多対多)
-     */
     public function favorites()
     {
-        return $this->belongsToMany(Product::class, 'favorites', 'user_id', 'product_id')
-            ->withTimestamps();
+        return $this->belongsToMany(Product::class, 'favorites', 'user_id', 'product_id')->withTimestamps();
     }
 
     /*
@@ -145,7 +131,6 @@ class User extends Authenticatable
     | アクセサ
     |--------------------------------------------------------------------------
     */
-
     protected function imageUrl(): Attribute
     {
         return Attribute::make(

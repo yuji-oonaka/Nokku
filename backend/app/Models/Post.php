@@ -44,9 +44,6 @@ class Post extends Model
     // 4. ★★★ (NEW) Product.php と同じアクセサを追加 ★★★
     /**
      * image_url 属性 (アクセサ)
-     *
-     * DBから 'image_url' を取得した際に、
-     * 自動でフルURL (Storage::url()) に変換する。
      */
     protected function imageUrl(): Attribute
     {
@@ -55,6 +52,13 @@ class Post extends Model
                 if (!$value) {
                     return null;
                 }
+
+                // ★ 修正: http から始まるURL（ダミーデータや外部画像）の場合はそのまま返す
+                if (str_starts_with($value, 'http')) {
+                    return $value;
+                }
+
+                // アップロードされた画像（ローカルパス）の場合はURLに変換する
                 return asset(Storage::url($value));
             }
         );
