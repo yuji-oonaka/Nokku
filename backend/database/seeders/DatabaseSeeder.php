@@ -7,10 +7,13 @@ use App\Models\Event;
 use App\Models\TicketType;
 use App\Models\Post;
 use App\Models\Product;
+use App\Models\Order;      // 追加
+use App\Models\OrderItem;  // 追加
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Kreait\Firebase\Contract\Auth as FirebaseAuth;
 use Kreait\Firebase\Exception\Auth\EmailExists;
+use Kreait\Firebase\Exception\Auth\UserNotFound;
 
 class DatabaseSeeder extends Seeder
 {
@@ -25,14 +28,28 @@ class DatabaseSeeder extends Seeder
     {
         $password = 'password';
 
-        // 1. 固定ユーザー作成 (画像URLを追加)
+        // ---------------------------------------------------------
+        // 0. FirebaseのAdminユーザーを事前削除 (重複エラー回避)
+        // ---------------------------------------------------------
+        $adminEmail = 'admin@nokku.com';
+        try {
+            $existingAdmin = $this->auth->getUserByEmail($adminEmail);
+            $this->auth->deleteUser($existingAdmin->uid);
+            $this->command->info("♻️ Existing Firebase user [{$adminEmail}] deleted for fresh start.");
+        } catch (UserNotFound $e) {
+            // いなければ何もしない
+        }
+
+        // ---------------------------------------------------------
+        // 1. 固定ユーザー作成
+        // ---------------------------------------------------------
         $this->createAccount(
-            'admin@nokku.com',
+            $adminEmail,
             $password,
             'NOKKU Admin',
             'admin',
             null,
-            'https://i.pravatar.cc/150?u=admin@nokku.com' // 管理者の顔
+            'https://i.pravatar.cc/150?u=admin@nokku.com'
         );
 
         $this->createAccount(
@@ -41,17 +58,17 @@ class DatabaseSeeder extends Seeder
             '一般 太郎',
             'user',
             '一般ユーザー',
-            'https://i.pravatar.cc/150?u=user@nokku.com' // ユーザーの顔
+            'https://i.pravatar.cc/150?u=user@nokku.com'
         );
 
-        // ★ テスト用メインアーティスト (画像あり)
+        // ★ テスト用メインアーティスト
         $mainArtist = $this->createAccount(
             'artist@nokku.com',
             $password,
             '手巣戸 亜手須斗',
             'artist',
             'テストアーティスト',
-            'https://i.pravatar.cc/150?u=artist@nokku.com' // アーティストの顔
+            'https://i.pravatar.cc/150?u=artist@nokku.com'
         );
 
         // ---------------------------------------------------------
@@ -65,7 +82,6 @@ class DatabaseSeeder extends Seeder
                     'venue' => 'Zepp Fukuoka',
                     'event_date' => '2025-12-24 18:00:00',
                     'artist_id' => $mainArtist->id,
-                    // ★ 追加: イベント画像
                     'image_url' => 'https://picsum.photos/800/600?random=9999',
                 ]
             );
@@ -88,11 +104,10 @@ class DatabaseSeeder extends Seeder
                 "Artist No.{$i}",
                 'artist',
                 "Artist No.{$i}",
-                // ★ 追加: 連番ごとの顔画像
                 "https://i.pravatar.cc/150?u=artist{$i}@test.com"
             );
 
-            // A. イベント作成 (EventFactoryがランダム画像を持つのでそのままでOK)
+            // A. イベント作成
             $events = Event::factory(rand(1, 2))->create([
                 'artist_id' => $artist->id,
             ]);
@@ -119,7 +134,7 @@ class DatabaseSeeder extends Seeder
                 }
             }
 
-            // B. グッズ作成 (ProductFactoryが画像を持つのでOK)
+            // B. グッズ作成
             Product::factory(rand(3, 5))->create([
                 'artist_id' => $artist->id,
             ]);
@@ -130,11 +145,20 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        $this->command->info("10 Artists with Events, Tickets, Products, & Posts created.");
+        // ---------------------------------------------------------
+        // 6. 注文データの生成 (ここを追加！)
+        // ---------------------------------------------------------
+        // 修正したFactoryを使って、注文と注文詳細を一気に作成します
+        Order::factory()
+            ->count(15) // 15件作成
+            ->has(OrderItem::factory()->count(rand(1, 4)), 'items') // 各注文に1~4個の商品
+            ->create();
+
+        $this->command->info("15 Orders with Items created.");
+
         $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 
-    // ★ 修正: 引数に $imageUrl を追加
     private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null)
     {
         $nickname = $nickname ?? $realName;
@@ -148,7 +172,6 @@ class DatabaseSeeder extends Seeder
                 'password' => Hash::make($password),
                 'role' => $role,
                 'firebase_uid' => $uid,
-                // ★ 追加: 画像URLを保存
                 'image_url' => $imageUrl,
             ]
         );
@@ -159,7 +182,6 @@ class DatabaseSeeder extends Seeder
 
     private function ensureFirebaseUser($email, $password, $displayName)
     {
-        // (変更なし)
         try {
             $user = $this->auth->createUser([
                 'email' => $email,
