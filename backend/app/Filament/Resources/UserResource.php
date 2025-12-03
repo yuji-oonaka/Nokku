@@ -23,6 +23,21 @@ class UserResource extends Resource
     // ナビゲーションの表示名を変更
     protected static ?string $navigationLabel = 'ユーザー・アーティスト管理';
 
+    // ★重要: 表示データの制限ロジック
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        // 管理者(admin)はそのまま全件表示
+        if (auth()->user()->role === 'admin') {
+            return $query;
+        }
+
+        // アーティスト(artist)等は「自分自身のデータ」のみ表示
+        // これで他人の個人情報や他のアーティスト一覧は見えなくなります
+        return $query->where('id', auth()->id());
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -51,7 +66,11 @@ class UserResource extends Resource
                                 'user'   => '一般ユーザー (User)',
                             ])
                             ->required()
-                            ->default('artist'),
+                            ->default('artist')
+                            // ★追加: 管理者以外は変更不可（ロック）
+                            ->disabled(fn () => auth()->user()->role !== 'admin')
+                            // disabledでもデータ送信するために必須
+                            ->dehydrated(),
 
                         Forms\Components\TextInput::make('password')
                             ->password()
@@ -90,7 +109,6 @@ class UserResource extends Resource
                             ->maxLength(255)
                             ->columnSpanFull(),
                     ])->columns(3), // 3列で表示
-                // ▲▲▲ 追加ここまで ▲▲▲
             ]);
     }
 
@@ -117,6 +135,7 @@ class UserResource extends Resource
                         'admin' => 'danger',   // 赤
                         'artist' => 'success', // 緑
                         'user' => 'gray',      // グレー
+                        default => 'gray',
                     }),
             ])
             ->filters([

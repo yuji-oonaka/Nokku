@@ -109,7 +109,8 @@ class ProductResource extends Resource
 
                 Tables\Columns\TextColumn::make('artist.nickname')
                     ->label('販売アーティスト')
-                    ->searchable(),
+                    ->searchable()
+                    ->visible(fn () => auth()->user()->role === 'admin'),
 
                 Tables\Columns\TextColumn::make('price')
                     ->label('価格')

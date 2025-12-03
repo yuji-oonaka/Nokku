@@ -13,6 +13,9 @@ use App\Models\UserTicket;
 use App\Models\TicketType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+// ★追加: メール関連クラス
+use Illuminate\Support\Facades\Mail;
+use App\Mail\OrderConfirmationMail;
 
 class StripeWebhookController extends Controller
 {
@@ -65,13 +68,27 @@ class StripeWebhookController extends Controller
 
     private function confirmOrder($orderId, $stripeId)
     {
-        $order = Order::find($orderId);
+        // リレーション(user, items)をロードしておくとメール内で使いやすい
+        $order = Order::with('user', 'items')->find($orderId);
+
+        // まだ処理されていない場合のみ実行
         if ($order && $order->status === 'pending') {
             $order->update([
                 'status' => 'paid',
                 'stripe_payment_intent_id' => $stripeId,
             ]);
             Log::info("Order #{$order->id} confirmed via Webhook.");
+
+            // ★追加: 購入完了メール送信処理
+            if ($order->user) {
+                try {
+                    Mail::to($order->user->email)->send(new OrderConfirmationMail($order));
+                    Log::info("Order confirmation email sent to: " . $order->user->email);
+                } catch (\Exception $e) {
+                    // メール送信失敗でWebhook自体をエラーにしない（リトライ地獄を防ぐためログのみ）
+                    Log::error("Failed to send order email: " . $e->getMessage());
+                }
+            }
         }
     }
 

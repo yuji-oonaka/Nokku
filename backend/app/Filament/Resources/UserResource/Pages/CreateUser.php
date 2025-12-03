@@ -3,8 +3,11 @@
 namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
+use App\Mail\ArtistInvitationMail;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Kreait\Firebase\Exception\Auth\EmailExists;
 
@@ -12,12 +15,19 @@ class CreateUser extends CreateRecord
 {
     protected static string $resource = UserResource::class;
 
+    protected ?string $rawPassword = null;
     /**
      * データの作成前に実行される処理
      * ここでFirebaseにユーザーを作成し、UIDを取得します。
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        if (empty($data['password'])) {
+            $data['password'] = Str::random(12);
+        }
+
+        // メール送信用に生パスワードをプロパティに退避しておく
+        $this->rawPassword = $data['password'];
         // 1. Firebase Authのインスタンスを取得
         $auth = app('firebase.auth');
 
@@ -53,5 +63,15 @@ class CreateUser extends CreateRecord
         }
 
         return $data;
+    }
+
+    protected function afterCreate(): void
+    {
+        // メールアドレスがあり、かつ生パスワードが確保できていれば送信
+        if ($this->record->email && $this->rawPassword) {
+            Mail::to($this->record->email)->send(
+                new ArtistInvitationMail($this->record, $this->rawPassword)
+            );
+        }
     }
 }
