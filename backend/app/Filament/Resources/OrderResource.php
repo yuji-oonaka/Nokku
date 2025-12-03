@@ -51,6 +51,21 @@ class OrderResource extends Resource
                     ])
                     ->required()
                     ->label('ステータス'),
+                Forms\Components\Section::make('配送情報')
+                    ->schema([
+                        Forms\Components\Select::make('delivery_method')
+                            ->options([
+                                'venue' => '会場受取',
+                                'mail' => '配送',
+                            ])
+                            ->label('受取方法')
+                            ->disabled(), // 基本は変更不可
+
+                        Forms\Components\TextInput::make('tracking_number')
+                            ->label('追跡番号 (伝票番号)')
+                            ->helperText('配送業者の問い合わせ番号を入力してください')
+                            ->maxLength(255),
+                    ])->columns(2),
             ]);
     }
 
@@ -82,6 +97,25 @@ class OrderResource extends Resource
                     ->dateTime('Y/m/d H:i')
                     ->sortable()
                     ->label('注文日時'),
+                Tables\Columns\TextColumn::make('delivery_method')
+                    ->label('受取')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'venue' => 'info',   // 会場は青
+                        'mail' => 'warning', // 配送は黄色
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'venue' => '会場受取',
+                        'mail' => '配送',
+                        default => $state,
+                    }),
+
+                Tables\Columns\TextColumn::make('tracking_number')
+                    ->label('追跡番号')
+                    ->searchable()
+                    ->copyable() // クリックでコピーできるようにする
+                    ->toggleable(isToggledHiddenByDefault: true), // 最初は隠しておき、見たい人だけ表示
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')

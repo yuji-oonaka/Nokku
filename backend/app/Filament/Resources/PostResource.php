@@ -9,6 +9,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class PostResource extends Resource
 {
@@ -27,7 +28,12 @@ class PostResource extends Resource
                     ->relationship('user', 'nickname')
                     ->label('投稿者')
                     ->searchable()
-                    ->required(),
+                    ->required()
+                    // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
+                    ->disabled(fn () => auth()->user()->role !== 'admin')
+                    ->default(fn () => auth()->user()->role !== 'admin' ? auth()->id() : null)
+                    // データとして送信されるように設定（disabledだと送信されないため）
+                    ->dehydrated(),
 
                 Forms\Components\TextInput::make('title')
                     ->label('タイトル')
@@ -36,13 +42,33 @@ class PostResource extends Resource
                     ->columnSpanFull(),
 
                 // 画像URL
-                Forms\Components\TextInput::make('image_url')
-                    ->label('画像URL')
-                    ->url()
-                    ->columnSpanFull(),
+                Forms\Components\FileUpload::make('image_url')
+                    ->label('グッズ画像')
+                    ->image()
+                    ->directory('products')
+                    ->disk('public')
+                    ->visibility('public')
+                    // ▼▼▼ 修正: 戻り値を「配列」にする！ ▼▼▼
+                    ->formatStateUsing(function ($record) {
+                        // 1. レコードがない、または画像URLがない場合は「空の配列」を返す
+                        if (!$record || !$record->getRawOriginal('image_url')) {
+                            return [];
+                        }
+
+                        // 2. DBの生のデータを取得
+                        $url = $record->getRawOriginal('image_url');
+
+                        // 3. もし外部URL(http)なら、表示できないので「空の配列」を返す
+                        if (str_starts_with($url, 'http')) {
+                            return [];
+                        }
+
+                        // 4. それ以外なら「配列に入れて」返す
+                        return [$url];
+                    }),
 
                 // 本文
-                Forms\Components\Textarea::make('body')
+                Forms\Components\Textarea::make('content')
                     ->label('本文')
                     ->required()
                     ->rows(10) // 少し広めに
@@ -101,5 +127,18 @@ class PostResource extends Resource
             'create' => Pages\CreatePost::route('/create'),
             'edit' => Pages\EditPost::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // 親のクエリを取得
+        $query = parent::getEloquentQuery();
+
+        // もしログインユーザーが「管理者(admin)」じゃなければ
+        if (auth()->user()->role !== 'admin') {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
     }
 }
