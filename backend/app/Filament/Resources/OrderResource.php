@@ -20,18 +20,33 @@ class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-shopping-bag'; // アイコンをバッグに変更
+    protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
     
     protected static ?string $navigationLabel = '注文・売上管理';
 
-    // フォーム（編集画面）
+    // ★重要: 表示データの制限ロジック
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        // 管理者(admin)はそのまま全件表示
+        if (auth()->user()->role === 'admin') {
+            return $query;
+        }
+
+        // アーティストは「自分の商品が含まれている注文」のみ表示
+        return $query->whereHas('items.product', function ($q) {
+            $q->where('artist_id', auth()->id());
+        });
+    }
+
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                // ユーザーは変更できないようにする（閲覧のみ）
+                // ユーザー情報（閲覧のみ）
                 Forms\Components\Select::make('user_id')
-                    ->relationship('user', 'email') // メールアドレスを表示
+                    ->relationship('user', 'email')
                     ->disabled()
                     ->label('購入者'),
 
@@ -41,7 +56,7 @@ class OrderResource extends Resource
                     ->disabled()
                     ->label('合計金額'),
 
-                // ステータス（ここは変更できるようにする）
+                // ステータス（変更可能）
                 Forms\Components\Select::make('status')
                     ->options([
                         'pending' => '決済待ち',
@@ -51,6 +66,7 @@ class OrderResource extends Resource
                     ])
                     ->required()
                     ->label('ステータス'),
+
                 Forms\Components\Section::make('配送情報')
                     ->schema([
                         Forms\Components\Select::make('delivery_method')
@@ -59,7 +75,7 @@ class OrderResource extends Resource
                                 'mail' => '配送',
                             ])
                             ->label('受取方法')
-                            ->disabled(), // 基本は変更不可
+                            ->disabled(),
 
                         Forms\Components\TextInput::make('tracking_number')
                             ->label('追跡番号 (伝票番号)')
@@ -69,12 +85,11 @@ class OrderResource extends Resource
             ]);
     }
 
-    // テーブル（一覧画面）
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('user.nickname')
+                Tables\Columns\TextColumn::make('user.nickname') // または real_name
                     ->label('購入者')
                     ->searchable(),
 
@@ -89,7 +104,7 @@ class OrderResource extends Resource
                         'pending' => 'warning',
                         'completed' => 'success',
                         'canceled', 'refunded' => 'danger',
-                        default => 'gray',
+                        'default' => 'gray',
                     })
                     ->label('状態'),
 
@@ -97,12 +112,13 @@ class OrderResource extends Resource
                     ->dateTime('Y/m/d H:i')
                     ->sortable()
                     ->label('注文日時'),
+
                 Tables\Columns\TextColumn::make('delivery_method')
                     ->label('受取')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'venue' => 'info',   // 会場は青
-                        'mail' => 'warning', // 配送は黄色
+                        'venue' => 'info',
+                        'mail' => 'warning',
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
@@ -114,8 +130,8 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('tracking_number')
                     ->label('追跡番号')
                     ->searchable()
-                    ->copyable() // クリックでコピーできるようにする
-                    ->toggleable(isToggledHiddenByDefault: true), // 最初は隠しておき、見たい人だけ表示
+                    ->copyable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -131,9 +147,9 @@ class OrderResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                     
-                    // ▼▼▼ ここに追加！CSVエクスポート機能 ▼▼▼
+                    // CSVエクスポート
                     ExportBulkAction::make()
-                        ->label('CSVエクスポート') // ボタンの表示名
+                        ->label('CSVエクスポート')
                         ->exports([
                             ExcelExport::make()
                                 ->fromTable()
@@ -144,13 +160,10 @@ class OrderResource extends Resource
                                     Column::make('user.real_name')->heading('購入者氏名'),
                                     Column::make('user.email')->heading('メールアドレス'),
                                     Column::make('total_price')->heading('合計金額'),
-                                    Column::make('payment_method')->heading('決済方法'),
                                     Column::make('delivery_method')->heading('受取方法'),
+                                    Column::make('shipping_address')->heading('配送先JSON'),
                                     
-                                    // 住所（JSONの場合は空の可能性もあるので考慮）
-                                    Column::make('shipping_address')->heading('配送先JSON'), 
-                                    
-                                    // 購入商品（すべての商品名をカンマ区切りで1列に出力）
+                                    // 購入商品列
                                     Column::make('items')
                                         ->heading('購入商品')
                                         ->formatStateUsing(function ($record) {
@@ -160,7 +173,6 @@ class OrderResource extends Resource
                                         }),
                                 ]),
                         ]),
-                    // ▲▲▲ 追加終わり ▲▲▲
                 ]),
             ]);
     }
