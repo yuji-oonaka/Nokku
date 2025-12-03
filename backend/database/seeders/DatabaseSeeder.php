@@ -149,10 +149,23 @@ class DatabaseSeeder extends Seeder
         // 6. 注文データの生成 (ここを追加！)
         // ---------------------------------------------------------
         // 修正したFactoryを使って、注文と注文詳細を一気に作成します
-        Order::factory()
-            ->count(15) // 15件作成
-            ->has(OrderItem::factory()->count(rand(1, 4)), 'items') // 各注文に1~4個の商品
+        $orders = Order::factory()
+            ->count(15)
+            ->has(OrderItem::factory()->count(rand(1, 4)), 'items')
             ->create();
+
+        // 作成した後、正しい合計金額を計算して上書き保存する
+        foreach ($orders as $order) {
+            // itemsリレーションから合計を計算 (単価 × 個数 の合計)
+            $realTotal = $order->items->sum(function ($item) {
+                return $item->price_at_purchase * $item->quantity;
+            });
+            
+            // 正しい金額で更新
+            $order->update(['total_price' => $realTotal]);
+        }
+
+        $this->command->info("15 Orders with Items created (Total price fixed).");
 
         $this->command->info("15 Orders with Items created.");
 

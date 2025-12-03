@@ -12,6 +12,9 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
+use pxlrbt\FilamentExcel\Exports\ExcelExport;
+use pxlrbt\FilamentExcel\Columns\Column;
 
 class OrderResource extends Resource
 {
@@ -56,17 +59,15 @@ class OrderResource extends Resource
     {
         return $table
             ->columns([
-                // 購入者の名前（リレーション先のデータを表示）
                 Tables\Columns\TextColumn::make('user.nickname')
                     ->label('購入者')
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('total_price')
-                    ->money('JPY') // 日本円表示にする
+                    ->money('JPY')
                     ->sortable()
                     ->label('金額'),
 
-                // ステータスを色付きバッジで表示
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -83,7 +84,6 @@ class OrderResource extends Resource
                     ->label('注文日時'),
             ])
             ->filters([
-                // ステータスで絞り込み
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'completed' => '完了のみ',
@@ -94,7 +94,40 @@ class OrderResource extends Resource
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                    
+                    // ▼▼▼ ここに追加！CSVエクスポート機能 ▼▼▼
+                    ExportBulkAction::make()
+                        ->label('CSVエクスポート') // ボタンの表示名
+                        ->exports([
+                            ExcelExport::make()
+                                ->fromTable()
+                                ->withFilename('orders_' . date('Y-m-d') . '.csv')
+                                ->withColumns([
+                                    Column::make('id')->heading('注文ID'),
+                                    Column::make('created_at')->heading('注文日時'),
+                                    Column::make('user.real_name')->heading('購入者氏名'),
+                                    Column::make('user.email')->heading('メールアドレス'),
+                                    Column::make('total_price')->heading('合計金額'),
+                                    Column::make('payment_method')->heading('決済方法'),
+                                    Column::make('delivery_method')->heading('受取方法'),
+                                    
+                                    // 住所（JSONの場合は空の可能性もあるので考慮）
+                                    Column::make('shipping_address')->heading('配送先JSON'), 
+                                    
+                                    // 購入商品（すべての商品名をカンマ区切りで1列に出力）
+                                    Column::make('items')
+                                        ->heading('購入商品')
+                                        ->formatStateUsing(function ($record) {
+                                            return $record->items->map(function ($item) {
+                                                return $item->product_name . ' x' . $item->quantity;
+                                            })->implode(', ');
+                                        }),
+                                ]),
+                        ]),
+                    // ▲▲▲ 追加終わり ▲▲▲
+                ]),
             ]);
     }
 
