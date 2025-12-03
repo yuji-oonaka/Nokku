@@ -27,35 +27,70 @@ class UserResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('real_name')
-                    ->label('本名')
-                    ->maxLength(255),
-                    
-                Forms\Components\TextInput::make('nickname')
-                    ->label('アーティスト名 / ニックネーム')
-                    ->maxLength(255),
+                // ▼▼▼ 既存の基本情報セクション ▼▼▼
+                Forms\Components\Section::make('基本情報')
+                    ->schema([
+                        Forms\Components\TextInput::make('real_name')
+                            ->label('本名')
+                            ->maxLength(255),
+                            
+                        Forms\Components\TextInput::make('nickname')
+                            ->label('アーティスト名 / ニックネーム')
+                            ->maxLength(255),
 
-                Forms\Components\TextInput::make('email')
-                    ->email()
-                    ->required()
-                    ->maxLength(255),
+                        Forms\Components\TextInput::make('email')
+                            ->email()
+                            ->required()
+                            ->maxLength(255),
 
-                // 権限選択（ここが重要！）
-                Forms\Components\Select::make('role')
-                    ->label('権限')
-                    ->options([
-                        'artist' => 'アーティスト (Artist)',
-                        'admin'  => '管理者 (Admin)',
-                        'user'   => '一般ユーザー (User)',
-                    ])
-                    ->required()
-                    ->default('artist'), // デフォルトをアーティストにしておく
+                        Forms\Components\Select::make('role')
+                            ->label('権限')
+                            ->options([
+                                'artist' => 'アーティスト (Artist)',
+                                'admin'  => '管理者 (Admin)',
+                                'user'   => '一般ユーザー (User)',
+                            ])
+                            ->required()
+                            ->default('artist'),
 
-                // パスワード入力（作成時のみ必須、自動ハッシュ化）
-                Forms\Components\TextInput::make('password')
-                    ->password()
-                    ->dehydrated(fn ($state) => filled($state))
-                    ->required(fn (string $context): bool => $context === 'create'),
+                        Forms\Components\TextInput::make('password')
+                            ->password()
+                            ->dehydrated(fn ($state) => filled($state))
+                            ->required(fn (string $context): bool => $context === 'create'),
+                    ])->columns(2),
+
+                // ▼▼▼ 追加: 住所・連絡先セクション ▼▼▼
+                Forms\Components\Section::make('住所・連絡先')
+                    ->schema([
+                        Forms\Components\TextInput::make('phone_number')
+                            ->label('電話番号')
+                            ->tel()
+                            ->maxLength(20),
+
+                        Forms\Components\TextInput::make('postal_code')
+                            ->label('郵便番号')
+                            ->numeric()
+                            ->maxLength(8),
+
+                        Forms\Components\TextInput::make('prefecture')
+                            ->label('都道府県')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('city')
+                            ->label('市区町村')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('address_line1')
+                            ->label('番地など')
+                            ->maxLength(255)
+                            ->columnSpanFull(), // 横幅いっぱいに
+
+                        Forms\Components\TextInput::make('address_line2')
+                            ->label('建物名・部屋番号')
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                    ])->columns(3), // 3列で表示
+                // ▲▲▲ 追加ここまで ▲▲▲
             ]);
     }
 

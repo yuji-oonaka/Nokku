@@ -7,8 +7,8 @@ use App\Models\Event;
 use App\Models\TicketType;
 use App\Models\Post;
 use App\Models\Product;
-use App\Models\Order;      // 追加
-use App\Models\OrderItem;  // 追加
+use App\Models\Order;
+use App\Models\OrderItem;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Kreait\Firebase\Contract\Auth as FirebaseAuth;
@@ -146,29 +146,22 @@ class DatabaseSeeder extends Seeder
         }
 
         // ---------------------------------------------------------
-        // 6. 注文データの生成 (ここを追加！)
+        // 6. 注文データの生成
         // ---------------------------------------------------------
-        // 修正したFactoryを使って、注文と注文詳細を一気に作成します
         $orders = Order::factory()
             ->count(15)
             ->has(OrderItem::factory()->count(rand(1, 4)), 'items')
             ->create();
 
-        // 作成した後、正しい合計金額を計算して上書き保存する
+        // 合計金額の再計算と上書き
         foreach ($orders as $order) {
-            // itemsリレーションから合計を計算 (単価 × 個数 の合計)
             $realTotal = $order->items->sum(function ($item) {
                 return $item->price_at_purchase * $item->quantity;
             });
-            
-            // 正しい金額で更新
             $order->update(['total_price' => $realTotal]);
         }
 
         $this->command->info("15 Orders with Items created (Total price fixed).");
-
-        $this->command->info("15 Orders with Items created.");
-
         $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 
@@ -186,6 +179,15 @@ class DatabaseSeeder extends Seeder
                 'role' => $role,
                 'firebase_uid' => $uid,
                 'image_url' => $imageUrl,
+                
+                // ▼▼▼ 追加: 住所情報もここで生成して保存！ ▼▼▼
+                'postal_code' => fake()->postcode(),
+                'prefecture' => fake()->prefecture(),
+                'city' => fake()->city(),
+                'address_line1' => fake()->streetAddress(),
+                'address_line2' => fake()->secondaryAddress(),
+                'phone_number' => fake()->phoneNumber(),
+                // ▲▲▲ 追加ここまで ▲▲▲
             ]
         );
 

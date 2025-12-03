@@ -19,6 +19,7 @@ class Product extends Model
         'stock',
         'image_url',
         'artist_id',
+        'limit_per_user',
     ];
 
     /**

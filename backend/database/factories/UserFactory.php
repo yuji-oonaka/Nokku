@@ -19,6 +19,12 @@ class UserFactory extends Factory
             // firebase_uid はSeederで上書きするのでダミーでOK
             'firebase_uid' => Str::uuid(),
             'image_url' => 'https://i.pravatar.cc/150?u=' . $this->faker->unique()->safeEmail(),
+            'postal_code' => fake()->postcode(),
+            'prefecture' => fake()->prefecture(),
+            'city' => fake()->city(),
+            'address_line1' => fake()->streetAddress(),
+            'address_line2' => fake()->secondaryAddress(),
+            'phone_number' => fake()->phoneNumber(),
         ];
     }
 

@@ -77,7 +77,8 @@ class User extends Authenticatable implements FilamentUser, HasName
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->email === 'admin@nokku.com' || $this->role === 'admin';
+        // 修正: admin または artist ならOKにする
+        return in_array($this->role, ['admin', 'artist']);
     }
 
     // HasNameインターフェースを実装したので、Filamentはこのメソッドを使ってくれるようになります

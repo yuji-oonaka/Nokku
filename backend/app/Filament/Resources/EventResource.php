@@ -9,6 +9,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class EventResource extends Resource
 {
@@ -24,10 +25,15 @@ class EventResource extends Resource
             ->schema([
                 // アーティスト選択 (運営が付け替えることは稀ですが、一応可能に)
                 Forms\Components\Select::make('artist_id')
-                    ->relationship('artist', 'nickname') // Userモデルのnicknameを表示
+                    ->relationship('artist', 'nickname')
                     ->label('開催アーティスト')
                     ->searchable()
-                    ->required(),
+                    ->required()
+                    // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
+                    ->disabled(fn () => auth()->user()->role !== 'admin')
+                    ->default(fn () => auth()->user()->role !== 'admin' ? auth()->id() : null)
+                    // データとして送信されるように設定（disabledだと送信されないため）
+                    ->dehydrated(),
 
                 Forms\Components\TextInput::make('title')
                     ->label('イベント名')
@@ -42,10 +48,31 @@ class EventResource extends Resource
                     ->label('会場')
                     ->maxLength(255),
 
-                // 画像 (URL入力式ですが、画像としてプレビュー表示)
-                Forms\Components\TextInput::make('image_url')
-                    ->label('画像URL')
-                    ->url(),
+                // 画像URL
+                Forms\Components\FileUpload::make('image_url')
+                    ->label('グッズ画像')
+                    ->image()
+                    ->directory('products')
+                    ->disk('public')
+                    ->visibility('public')
+                    // ▼▼▼ 修正: 戻り値を「配列」にする！ ▼▼▼
+                    ->formatStateUsing(function ($record) {
+                        // 1. レコードがない、または画像URLがない場合は「空の配列」を返す
+                        if (!$record || !$record->getRawOriginal('image_url')) {
+                            return [];
+                        }
+
+                        // 2. DBの生のデータを取得
+                        $url = $record->getRawOriginal('image_url');
+
+                        // 3. もし外部URL(http)なら、表示できないので「空の配列」を返す
+                        if (str_starts_with($url, 'http')) {
+                            return [];
+                        }
+
+                        // 4. それ以外なら「配列に入れて」返す
+                        return [$url];
+                    }),
                 
                 Forms\Components\Textarea::make('description')
                     ->label('詳細・説明')
@@ -109,5 +136,19 @@ class EventResource extends Resource
             'create' => Pages\CreateEvent::route('/create'),
             'edit' => Pages\EditEvent::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // 親のクエリを取得
+        $query = parent::getEloquentQuery();
+
+        // もしログインユーザーが「管理者(admin)」じゃなければ
+        if (auth()->user()->role !== 'admin') {
+            // 「自分のID (artist_id)」のデータだけに絞り込む
+            $query->where('artist_id', auth()->id());
+        }
+
+        return $query;
     }
 }
