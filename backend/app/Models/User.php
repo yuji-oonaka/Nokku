@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
-
+use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
 // ▼ Filament用のインポート
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName; // ★これが重要でした
@@ -22,6 +22,8 @@ use Filament\Panel;
 class User extends Authenticatable implements FilamentUser, HasName
 {
     use HasApiTokens, HasFactory, Notifiable;
+
+    use TwoFactorAuthenticatable;
 
     /**
      * The attributes that are mass assignable.
