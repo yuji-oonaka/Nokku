@@ -27,7 +27,8 @@ use App\Http\Controllers\Api\StripeWebhookController;
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle']);
 // --- 認証 ---
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('throttle:5,1');
 
 // --- 認証済みユーザーのみアクセス可能 ---
 Route::middleware('firebase.auth')->group(function () {
