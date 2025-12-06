@@ -17,6 +17,8 @@ class TicketType extends Model
         'seating_type',
     ];
 
+    protected $appends = ['remaining'];
+
     public function event()
     {
         return $this->belongsTo(Event::class);
@@ -32,5 +34,12 @@ class TicketType extends Model
     public function isSoldOut()
     {
         return $this->userTickets()->count() >= $this->capacity;
+    }
+
+    // ★ 追加: 残り枚数を計算するロジック
+    public function getRemainingAttribute()
+    {
+        // 定員(capacity) - 売れた枚数
+        return $this->capacity - $this->userTickets()->count();
     }
 }
