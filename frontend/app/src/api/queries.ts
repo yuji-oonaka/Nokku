@@ -61,6 +61,7 @@ export interface TicketType {
   name: string;
   price: number;
   capacity: number;
+  remaining: number;
   seating_type: 'random' | 'free';
 }
 export interface EventDetailData {

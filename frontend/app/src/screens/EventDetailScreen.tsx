@@ -14,13 +14,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { useStripe } from '@stripe/stripe-react-native';
+import { useStripe } from '@stripe/stripe-react-native'; // 型定義のために残存
 import { EventStackParamList } from '../navigators/EventStackNavigator';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import SoundService from '../services/SoundService';
 import { Event, TicketType, fetchEventDetailData } from '../api/queries';
+import { usePurchaseTicket } from '../hooks/useTicket'; // ★ 追加
 
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
@@ -32,6 +33,9 @@ const EventDetailScreen: React.FC = () => {
 
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // ★ 新しい購入フックを使用
+  const purchaseMutation = usePurchaseTicket();
 
   const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
   const [isManualRefetching, setIsManualRefetching] = useState(false);
@@ -53,7 +57,6 @@ const EventDetailScreen: React.FC = () => {
   const event: Event | undefined = data?.event;
   const tickets: TicketType[] = data?.tickets || [];
 
-  // 過去イベント判定
   const eventDate = new Date(event?.event_date || 0);
   const now = new Date();
   const isFinished = now.getTime() > eventDate.getTime();
@@ -90,71 +93,33 @@ const EventDetailScreen: React.FC = () => {
     },
   });
 
+  // ★ 購入ハンドラー (Stripeロジックを一時停止し、直接購入APIを叩く)
   const handleBuyTicket = async (ticket: TicketType) => {
     setBuyingTicketId(ticket.id);
     SoundService.triggerHaptic('impactMedium');
 
-    let paymentIntentClientSecret: string | null = null;
     try {
-      const response = await api.post('/create-ticket-payment-intent', {
-        ticket_id: ticket.id,
-        quantity: 1,
-      });
-      paymentIntentClientSecret = response.data.clientSecret;
-      if (!paymentIntentClientSecret)
-        throw new Error('決済の準備に失敗しました');
+      // API呼び出し (usePurchaseTicketフック経由)
+      await purchaseMutation.mutateAsync(ticket.id);
 
-      const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'NOKKU, Inc.',
-        paymentIntentClientSecret: paymentIntentClientSecret,
-      });
-      if (initError) throw new Error(initError.message);
-
-      const { error: presentError } = await presentPaymentSheet({});
-      if (presentError) {
-        if (presentError.code !== 'Canceled')
-          Alert.alert('決済エラー', presentError.message);
-        setBuyingTicketId(null);
-        return;
-      }
-
+      // 成功時の処理は hook 内の onSuccess でアラート表示されるため
+      // ここでは遷移のみ行う
       setBuyingTicketId(null);
 
-      const confirmResponse = await api.post('/confirm-ticket-purchase', {
-        ticket_type_id: ticket.id,
-        quantity: 1,
-        stripe_payment_id: paymentIntentClientSecret,
+      // マイチケット画面へ遷移 (オプション)
+      navigation.navigate('MyPageStack', {
+        screen: 'MyTickets',
       });
-
-      SoundService.playSuccess();
-      queryClient.invalidateQueries({ queryKey: ['myTickets'] });
-
-      Alert.alert(
-        '購入確定！',
-        `「${ticket.name}」のチケットを購入しました！\nマイページから確認できます。`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // ★ シンプルな遷移に変更
-              navigation.navigate('MyPageStack', {
-                screen: 'MyTickets',
-              });
-            },
-          },
-        ],
-      );
-    } catch (error: any) {
-      SoundService.playError();
-      let message = '不明なエラーが発生しました。';
-      if (error.response)
-        message = error.response.data.message || '決済に失敗しました。';
-      else if (error.message) message = error.message;
-
-      Alert.alert('エラー', message);
+    } catch (error) {
+      // エラー処理も hook 内で行われるため、ここではローディング解除のみ
       setBuyingTicketId(null);
     }
   };
+
+  /* * 以下は一時的に無効化した古いStripe決済ロジック
+   * 在庫連動確認後にバックエンドと結合予定
+   */
+  // const handleBuyTicketWithStripe = async (ticket: TicketType) => { ... }
 
   const handleDeleteEvent = () => {
     if (!event) return;
@@ -312,7 +277,7 @@ const EventDetailScreen: React.FC = () => {
                         ¥{item.price.toLocaleString()}
                       </Text>
                       <Text style={styles.ticketCapacity}>
-                        残り: {item.capacity}枚
+                        残り: {item.remaining}枚
                         {item.seating_type === 'random'
                           ? ' (自動座席指定)'
                           : ' (自由席)'}
