@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use App\Models\UserTicket;
+use App\Models\TicketType; // 追加
 use App\Models\Order;
 use Illuminate\Support\Facades\Log;
-// ★ 追加: Firebase Facade
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class UserTicketController extends Controller
@@ -24,6 +26,57 @@ class UserTicketController extends Controller
             ->get();
 
         return response()->json($myTickets);
+    }
+
+    // ★ 新規追加: チケット購入API
+    public function purchase(Request $request)
+    {
+        $validated = $request->validate([
+            'ticket_type_id' => 'required|exists:ticket_types,id',
+        ]);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $ticketTypeId = $validated['ticket_type_id'];
+
+        // トランザクション開始（在庫整合性のため）
+        return DB::transaction(function () use ($user, $ticketTypeId) {
+            // ロックをかけてTicketTypeを取得（同時購入対策）
+            $ticketType = TicketType::lockForUpdate()->find($ticketTypeId);
+
+            // 1. イベント終了チェック
+            // (簡易的にTicketTypeからEventを取得して日付など見るべきですが、一旦省略)
+
+            // 2. 在庫チェック
+            $soldCount = $ticketType->userTickets()->count();
+            if ($soldCount >= $ticketType->capacity) {
+                return response()->json(['message' => '申し訳ありません、このチケットは完売しました。'], 409);
+            }
+
+            // 3. 座席番号/整理番号の生成
+            // 例: "S席-001"
+            $seatNumber = $ticketType->name . '-' . str_pad($soldCount + 1, 3, '0', STR_PAD_LEFT);
+
+            // 4. チケット発行 (UserTicket作成)
+            $ticket = UserTicket::create([
+                'user_id' => $user->id,
+                'event_id' => $ticketType->event_id,
+                'ticket_type_id' => $ticketType->id,
+                'price' => $ticketType->price,
+                'qr_code_id' => (string) Str::uuid(), // ユニークなQRコードID
+                'seat_number' => $seatNumber,
+                'is_used' => false,
+            ]);
+
+            // TODO: ここでStripe決済を入れる場合は、決済成功後にこの処理を行うか、
+            // PaymentIntentのmetadataにticket情報を入れてWebhookで作成するなどの対応が必要。
+            // 今回は「購入API」としてDB保存を優先実装。
+
+            return response()->json([
+                'message' => 'チケットを購入しました！',
+                'ticket' => $ticket->load(['event', 'ticketType']),
+            ], 201);
+        });
     }
 
     public function scanTicket(Request $request)
@@ -79,7 +132,7 @@ class UserTicketController extends Controller
 
         // ★ Firestore通知 (エラーが出ても無視してレスポンスを返す)
         try {
-            $firestore = Firebase::firestore(); // Facadeを使用
+            $firestore = Firebase::firestore();
             $database = $firestore->database();
 
             $database->collection('ticket_status')
@@ -91,7 +144,6 @@ class UserTicketController extends Controller
                     'scanner_id' => $scannerUser->id,
                 ]);
         } catch (\Exception $e) {
-            // ログだけ残して、処理は続行（クライアントには成功を返す）
             Log::error('Firestore write failed: ' . $e->getMessage());
         }
 

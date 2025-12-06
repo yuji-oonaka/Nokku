@@ -9,7 +9,6 @@ class TicketType extends Model
 {
     use HasFactory;
 
-    // ↓↓↓ この行を追記 ↓↓↓
     protected $fillable = [
         'event_id',
         'name',
@@ -18,11 +17,20 @@ class TicketType extends Model
         'seating_type',
     ];
 
-    /**
-     * この券種が属するイベント（Event）を取得 (多対1)
-     */
     public function event()
     {
         return $this->belongsTo(Event::class);
+    }
+
+    // ★ 追加: 販売数カウント用
+    public function userTickets()
+    {
+        return $this->hasMany(UserTicket::class);
+    }
+
+    // ★ 追加: 残り枚数を確認するヘルパー
+    public function isSoldOut()
+    {
+        return $this->userTickets()->count() >= $this->capacity;
     }
 }

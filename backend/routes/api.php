@@ -14,7 +14,7 @@ use App\Http\Controllers\Api\ImageUploadController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\ArtistController;
 use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\OrderScanController; // ★ 追加: 軽量コントローラー
+use App\Http\Controllers\Api\OrderScanController;
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\StripeWebhookController;
 
@@ -42,22 +42,33 @@ Route::middleware('firebase.auth')->group(function () {
     Route::get('/events/{event}/ticket-types', [EventController::class, 'getTicketTypes']);
     Route::apiResource('products', ProductController::class);
 
-    // --- (旧) 決済・チケット ---
+    // --- チケット・決済関連 ---
+    // Stripe決済Intent作成 (必要に応じて使用)
     Route::post('/create-payment-intent', [PaymentController::class, 'createPaymentIntent']);
-    Route::post('/create-ticket-payment-intent', [PaymentController::class, 'createTicketPaymentIntent']);
-    Route::post('/confirm-ticket-purchase', [PaymentController::class, 'confirmTicketPurchase']);
+    
+    // チケット関連
     Route::get('/my-tickets', [UserTicketController::class, 'index']);
     Route::apiResource('ticket-types', TicketTypeController::class);
-    Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']); // 👈 チケット用スキャン
+    
+    // ★ 新規追加: チケット購入API (在庫チェック付き)
+    Route::post('/tickets/purchase', [UserTicketController::class, 'purchase']);
+    
+    Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']); // チケット用スキャン
+
+    // 旧ルート（必要なければ削除可能ですが、念のため残しています）
+    Route::post('/create-ticket-payment-intent', [PaymentController::class, 'createTicketPaymentIntent']);
+    Route::post('/confirm-ticket-purchase', [PaymentController::class, 'confirmTicketPurchase']);
+
 
     // --- E-commerce v2 (注文API) ---
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/my-orders', [OrderController::class, 'index']);
 
-    // ↓↓↓ 1. ★ 修正: グッズ引換スキャン (重いOrderControllerではなく、軽量なOrderScanControllerを使う) ↓↓↓
+    // グッズ引換スキャン
     Route::post('/orders/redeem', [OrderScanController::class, 'redeem']);
 
-    Route::get('/orders/{order}', [OrderController::class, 'show']);   // ★ 詳細取得 (リロード用)
+    Route::get('/orders/{order}', [OrderController::class, 'show']);   // 詳細取得
+    
     // --- 投稿 (お知らせ) ---
     Route::apiResource('posts', PostController::class);
 
@@ -74,7 +85,8 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/artists/{artist}/follow', [ArtistController::class, 'follow']);
     Route::delete('/artists/{artist}/unfollow', [ArtistController::class, 'unfollow']);
     Route::get('/artists/{artist}', [ArtistController::class, 'show']);
+    
     // お気に入り機能
-    Route::post('/products/{product}/favorite', [FavoriteController::class, 'toggle']); // いいね切替
-    Route::get('/my-favorites', [FavoriteController::class, 'index']); // 一覧取得
+    Route::post('/products/{product}/favorite', [FavoriteController::class, 'toggle']);
+    Route::get('/my-favorites', [FavoriteController::class, 'index']);
 });
