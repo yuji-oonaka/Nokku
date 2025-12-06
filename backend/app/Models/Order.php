@@ -45,4 +45,31 @@ class Order extends Model
     {
         return $this->hasMany(OrderItem::class);
     }
+
+    /**
+     * プラットフォーム手数料率 (10%)
+     * 将来的にはconfigやDB設定から取得するように変更可能
+     */
+    const PLATFORM_FEE_PERCENTAGE = 0.10;
+
+    /**
+     * 手数料と受取額を計算して保存する
+     * 呼び出しタイミング: 決済完了(Webhook)時など
+     */
+    public function calculateAndSaveCommission(): void
+    {
+        // 念のため数値型にキャストして計算
+        $total = (float) $this->total_price;
+        
+        // 手数料計算 (切り捨て)
+        $fee = floor($total * self::PLATFORM_FEE_PERCENTAGE);
+        
+        // 受取額計算
+        $payout = $total - $fee;
+
+        // 保存
+        $this->platform_fee = $fee;
+        $this->payout_amount = $payout;
+        $this->save();
+    }
 }
