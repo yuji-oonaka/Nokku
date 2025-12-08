@@ -57,7 +57,6 @@ Route::middleware('firebase.auth')->group(function () {
 
     // 旧ルート（必要なければ削除可能ですが、念のため残しています）
     Route::post('/create-ticket-payment-intent', [PaymentController::class, 'createTicketPaymentIntent']);
-    Route::post('/confirm-ticket-purchase', [PaymentController::class, 'confirmTicketPurchase']);
 
 
     // --- E-commerce v2 (注文API) ---
