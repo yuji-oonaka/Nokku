@@ -1,27 +1,18 @@
 import api from '../services/api';
 
-// チケット種類の型定義
 export interface TicketType {
   id: number;
   event_id: number;
   name: string;
   price: number;
   capacity: number;
-  remaining: number; // ★ 追加: バックエンドから送られてくる残り枚数
+  remaining: number;
   seating_type: 'random' | 'free';
 }
 
-// 購入完了時のレスポンス型
 export interface PurchaseResponse {
   message: string;
-  ticket: {
-    id: number;
-    seat_number: string;
-    qr_code_id: string;
-    event: {
-      title: string;
-    };
-  };
+  tickets: any[]; // 複数枚対応のため配列に変更
 }
 
 // イベントごとのチケット種類を取得
@@ -30,8 +21,23 @@ export const fetchTicketTypes = async (eventId: number): Promise<TicketType[]> =
   return response.data;
 };
 
-// チケット購入実行
-export const purchaseTicket = async (ticketTypeId: number): Promise<PurchaseResponse> => {
-  const response = await api.post('/tickets/purchase', { ticket_type_id: ticketTypeId });
+// ★ 追加: 決済準備 (PaymentIntent作成)
+// Backendの PaymentController にリクエストを送ります
+export const createTicketPaymentIntent = async (ticketTypeId: number, quantity: number) => {
+  const response = await api.post('/create-ticket-payment-intent', {
+    ticket_type_id: ticketTypeId,
+    quantity: quantity,
+  });
+  return response.data;
+};
+
+// ★ 修正: 購入実行
+// 引数を「数値(ID)だけ」から「オブジェクト(ID, 枚数, 決済ID)」に変更します
+export const purchaseTicket = async (data: { 
+  ticket_type_id: number; 
+  quantity: number; 
+  payment_intent_id: string 
+}): Promise<PurchaseResponse> => {
+  const response = await api.post('/tickets/purchase', data);
   return response.data;
 };

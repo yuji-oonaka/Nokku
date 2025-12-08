@@ -11,17 +11,18 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Modal, // ★ 追加
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { useStripe } from '@stripe/stripe-react-native'; // 型定義のために残存
+import { useStripe } from '@stripe/stripe-react-native';
 import { EventStackParamList } from '../navigators/EventStackNavigator';
-import api from '../services/api';
+import api from '../services/api'; // createTicketPaymentIntentで直接使うため
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import SoundService from '../services/SoundService';
 import { Event, TicketType, fetchEventDetailData } from '../api/queries';
-import { usePurchaseTicket } from '../hooks/useTicket'; // ★ 追加
+import { purchaseTicket } from '../api/ticketApi'; // API関数を直接インポート
 
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
@@ -34,11 +35,13 @@ const EventDetailScreen: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // ★ 新しい購入フックを使用
-  const purchaseMutation = usePurchaseTicket();
-
-  const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
   const [isManualRefetching, setIsManualRefetching] = useState(false);
+
+  // ★ 購入モーダル用のState
+  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const { data, isLoading, isRefetching, refetch, isError } = useQuery({
     queryKey: ['eventDetail', eventId],
@@ -64,6 +67,7 @@ const EventDetailScreen: React.FC = () => {
   const isAdminOrOwner =
     user && event && (user.id === event.artist_id || user.role === 'admin');
 
+  // --- 削除系 Mutation ---
   const deleteEventMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/events/${id}`),
     onSuccess: () => {
@@ -72,10 +76,7 @@ const EventDetailScreen: React.FC = () => {
       navigation.goBack();
     },
     onError: (error: any) => {
-      Alert.alert(
-        'エラー',
-        error.response?.data?.message || 'イベントの削除に失敗しました',
-      );
+      Alert.alert('エラー', error.response?.data?.message || '削除失敗');
     },
   });
 
@@ -86,104 +87,149 @@ const EventDetailScreen: React.FC = () => {
       Alert.alert('削除完了', '券種を削除しました。');
     },
     onError: (error: any) => {
-      Alert.alert(
-        'エラー',
-        error.response?.data?.message || '券種の削除に失敗しました',
-      );
+      Alert.alert('エラー', error.response?.data?.message || '削除失敗');
     },
   });
 
-  // ★ 購入ハンドラー (Stripeロジックを一時停止し、直接購入APIを叩く)
-  const handleBuyTicket = async (ticket: TicketType) => {
-    setBuyingTicketId(ticket.id);
+  // --- ★ 購入フロー開始 (モーダルを開く) ---
+  const handleOpenPurchaseModal = (ticket: TicketType) => {
+    setSelectedTicket(ticket);
+    setQuantity(1);
+    setModalVisible(true);
+  };
+
+  // --- ★ 決済実行ロジック ---
+  const handleProcessPayment = async () => {
+    if (!selectedTicket) return;
+    setIsPurchasing(true);
     SoundService.triggerHaptic('impactMedium');
 
     try {
-      // API呼び出し (usePurchaseTicketフック経由)
-      await purchaseMutation.mutateAsync(ticket.id);
-
-      // 成功時の処理は hook 内の onSuccess でアラート表示されるため
-      // ここでは遷移のみ行う
-      setBuyingTicketId(null);
-
-      // マイチケット画面へ遷移 (オプション)
-      navigation.navigate('MyPageStack', {
-        screen: 'MyTickets',
+      // 1. Stripe PaymentIntentを作成 (Backend)
+      // ※ ticketApi.ts ではなく直接 api.post で呼ぶ形にしています(柔軟性のため)
+      const piResponse = await api.post('/create-ticket-payment-intent', {
+        ticket_type_id: selectedTicket.id,
+        quantity: quantity,
       });
-    } catch (error) {
-      // エラー処理も hook 内で行われるため、ここではローディング解除のみ
-      setBuyingTicketId(null);
+
+      const { clientSecret } = piResponse.data;
+      if (!clientSecret) throw new Error('決済情報の取得に失敗しました');
+
+      // 2. Stripeシートの初期化
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: 'NOKKU Ticket',
+        paymentIntentClientSecret: clientSecret,
+        defaultBillingDetails: {
+          name: user?.nickname || 'Guest',
+        },
+      });
+      if (initError) throw new Error(initError.message);
+
+      // 3. Stripeシートの表示 (ここでユーザーが支払う)
+      const { error: presentError } = await presentPaymentSheet({});
+
+      if (presentError) {
+        if (presentError.code === 'Canceled') {
+          // キャンセルの場合は何もしない
+          setIsPurchasing(false);
+          return;
+        }
+        throw new Error(presentError.message);
+      }
+
+      // 4. 決済成功！ -> バックエンドで購入確定処理 (チケット発行)
+      // StripeのIDは clientSecret の '_' より前の部分 (pi_xxxxxxxx) ですが、
+      // PaymentIntentオブジェクトから取得するのが確実。
+      // ここでは簡便に clientSecret から抽出、またはバックエンドが server-side で確認するため
+      // IDを渡す必要があります。PaymentIntentIDは pi_xxx です。
+      const paymentIntentId = clientSecret.split('_secret_')[0];
+
+      const purchaseRes = await purchaseTicket({
+        ticket_type_id: selectedTicket.id,
+        quantity: quantity,
+        payment_intent_id: paymentIntentId,
+      });
+
+      // 5. 完了処理
+      SoundService.playSuccess();
+      setModalVisible(false);
+
+      // キャッシュ更新
+      queryClient.invalidateQueries({ queryKey: ['myTickets'] });
+      queryClient.invalidateQueries({ queryKey: ['eventDetail'] });
+
+      Alert.alert(
+        '購入完了！',
+        purchaseRes.message || 'チケットを購入しました。',
+        [
+          {
+            text: 'OK',
+            onPress: () =>
+              navigation.navigate('MyPageStack', { screen: 'MyTickets' }),
+          },
+        ],
+      );
+    } catch (error: any) {
+      SoundService.playError();
+      const msg =
+        error.response?.data?.message || error.message || '決済に失敗しました';
+      Alert.alert('エラー', msg);
+    } finally {
+      setIsPurchasing(false);
     }
   };
 
-  /* * 以下は一時的に無効化した古いStripe決済ロジック
-   * 在庫連動確認後にバックエンドと結合予定
-   */
-  // const handleBuyTicketWithStripe = async (ticket: TicketType) => { ... }
+  // --- 数量変更ハンドラ ---
+  const incrementQuantity = () => {
+    if (
+      quantity < 10 &&
+      selectedTicket &&
+      quantity < selectedTicket.remaining
+    ) {
+      setQuantity(q => q + 1);
+    }
+  };
+  const decrementQuantity = () => {
+    if (quantity > 1) setQuantity(q => q - 1);
+  };
 
+  // --- 管理機能ハンドラ ---
   const handleDeleteEvent = () => {
     if (!event) return;
-    Alert.alert(
-      'イベント削除',
-      '本当にこのイベントを削除しますか？\n※関連するチケット情報やチャット履歴もすべて削除されます。',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除する',
-          style: 'destructive',
-          onPress: () => deleteEventMutation.mutate(event.id),
-        },
-      ],
-    );
+    Alert.alert('削除確認', '本当に削除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除',
+        style: 'destructive',
+        onPress: () => deleteEventMutation.mutate(event.id),
+      },
+    ]);
   };
 
   const handleDeleteTicketType = (ticketType: TicketType) => {
-    if (buyingTicketId !== null) return;
-    Alert.alert('券種の削除', `「${ticketType.name}」を本当に削除しますか？`, [
+    Alert.alert('削除確認', '本当に削除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       {
-        text: '削除する',
+        text: '削除',
         style: 'destructive',
         onPress: () => deleteTicketTypeMutation.mutate(ticketType.id),
       },
     ]);
   };
 
-  const handleEditEvent = () => {
-    if (!event) return;
-    navigation.navigate('EventEdit', { eventId: event.id });
-  };
-
-  const handleAddTicketType = () => {
-    if (!event) return;
-    navigation.navigate('TicketTypeCreate', { event_id: event.id });
-  };
-
-  const handleChatPress = () => {
-    if (!event) return;
-    SoundService.triggerHaptic('impactLight');
-    navigation.navigate('ChatLobby', {
-      eventId: event.id,
-      eventTitle: event.title,
-    });
-  };
-
-  if (isLoading) {
+  if (isLoading)
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
+        <ActivityIndicator size="large" color="#FFF" />
       </SafeAreaView>
     );
-  }
-
-  if (isError || !data || !event) {
+  if (isError || !event)
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={styles.emptyText}>イベントの取得に失敗しました。</Text>
-        <Button title="再試行" onPress={() => refetch()} color="#0A84FF" />
+        <Text style={styles.emptyText}>エラーが発生しました</Text>
+        <Button title="再試行" onPress={() => refetch()} />
       </SafeAreaView>
     );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -192,10 +238,11 @@ const EventDetailScreen: React.FC = () => {
           <RefreshControl
             refreshing={isManualRefetching}
             onRefresh={onRefresh}
-            tintColor="#FFFFFF"
+            tintColor="#FFF"
           />
         }
       >
+        {/* イベント画像 */}
         {event.image_url ? (
           <Image source={{ uri: event.image_url }} style={styles.eventImage} />
         ) : (
@@ -205,296 +252,297 @@ const EventDetailScreen: React.FC = () => {
         <View style={styles.detailCard}>
           {isFinished && (
             <View style={styles.finishedBadge}>
-              <Text style={styles.finishedText}>
-                このイベントは終了しました
-              </Text>
+              <Text style={styles.finishedText}>終了</Text>
             </View>
           )}
-
           <Text style={styles.title}>{event.title}</Text>
-
-          {event.artist && (
-            <View style={styles.organizerRow}>
-              {event.artist.image_url ? (
-                <Image
-                  source={{ uri: event.artist.image_url }}
-                  style={styles.organizerAvatar}
-                />
-              ) : (
-                <View
-                  style={[styles.organizerAvatar, styles.avatarPlaceholder]}
-                />
-              )}
-              <Text style={styles.organizerName}>
-                主催: {event.artist.nickname}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.metaRow}>
-            <Text style={styles.label}>📅 日時:</Text>
-            <Text style={styles.value}>
-              {new Date(event.event_date).toLocaleString('ja-JP')}
-            </Text>
-          </View>
-          <View style={styles.metaRow}>
-            <Text style={styles.label}>📍 会場:</Text>
-            <Text style={styles.value}>{event.venue}</Text>
-          </View>
-
+          <Text style={styles.organizerName}>
+            主催: {event.artist?.nickname || '不明'}
+          </Text>
+          <Text style={styles.value}>
+            📅 {new Date(event.event_date).toLocaleString('ja-JP')}
+          </Text>
+          <Text style={styles.value}>📍 {event.venue}</Text>
           <Text style={styles.description}>{event.description}</Text>
         </View>
 
-        <TouchableOpacity style={styles.chatButton} onPress={handleChatPress}>
-          <Text style={styles.chatButtonText}>
-            💬 このイベントのチャットに参加する
-          </Text>
+        <TouchableOpacity
+          style={styles.chatButton}
+          onPress={() =>
+            navigation.navigate('ChatLobby', {
+              eventId: event.id,
+              eventTitle: event.title,
+            })
+          }
+        >
+          <Text style={styles.chatButtonText}>💬 チャットに参加</Text>
         </TouchableOpacity>
 
         {!isFinished && (
           <>
             <View style={styles.ticketHeaderContainer}>
-              <Text style={styles.ticketHeader}>チケットを選択</Text>
+              <Text style={styles.ticketHeader}>チケット選択</Text>
               {isAdminOrOwner && (
-                <TouchableOpacity onPress={handleAddTicketType}>
-                  <Text style={styles.addButton}>＋ 券種を追加</Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate('TicketTypeCreate', {
+                      event_id: event.id,
+                    })
+                  }
+                >
+                  <Text style={styles.addButton}>＋ 追加</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {tickets.length === 0 ? (
-              <Text style={styles.emptyText}>
-                まだチケットが登録されていません。
-              </Text>
-            ) : (
-              <FlatList
-                data={tickets}
-                renderItem={({ item }) => (
-                  <View style={styles.ticketItem}>
-                    <View>
-                      <Text style={styles.ticketName}>{item.name}</Text>
-                      <Text style={styles.ticketPrice}>
-                        ¥{item.price.toLocaleString()}
-                      </Text>
-                      <Text style={styles.ticketCapacity}>
-                        残り: {item.remaining}枚
-                        {item.seating_type === 'random'
-                          ? ' (自動座席指定)'
-                          : ' (自由席)'}
-                      </Text>
-                    </View>
-                    <View style={styles.buttonGroup}>
-                      {isAdminOrOwner ? (
-                        <Button
-                          title="削除"
-                          color="#FF3B30"
-                          onPress={() => handleDeleteTicketType(item)}
-                          disabled={deleteTicketTypeMutation.isPending}
-                        />
-                      ) : (
-                        <Button
-                          title={
-                            buyingTicketId === item.id
-                              ? '処理中...'
-                              : '購入する'
-                          }
-                          onPress={() => handleBuyTicket(item)}
-                          disabled={buyingTicketId !== null}
-                        />
-                      )}
-                    </View>
-                  </View>
-                )}
-                keyExtractor={item => item.id.toString()}
-                scrollEnabled={false}
-              />
-            )}
+            {tickets.map(item => (
+              <View key={item.id} style={styles.ticketItem}>
+                <View>
+                  <Text style={styles.ticketName}>{item.name}</Text>
+                  <Text style={styles.ticketPrice}>
+                    ¥{item.price.toLocaleString()}
+                  </Text>
+                  <Text style={styles.ticketCapacity}>
+                    残り: {item.remaining}枚
+                  </Text>
+                </View>
+                <View>
+                  {isAdminOrOwner ? (
+                    <Button
+                      title="削除"
+                      color="#FF3B30"
+                      onPress={() => handleDeleteTicketType(item)}
+                    />
+                  ) : (
+                    <Button
+                      title={item.remaining === 0 ? '完売' : '購入'}
+                      disabled={item.remaining === 0}
+                      onPress={() => handleOpenPurchaseModal(item)}
+                    />
+                  )}
+                </View>
+              </View>
+            ))}
           </>
         )}
 
         {isAdminOrOwner && (
           <View style={styles.adminSection}>
-            <Text style={styles.adminTitle}>管理者メニュー</Text>
-            <View style={styles.adminButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.adminBtn,
-                  styles.editBtn,
-                  isFinished && styles.disabledBtn,
-                ]}
-                onPress={handleEditEvent}
-                disabled={isFinished}
-              >
-                <Text style={styles.adminBtnText}>
-                  {isFinished ? '編集不可' : 'イベント編集'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.adminBtn, styles.deleteBtn]}
-                onPress={handleDeleteEvent}
-              >
-                <Text style={styles.adminBtnText}>削除</Text>
-              </TouchableOpacity>
-            </View>
-            {isFinished && (
-              <Text style={styles.adminNote}>
-                ※終了したイベントは編集できません。
-              </Text>
-            )}
+            <Button
+              title="イベント編集"
+              onPress={() =>
+                navigation.navigate('EventEdit', { eventId: event.id })
+              }
+              disabled={isFinished}
+            />
+            <View style={{ height: 10 }} />
+            <Button
+              title="イベント削除"
+              color="#FF3B30"
+              onPress={handleDeleteEvent}
+            />
           </View>
         )}
       </ScrollView>
+
+      {/* ★ 購入モーダル ★ */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => !isPurchasing && setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>チケット購入</Text>
+            {selectedTicket && (
+              <>
+                <Text style={styles.modalTicketName}>
+                  {selectedTicket.name}
+                </Text>
+                <Text style={styles.modalPrice}>
+                  単価: ¥{selectedTicket.price.toLocaleString()}
+                </Text>
+
+                <View style={styles.quantityContainer}>
+                  <Text style={styles.quantityLabel}>枚数:</Text>
+                  <TouchableOpacity
+                    onPress={decrementQuantity}
+                    style={styles.quantityBtn}
+                  >
+                    <Text style={styles.quantityBtnText}>－</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.quantityValue}>{quantity}</Text>
+                  <TouchableOpacity
+                    onPress={incrementQuantity}
+                    style={styles.quantityBtn}
+                  >
+                    <Text style={styles.quantityBtnText}>＋</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.totalContainer}>
+                  <Text style={styles.totalLabel}>合計金額:</Text>
+                  <Text style={styles.totalPrice}>
+                    ¥{(selectedTicket.price * quantity).toLocaleString()}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.payButton, isPurchasing && styles.disabledBtn]}
+                  onPress={handleProcessPayment}
+                  disabled={isPurchasing}
+                >
+                  {isPurchasing ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.payButtonText}>支払う (Stripe)</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setModalVisible(false)}
+                  disabled={isPurchasing}
+                >
+                  <Text style={styles.cancelButtonText}>キャンセル</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000000' },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#000',
-  },
-
-  eventImage: { width: '100%', height: 220, resizeMode: 'cover' },
-  imagePlaceholder: { width: '100%', height: 220, backgroundColor: '#333' },
-
+  container: { flex: 1, backgroundColor: '#000' },
+  center: { justifyContent: 'center', alignItems: 'center', flex: 1 },
+  eventImage: { width: '100%', height: 200, resizeMode: 'cover' },
+  imagePlaceholder: { backgroundColor: '#333' },
   detailCard: {
-    backgroundColor: '#1C1C1E',
     padding: 20,
+    backgroundColor: '#1C1C1E',
     margin: 15,
-    borderRadius: 8,
+    borderRadius: 10,
   },
-
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 10,
-  },
-
-  organizerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    backgroundColor: '#111',
-    padding: 10,
-    borderRadius: 8,
-  },
-  organizerAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 10,
-  },
-  avatarPlaceholder: { backgroundColor: '#555' },
-  organizerName: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
-
-  metaRow: { flexDirection: 'row', marginBottom: 5 },
-  label: { color: '#AAA', fontSize: 14, width: 60 },
-  value: { color: '#FFF', fontSize: 14, flex: 1 },
-
-  description: {
-    fontSize: 15,
-    color: '#DDD',
-    marginTop: 15,
-    lineHeight: 24,
-  },
-
+  title: { fontSize: 24, fontWeight: 'bold', color: '#FFF', marginBottom: 10 },
+  organizerName: { color: '#AAA', marginBottom: 5 },
+  value: { color: '#FFF', marginBottom: 3 },
+  description: { color: '#DDD', marginTop: 15, lineHeight: 22 },
   finishedBadge: {
     backgroundColor: '#333',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    marginBottom: 10,
     alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#888',
+    padding: 5,
+    borderRadius: 4,
+    marginBottom: 5,
   },
-  finishedText: { color: '#BBB', fontSize: 12, fontWeight: 'bold' },
-
-  ticketHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  ticketHeader: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
-  addButton: { fontSize: 16, color: '#0A84FF', fontWeight: 'bold' },
-  ticketItem: {
-    backgroundColor: '#1C1C1E',
-    padding: 20,
-    marginHorizontal: 15,
-    marginVertical: 5,
-    borderRadius: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  ticketName: { fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' },
-  ticketPrice: {
-    fontSize: 16,
-    color: '#4CAF50',
-    marginTop: 5,
-    fontWeight: 'bold',
-  },
-  ticketCapacity: { fontSize: 12, color: '#888', marginTop: 2 },
-  buttonGroup: { flexDirection: 'row' },
-
+  finishedText: { color: '#BBB', fontSize: 12 },
   chatButton: {
     backgroundColor: '#0A84FF',
     padding: 15,
     marginHorizontal: 15,
     borderRadius: 8,
     alignItems: 'center',
+    marginBottom: 10,
+  },
+  chatButtonText: { color: '#FFF', fontWeight: 'bold' },
+  ticketHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     marginTop: 10,
+  },
+  ticketHeader: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  addButton: { color: '#0A84FF', fontSize: 16 },
+  ticketItem: {
+    backgroundColor: '#1C1C1E',
+    padding: 15,
+    marginHorizontal: 15,
+    marginTop: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ticketName: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  ticketPrice: { color: '#4CAF50', fontSize: 16, fontWeight: 'bold' },
+  ticketCapacity: { color: '#888', fontSize: 12 },
+  adminSection: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderColor: '#333',
+    marginTop: 20,
+  },
+  emptyText: { color: '#FFF' },
+
+  // モーダル用スタイル
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
     marginBottom: 20,
   },
-  chatButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-
-  adminSection: {
-    marginTop: 30,
-    padding: 20,
-    backgroundColor: '#1C1C1E',
+  modalTicketName: { color: '#AAA', fontSize: 16, marginBottom: 5 },
+  modalPrice: { color: '#FFF', fontSize: 18, marginBottom: 20 },
+  quantityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  quantityLabel: { color: '#FFF', fontSize: 16, marginRight: 15 },
+  quantityBtn: {
+    backgroundColor: '#333',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityBtnText: { color: '#FFF', fontSize: 20 },
+  quantityValue: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginHorizontal: 20,
+  },
+  totalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
     borderTopWidth: 1,
-    borderTopColor: '#333',
-    paddingBottom: 50,
+    borderColor: '#333',
+    paddingTop: 15,
+    width: '100%',
+    justifyContent: 'space-between',
   },
-  adminTitle: {
-    color: '#888',
-    fontSize: 14,
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  adminButtons: { flexDirection: 'row', justifyContent: 'space-between' },
-  adminBtn: {
-    flex: 1,
+  totalLabel: { color: '#AAA', fontSize: 16 },
+  totalPrice: { color: '#4CAF50', fontSize: 24, fontWeight: 'bold' },
+  payButton: {
+    backgroundColor: '#0A84FF',
+    width: '100%',
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
-    marginHorizontal: 5,
+    marginBottom: 10,
   },
-  editBtn: { backgroundColor: '#0A84FF' },
-  deleteBtn: { backgroundColor: '#FF3B30' },
-  disabledBtn: { backgroundColor: '#555' },
-  adminBtnText: { color: '#FFF', fontWeight: 'bold' },
-  adminNote: {
-    color: '#666',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-
-  emptyText: {
-    color: '#888',
-    textAlign: 'center',
-    fontSize: 16,
-    marginTop: 10,
-    marginBottom: 20,
-  },
+  payButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  cancelButton: { padding: 10 },
+  cancelButtonText: { color: '#888' },
+  disabledBtn: { opacity: 0.5 },
 });
 
 export default EventDetailScreen;
