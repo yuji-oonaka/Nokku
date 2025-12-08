@@ -24,6 +24,9 @@ class OrderResource extends Resource
     
     protected static ?string $navigationLabel = '注文・売上管理';
 
+    protected static ?string $navigationGroup = '売上管理';
+    protected static ?int $navigationSort = 1;
+
     // ★重要: 表示データの制限ロジック
     public static function getEloquentQuery(): Builder
     {

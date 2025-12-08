@@ -10,29 +10,32 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\EventResource\RelationManagers;
 
 class EventResource extends Resource
 {
     protected static ?string $model = Event::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-calendar'; // アイコンをカレンダーに
+    protected static ?string $navigationIcon = 'heroicon-o-calendar';
 
     protected static ?string $navigationLabel = 'イベント管理';
+
+    // ▼▼▼ 追加: サイドバーのグループ設定 ▼▼▼
+    protected static ?string $navigationGroup = 'コンテンツ管理';
+    protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                // アーティスト選択 (運営が付け替えることは稀ですが、一応可能に)
+                // アーティスト選択
                 Forms\Components\Select::make('artist_id')
                     ->relationship('artist', 'nickname')
                     ->label('開催アーティスト')
                     ->searchable()
                     ->required()
-                    // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
                     ->disabled(fn () => auth()->user()->role !== 'admin')
                     ->default(fn () => auth()->user()->role !== 'admin' ? auth()->id() : null)
-                    // データとして送信されるように設定（disabledだと送信されないため）
                     ->dehydrated(),
 
                 Forms\Components\TextInput::make('title')
@@ -50,27 +53,19 @@ class EventResource extends Resource
 
                 // 画像URL
                 Forms\Components\FileUpload::make('image_url')
-                    ->label('グッズ画像')
+                    ->label('イベント画像')
                     ->image()
-                    ->directory('products')
+                    ->directory('events') // ディレクトリをeventsに変更しました
                     ->disk('public')
                     ->visibility('public')
-                    // ▼▼▼ 修正: 戻り値を「配列」にする！ ▼▼▼
                     ->formatStateUsing(function ($record) {
-                        // 1. レコードがない、または画像URLがない場合は「空の配列」を返す
                         if (!$record || !$record->getRawOriginal('image_url')) {
                             return [];
                         }
-
-                        // 2. DBの生のデータを取得
                         $url = $record->getRawOriginal('image_url');
-
-                        // 3. もし外部URL(http)なら、表示できないので「空の配列」を返す
                         if (str_starts_with($url, 'http')) {
                             return [];
                         }
-
-                        // 4. それ以外なら「配列に入れて」返す
                         return [$url];
                     }),
                 
@@ -84,7 +79,6 @@ class EventResource extends Resource
     {
         return $table
             ->columns([
-                // 画像を表示 (円形ではなく四角で)
                 Tables\Columns\ImageColumn::make('image_url')
                     ->label('画像')
                     ->square(),
@@ -94,7 +88,6 @@ class EventResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                // アーティスト名
                 Tables\Columns\TextColumn::make('artist.nickname')
                     ->label('アーティスト')
                     ->searchable()
@@ -108,9 +101,31 @@ class EventResource extends Resource
                 Tables\Columns\TextColumn::make('venue')
                     ->label('会場')
                     ->searchable(),
+
+                // ▼▼▼ 追加案1: 販売枚数合計 ▼▼▼
+                Tables\Columns\TextColumn::make('tickets_sold')
+                    ->label('販売数')
+                    ->state(function ($record) {
+                        // TicketType経由でUserTicket(実際に売れた枚数)を合計
+                        // ※ UserTicketモデルとリレーションが正しく組まれている前提です
+                        return $record->ticketTypes->sum(function ($type) {
+                            return $type->userTickets ? $type->userTickets->count() : 0;
+                        }) . '枚';
+                    }),
+
+                // ▼▼▼ 追加案2: 売上金額合計 (イベント単位) ▼▼▼
+                Tables\Columns\TextColumn::make('sales_total')
+                    ->label('売上合計')
+                    ->money('JPY')
+                    ->state(function ($record) {
+                        return $record->ticketTypes->sum(function ($type) {
+                            $count = $type->userTickets ? $type->userTickets->count() : 0;
+                            return $count * $type->price;
+                        });
+                    }),
             ])
             ->filters([
-                // 未来のイベントだけに絞るフィルターなどを追加可能
+                //
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -125,7 +140,7 @@ class EventResource extends Resource
     public static function getRelations(): array
     {
         return [
-            // チケット種別（S席、A席など）を管理したければここに追加
+            RelationManagers\TicketTypesRelationManager::class,
         ];
     }
 
@@ -140,12 +155,9 @@ class EventResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // 親のクエリを取得
         $query = parent::getEloquentQuery();
 
-        // もしログインユーザーが「管理者(admin)」じゃなければ
         if (auth()->user()->role !== 'admin') {
-            // 「自分のID (artist_id)」のデータだけに絞り込む
             $query->where('artist_id', auth()->id());
         }
 
