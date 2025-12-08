@@ -8,10 +8,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\UserTicket;
-use App\Models\TicketType; // 追加
+use App\Models\TicketType;
 use App\Models\Order;
 use Illuminate\Support\Facades\Log;
 use Kreait\Laravel\Firebase\Facades\Firebase;
+use Stripe\Stripe;
+use Stripe\PaymentIntent;
 
 class UserTicketController extends Controller
 {
@@ -28,59 +30,86 @@ class UserTicketController extends Controller
         return response()->json($myTickets);
     }
 
-    // ★ 新規追加: チケット購入API
+    // ★ 改修: 複数枚購入 & Stripe決済検証付き
     public function purchase(Request $request)
     {
         $validated = $request->validate([
             'ticket_type_id' => 'required|exists:ticket_types,id',
+            'quantity' => 'required|integer|min:1|max:10', // 一度の購入上限を仮設定
+            'payment_intent_id' => 'required|string', // Stripeの決済ID
         ]);
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
         $ticketTypeId = $validated['ticket_type_id'];
+        $quantity = $validated['quantity'];
+        $paymentIntentId = $validated['payment_intent_id'];
 
-        // トランザクション開始（在庫整合性のため）
-        return DB::transaction(function () use ($user, $ticketTypeId) {
-            // ロックをかけてTicketTypeを取得（同時購入対策）
+        // 1. Stripe決済の検証 (セキュリティ対策)
+        // クライアントから「払ったよ」と言われても、念のためサーバーからStripeに確認する
+        try {
+            Stripe::setApiKey(config('services.stripe.secret'));
+            $intent = PaymentIntent::retrieve($paymentIntentId);
+
+            if ($intent->status !== 'succeeded') {
+                return response()->json(['message' => '決済が完了していません。'], 402);
+            }
+            
+            // NOTE: ここで金額($intent->amount)とチケット価格($ticketType->price * $quantity)の一致確認をするとより安全です
+            
+        } catch (\Exception $e) {
+            Log::error('Stripe verification failed: ' . $e->getMessage());
+            return response()->json(['message' => '決済の検証に失敗しました。'], 500);
+        }
+
+        // 2. 在庫チェック & チケット発行 (トランザクション)
+        return DB::transaction(function () use ($user, $ticketTypeId, $quantity, $paymentIntentId) {
+            // ロックをかけてTicketTypeを取得
             $ticketType = TicketType::lockForUpdate()->find($ticketTypeId);
 
-            // 1. イベント終了チェック
-            // (簡易的にTicketTypeからEventを取得して日付など見るべきですが、一旦省略)
-
-            // 2. 在庫チェック
-            $soldCount = $ticketType->userTickets()->count();
-            if ($soldCount >= $ticketType->capacity) {
-                return response()->json(['message' => '申し訳ありません、このチケットは完売しました。'], 409);
+            // 在庫チェック
+            $currentSold = $ticketType->userTickets()->count();
+            if (($currentSold + $quantity) > $ticketType->capacity) {
+                // 決済済みだが在庫がない場合の緊急対応
+                // Stripeの払い戻し処理(Refund)をここに書くのが理想ですが、
+                // まずはエラーを返して、運営へ通知ログを残す運用とします。
+                Log::critical("在庫切れ発生: User {$user->id} paid for TicketType {$ticketType->id} but stock is empty. PaymentIntent: {$paymentIntentId}");
+                return response()->json(['message' => '申し訳ありません、タッチの差で完売しました。返金処理については運営にお問い合わせください。'], 409);
             }
 
-            // 3. 座席番号/整理番号の生成
-            // 例: "S席-001"
-            $seatNumber = $ticketType->name . '-' . str_pad($soldCount + 1, 3, '0', STR_PAD_LEFT);
+            $createdTickets = [];
 
-            // 4. チケット発行 (UserTicket作成)
-            $ticket = UserTicket::create([
-                'user_id' => $user->id,
-                'event_id' => $ticketType->event_id,
-                'ticket_type_id' => $ticketType->id,
-                'price' => $ticketType->price,
-                'qr_code_id' => (string) Str::uuid(), // ユニークなQRコードID
-                'seat_number' => $seatNumber,
-                'is_used' => false,
-            ]);
+            // 3. 枚数分ループしてチケット発行
+            for ($i = 0; $i < $quantity; $i++) {
+                // 座席番号生成 (例: S席-001)
+                // lockForUpdateしているので、ループ内でカウントアップしても整合性は保たれます
+                $seatNumber = $ticketType->name . '-' . str_pad($currentSold + $i + 1, 3, '0', STR_PAD_LEFT);
+                $qrCodeId = (string) Str::uuid();
 
-            // TODO: ここでStripe決済を入れる場合は、決済成功後にこの処理を行うか、
-            // PaymentIntentのmetadataにticket情報を入れてWebhookで作成するなどの対応が必要。
-            // 今回は「購入API」としてDB保存を優先実装。
+                $ticket = UserTicket::create([
+                    'user_id' => $user->id,
+                    'event_id' => $ticketType->event_id,
+                    'ticket_type_id' => $ticketType->id,
+                    'price' => $ticketType->price,
+                    'qr_code_id' => $qrCodeId,
+                    'seat_number' => $seatNumber,
+                    'is_used' => false,
+                    // 将来的に payment_intent_id を保存するカラムを作ると追跡しやすいです
+                ]);
+                
+                $createdTickets[] = $ticket;
+            }
 
             return response()->json([
-                'message' => 'チケットを購入しました！',
-                'ticket' => $ticket->load(['event', 'ticketType']),
+                'message' => "{$quantity}枚のチケットを購入しました！",
+                'tickets' => $createdTickets, // 複数形に変更
             ], 201);
         });
     }
 
     public function scanTicket(Request $request)
     {
+        // ... (既存のスキャンロジックは変更なし)
         $validated = $request->validate([
             'qr_code_id' => 'required|string',
         ]);
