@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,23 +11,20 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import api from '../../services/api';
-import { useFocusEffect } from '@react-navigation/native';
+import api from '../../services/api'; // 相対パスは環境に合わせて調整してください
 import { useAuth } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useImageUpload } from '../../hooks/useImageUpload';
-// ★ 追加
 import { useQueryClient } from '@tanstack/react-query';
 
 const ProfileEditScreen = () => {
-  // ★ firebaseUser を取得
-  const { user, firebaseUser, loading: authLoading } = useAuth();
-  // ★ QueryClient を取得
+  // ★ Global Stateからは「認証情報」と「ID」だけ利用
+  const { user, firebaseUser } = useAuth();
   const queryClient = useQueryClient();
 
+  // フォームの状態
   const [realName, setRealName] = useState('');
   const [nickname, setNickname] = useState('');
-  // ... (他のstateは省略) ...
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -36,33 +33,48 @@ const ProfileEditScreen = () => {
   const [address1, setAddress1] = useState('');
   const [address2, setAddress2] = useState('');
 
+  // ローディング状態
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
+  // 画像アップロードフック
   const { imageUri, uploadedPath, isUploading, selectImage, setImageFromUrl } =
     useImageUpload('avatar');
 
-  useFocusEffect(
-    useCallback(() => {
-      if (user) {
-        setRealName(user.real_name || '');
-        setNickname(user.nickname || '');
-        setEmail(user.email || '');
-        setPhone(user.phone_number || '');
-        setPostalCode(user.postal_code || '');
-        setPrefecture(user.prefecture || '');
-        setCity(user.city || '');
-        setAddress1(user.address_line1 || '');
-        setAddress2(user.address_line2 || '');
-        setImageFromUrl(user?.image_url || null);
-        setLoading(false);
-      } else if (!authLoading) {
-        setLoading(false);
-        Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
-      }
-    }, [user, authLoading, setImageFromUrl]),
-  );
+  // ★ 変更点: 画面ロード時にAPIから詳細プロフィールを取得
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      try {
+        setLoading(true);
+        // GET /profile で全情報を取得 (個人情報含む)
+        const response = await api.get('/profile');
+        const data = response.data;
 
+        // 取得したデータでフォームを初期化
+        setRealName(data.real_name || '');
+        setNickname(data.nickname || '');
+        setEmail(data.email || ''); // メールアドレスは表示のみ(変更不可)
+        setPhone(data.phone_number || '');
+        setPostalCode(data.postal_code || '');
+        setPrefecture(data.prefecture || '');
+        setCity(data.city || '');
+        setAddress1(data.address_line1 || '');
+        setAddress2(data.address_line2 || '');
+
+        // 画像の初期値をセット
+        setImageFromUrl(data.image_url || null);
+      } catch (error) {
+        console.error('Profile fetch error:', error);
+        Alert.alert('エラー', 'プロフィールの取得に失敗しました。');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfileData();
+  }, [setImageFromUrl]);
+
+  // 更新処理
   const handleUpdate = async () => {
     if (realName.trim().length === 0 || nickname.trim().length === 0) {
       Alert.alert('エラー', '本名とニックネームを入力してください。');
@@ -82,21 +94,23 @@ const ProfileEditScreen = () => {
         address_line2: address2,
       };
 
+      // アーティストかつ新しい画像があれば送信
       if (user?.role === 'artist' && uploadedPath) {
         payload.image_url = uploadedPath;
       }
 
+      // API更新実行
       const response = await api.put('/profile', payload);
       const updatedUser = response.data;
 
+      // ローカルstateも更新
       setRealName(updatedUser.real_name);
       setNickname(updatedUser.nickname);
       setImageFromUrl(updatedUser.image_url);
 
-      // ★★★ ここでキャッシュを更新 (App.tsxと連携) ★★★
-      if (firebaseUser?.uid) {
-        queryClient.setQueryData(['profile', firebaseUser.uid], updatedUser);
-      }
+      // ★★★ 重要: キャッシュを無効化して App.tsx などの表示を更新 ★★★
+      // 'profile' というキーを持つクエリをすべて無効化（再取得）させる
+      await queryClient.invalidateQueries({ queryKey: ['profile'] });
 
       Alert.alert('成功', 'プロフィールを更新しました。');
     } catch (error: any) {
@@ -119,7 +133,11 @@ const ProfileEditScreen = () => {
   };
 
   if (loading) {
-    return <ActivityIndicator size="large" style={styles.center} />;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </View>
+    );
   }
 
   const isArtist = user?.role === 'artist';
@@ -152,13 +170,13 @@ const ProfileEditScreen = () => {
             </View>
           )}
 
-          {/* ... 残りの入力フォーム (省略なしで元のまま使用してください) ... */}
           <Text style={styles.label}>メールアドレス (変更不可)</Text>
           <TextInput
             style={[styles.input, styles.readOnly]}
             value={email}
             editable={false}
           />
+
           <Text style={styles.label}>本名 (非公開)</Text>
           <TextInput
             style={styles.input}
@@ -167,6 +185,7 @@ const ProfileEditScreen = () => {
             placeholder="（チケット購入・決済用）"
             placeholderTextColor="#888"
           />
+
           <Text style={styles.label}>ニックネーム (公開)</Text>
           <TextInput
             style={styles.input}
@@ -177,6 +196,7 @@ const ProfileEditScreen = () => {
           />
 
           <Text style={styles.groupTitle}>配送先情報 (任意)</Text>
+
           <Text style={styles.label}>電話番号</Text>
           <TextInput
             style={styles.input}
@@ -186,6 +206,7 @@ const ProfileEditScreen = () => {
             placeholderTextColor="#888"
             keyboardType="phone-pad"
           />
+
           <Text style={styles.label}>郵便番号</Text>
           <TextInput
             style={styles.input}
@@ -195,6 +216,7 @@ const ProfileEditScreen = () => {
             placeholderTextColor="#888"
             keyboardType="number-pad"
           />
+
           <Text style={styles.label}>都道府県</Text>
           <TextInput
             style={styles.input}
@@ -203,6 +225,7 @@ const ProfileEditScreen = () => {
             placeholder="東京都"
             placeholderTextColor="#888"
           />
+
           <Text style={styles.label}>市区町村</Text>
           <TextInput
             style={styles.input}
@@ -211,6 +234,7 @@ const ProfileEditScreen = () => {
             placeholder="渋谷区"
             placeholderTextColor="#888"
           />
+
           <Text style={styles.label}>番地など</Text>
           <TextInput
             style={styles.input}
@@ -219,6 +243,7 @@ const ProfileEditScreen = () => {
             placeholder="恵比寿1-2-3"
             placeholderTextColor="#888"
           />
+
           <Text style={styles.label}>建物名・部屋番号</Text>
           <TextInput
             style={styles.input}
