@@ -2,10 +2,13 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
-import TimelineScreen from '../screens/TimelineScreen';
-import PostEditScreen from '../screens/PostEditScreen';
-import PostDetailScreen from '../screens/PostDetailScreen';
+
+
+
 import { Post } from '../api/queries';
+import TimelineScreen from '../features/social/TimelineScreen';
+import PostEditScreen from '../features/social/PostEditScreen';
+import PostDetailScreen from '../features/social/PostDetailScreen';
 
 // 3. ★ 型定義 (このスタックが持つ画面)
 export type TimelineStackParamList = {

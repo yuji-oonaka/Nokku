@@ -4,10 +4,10 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native'; // ログアウトボタン用
 
 // スクリーンをインポート
-import ProductListScreen from '../screens/ProductListScreen';
-import PaymentScreen from '../screens/PaymentScreen';
-import ProductEditScreen from '../screens/ProductEditScreen';
-import ProductDetailScreen from '../screens/ProductDetailScreen';
+import ProductListScreen from '../features/commerce/ProductListScreen';
+import PaymentScreen from '../features/commerce/PaymentScreen';
+import ProductEditScreen from '../features/commerce/ProductEditScreen';
+import ProductDetailScreen from '../features/commerce/ProductDetailScreen';
 
 // 2. ★ ProductStackParamList の型定義を修正
 export type ProductStackParamList = {

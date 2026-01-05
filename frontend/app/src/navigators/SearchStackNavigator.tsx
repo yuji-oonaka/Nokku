@@ -5,8 +5,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
 // 画面コンポーネントをインポート
-import ArtistListScreen from '../screens/ArtistListScreen';
-import ArtistProfileScreen from '../screens/ArtistProfileScreen';
+import ArtistListScreen from '../features/events/ArtistListScreen';
+import ArtistProfileScreen from '../features/events/ArtistProfileScreen';
+
 
 // 1. ナビゲーターが受け取るPropsの型
 interface Props {
