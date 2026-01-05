@@ -12,11 +12,11 @@ import {
   TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Artist, ArtistListResponse, fetchArtists } from '../api/queries';
+import { Artist, ArtistListResponse, fetchArtists } from '../../api/queries';
 
 const ArtistListScreen = () => {
   const navigation = useNavigation<any>();

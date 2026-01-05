@@ -15,12 +15,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { useStripe } from '@stripe/stripe-react-native';
-import { EventStackParamList } from '../navigators/EventStackNavigator';
-import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { EventStackParamList } from '../../navigators/EventStackNavigator';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import SoundService from '../services/SoundService';
-import { Event, TicketType, fetchEventDetailData } from '../api/queries';
+import SoundService from '../../services/SoundService';
+import { Event, TicketType, fetchEventDetailData } from '../../api/queries';
 
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 

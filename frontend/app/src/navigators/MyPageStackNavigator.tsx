@@ -4,7 +4,7 @@ import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
 // 必要なスクリーンをインポート
 import MyPageScreen from '../screens/MyPageScreen';
-import ProfileEditScreen from '../screens/ProfileEditScreen';
+import ProfileEditScreen from '../features/auth/ProfileEditScreen';
 import MyTicketsScreen from '../screens/MyTicketsScreen';
 import EventCreateScreen from '../screens/EventCreateScreen';
 import ProductCreateScreen from '../screens/ProductCreateScreen';
@@ -14,7 +14,9 @@ import GateScannerScreen from '../screens/GateScannerScreen';
 import InquiryScreen from '../screens/InquiryScreen';
 import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 // 1. ★ OrderDetailScreen と Order 型をインポート
-import OrderDetailScreen, { Order } from '../screens/OrderDetailScreen';
+import OrderDetailScreen, {
+  Order,
+} from '../features/commerce/OrderDetailScreen';
 import FavoriteProductsScreen from '../screens/FavoriteProductsScreen';
 import ProductDetailScreen from '../screens/ProductDetailScreen';
 import { UserTicket } from '../api/queries';

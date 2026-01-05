@@ -11,11 +11,11 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useFocusEffect } from '@react-navigation/native';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useImageUpload } from '../hooks/useImageUpload';
+import { useImageUpload } from '../../hooks/useImageUpload';
 // ★ 追加
 import { useQueryClient } from '@tanstack/react-query';
 

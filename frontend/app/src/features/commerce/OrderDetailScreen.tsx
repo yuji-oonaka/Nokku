@@ -6,9 +6,9 @@ import QRCode from 'react-native-qrcode-svg';
 import firestore from '@react-native-firebase/firestore';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
-import SoundService from '../services/SoundService';
-import { Order, OrderItem } from '../api/queries';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
+import SoundService from '../../services/SoundService';
+import { Order, OrderItem } from '../../api/queries';
 
 type OrderDetailRouteProp = RouteProp<MyPageStackParamList, 'OrderDetail'>;
 
