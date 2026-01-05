@@ -8,10 +8,10 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import api from '../services/api'; // 1. ★ api.ts をインポート
+import api from '../../services/api'; // 1. ★ api.ts をインポート
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 // 2. ★ EventStackNavigator の型定義をインポート
-import { EventStackParamList } from '../navigators/EventStackNavigator';
+import { EventStackParamList } from '../../navigators/EventStackNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 3. ★ Props (authToken) を削除

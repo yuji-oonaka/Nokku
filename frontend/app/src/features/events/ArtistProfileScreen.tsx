@@ -18,7 +18,7 @@ import {
   ArtistEventMin,
   ArtistProductMin,
   fetchArtistProfileData,
-} from '../api/queries';
+} from '../../api/queries';
 
 type ArtistProfileRouteParams = {
   ArtistProfile: { artistId: number };

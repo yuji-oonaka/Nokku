@@ -4,10 +4,10 @@ import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import firestore from '@react-native-firebase/firestore';
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
-import SoundService from '../services/SoundService';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
+import SoundService from '../../services/SoundService';
 import { useQueryClient } from '@tanstack/react-query';
-import { UserTicket } from '../api/queries';
+import { UserTicket } from '../../api/queries';
 
 type TicketDetailRouteProp = RouteProp<MyPageStackParamList, 'TicketDetail'>;
 

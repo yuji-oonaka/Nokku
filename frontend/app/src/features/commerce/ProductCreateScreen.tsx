@@ -11,11 +11,11 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // ★ 追加: 自作フック
-import { useImageUpload } from '../hooks/useImageUpload';
+import { useImageUpload } from '../../hooks/useImageUpload';
 
 const ProductCreateScreen: React.FC = () => {
   const navigation = useNavigation();

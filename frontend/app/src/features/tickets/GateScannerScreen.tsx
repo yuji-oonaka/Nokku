@@ -12,7 +12,7 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 import { useIsFocused } from '@react-navigation/native';
-import api from '../services/api';
+import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // スキャン結果の状態を定義

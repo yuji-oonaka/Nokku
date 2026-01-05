@@ -17,8 +17,8 @@ import firestore, {
   FirebaseFirestoreTypes,
 } from '@react-native-firebase/firestore';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../context/AuthContext';
-import { EventStackParamList } from '../navigators/EventStackNavigator';
+import { useAuth } from '../../context/AuthContext';
+import { EventStackParamList } from '../../navigators/EventStackNavigator';
 
 type ChatLobbyRouteProp = RouteProp<EventStackParamList, 'ChatLobby'>;
 type ChatLobbyNavigationProp = StackNavigationProp<

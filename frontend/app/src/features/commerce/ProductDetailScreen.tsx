@@ -13,14 +13,14 @@ import {
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-import api from '../services/api';
+import { ProductStackParamList } from '../../navigators/ProductStackNavigator';
+import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Product, fetchProductById } from '../api/queries';
-import SoundService from '../services/SoundService';
+import { Product, fetchProductById } from '../../api/queries';
+import SoundService from '../../services/SoundService';
 
 type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
 type PaymentMethod = 'stripe' | 'cash';

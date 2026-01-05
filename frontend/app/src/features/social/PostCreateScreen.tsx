@@ -12,7 +12,7 @@ import {
   ScrollView,
   Platform, // 1. ★ Platform をインポート
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   launchImageLibrary,

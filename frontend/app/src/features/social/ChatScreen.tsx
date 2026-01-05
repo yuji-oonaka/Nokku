@@ -19,11 +19,11 @@ import { useRoute, RouteProp } from '@react-navigation/native';
 import firestore, {
   FirebaseFirestoreTypes,
 } from '@react-native-firebase/firestore';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 // ★ 変更1: SafeAreaViewではなく、Insetsを取得するフックを使う
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EventStackParamList } from '../navigators/EventStackNavigator';
+import { EventStackParamList } from '../../navigators/EventStackNavigator';
 
 type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
 

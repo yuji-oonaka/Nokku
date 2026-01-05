@@ -11,13 +11,13 @@ import {
   Image,
   ScrollView, // ★ 追加: ScrollViewをインポート
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { useImageUpload } from '../hooks/useImageUpload';
+import { useImageUpload } from '../../hooks/useImageUpload';
 
 const formatDateTimeForAPI = (date: Date): string => {
   const dateString = date.toISOString().split('T')[0];

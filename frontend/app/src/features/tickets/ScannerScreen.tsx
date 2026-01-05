@@ -16,9 +16,9 @@ import {
   useCodeScanner,
 } from 'react-native-vision-camera';
 import { useIsFocused, useRoute, RouteProp } from '@react-navigation/native';
-import api from '../services/api';
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
-import SoundService from '../services/SoundService';
+import api from '../../services/api';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
+import SoundService from '../../services/SoundService';
 
 type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
 type ScanMode = 'ticket' | 'order';

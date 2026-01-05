@@ -11,9 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
 import { useQuery } from '@tanstack/react-query';
-import { Order, fetchMyOrders } from '../api/queries';
+import { Order, fetchMyOrders } from '../../api/queries';
 
 type OrderHistoryNavigationProp = StackNavigationProp<
   MyPageStackParamList,

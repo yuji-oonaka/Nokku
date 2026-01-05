@@ -4,12 +4,12 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native'; // ログアウトボタン用
 
 // スクリーンをインポート
-import EventListScreen from '../screens/EventListScreen';
-import EventDetailScreen from '../screens/EventDetailScreen';
-import TicketTypeCreateScreen from '../screens/TicketTypeCreateScreen';
-import EventEditScreen from '../screens/EventEditScreen';
-import ChatScreen from '../screens/ChatScreen';
-import ChatLobbyScreen from '../screens/ChatLobbyScreen';
+import EventListScreen from '../features/events/EventListScreen';
+import EventDetailScreen from '../features/events/EventDetailScreen';
+import TicketTypeCreateScreen from '../features/tickets/TicketTypeCreateScreen';
+import EventEditScreen from '../features/events/EventEditScreen';
+import ChatScreen from '../features/social/ChatScreen';
+import ChatLobbyScreen from '../features/social/ChatLobbyScreen';
 
 // 2. ★ EventStackParamList の型定義を修正
 export type EventStackParamList = {

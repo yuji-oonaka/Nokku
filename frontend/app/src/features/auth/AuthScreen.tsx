@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import api from '../services/api';
+import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 画面モードの型定義

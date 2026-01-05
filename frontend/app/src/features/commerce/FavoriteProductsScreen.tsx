@@ -12,9 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Product, fetchMyFavorites } from '../api/queries';
+import { Product, fetchMyFavorites } from '../../api/queries';
 
 const FavoriteProductsScreen: React.FC = () => {
   const navigation = useNavigation<any>();

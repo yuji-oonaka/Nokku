@@ -19,7 +19,7 @@ import {
   AuthContextType,
   DbUser, // 2. ★ DbUser は queries.ts と共有
 } from './src/context/AuthContext';
-import AuthScreen from './src/screens/AuthScreen';
+
 import MainTabNavigator from './src/navigators/MainTabNavigator';
 // 3. ★ useQuery と useQueryClient をインポート
 import {
@@ -31,6 +31,7 @@ import {
 
 // 5. ★ 新しい fetchProfile をインポート
 import { fetchProfile } from './src/api/queries';
+import AuthScreen from './src/features/auth/AuthScreen';
 
 LogBox.ignoreLogs(['deprecated']);
 

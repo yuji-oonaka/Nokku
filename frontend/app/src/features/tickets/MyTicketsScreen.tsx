@@ -10,9 +10,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { MyPageStackParamList } from '../navigators/MyPageStackNavigator';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
 import { useQuery } from '@tanstack/react-query';
-import { UserTicket, fetchMyTickets } from '../api/queries';
+import { UserTicket, fetchMyTickets } from '../../api/queries';
 
 type MyTicketsNavigationProp = StackNavigationProp<
   MyPageStackParamList,

@@ -10,16 +10,16 @@ import {
   TouchableOpacity, // 2. ★ TouchableOpacity をインポート
   Alert, // 3. ★ Alert をインポート
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   useQuery,
   useMutation,
   useQueryClient, // キャッシュを手動で更新するためにインポート
 } from '@tanstack/react-query';
-import { Post, fetchPosts } from '../api/queries';
+import { Post, fetchPosts } from '../../api/queries';
 
 // 4. ★★★ PostItem コンポーネントを修正 ★★★
 const PostItem = ({

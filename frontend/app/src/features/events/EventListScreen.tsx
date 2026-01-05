@@ -12,9 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { EventStackParamList } from '../navigators/EventStackNavigator';
+import { EventStackParamList } from '../../navigators/EventStackNavigator';
 import { useQuery } from '@tanstack/react-query';
-import { Event, fetchEvents } from '../api/queries';
+import { Event, fetchEvents } from '../../api/queries';
 
 type EventListNavigationProp = StackNavigationProp<
   EventStackParamList,

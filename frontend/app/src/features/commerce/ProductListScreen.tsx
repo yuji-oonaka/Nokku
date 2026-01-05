@@ -14,12 +14,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { ProductStackParamList } from '../navigators/ProductStackNavigator';
-import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { ProductStackParamList } from '../../navigators/ProductStackNavigator';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Product, fetchProducts } from '../api/queries';
-import SoundService from '../services/SoundService';
+import { Product, fetchProducts } from '../../api/queries';
+import SoundService from '../../services/SoundService';
 
 type ProductListNavigationProp = StackNavigationProp<
   ProductStackParamList,

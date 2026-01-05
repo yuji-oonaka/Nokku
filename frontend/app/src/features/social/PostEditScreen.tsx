@@ -12,7 +12,7 @@ import {
   ScrollView,
   Platform, // 1. ★ Platform をインポート
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import {
@@ -24,7 +24,7 @@ import {
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { TimelineStackParamList } from '../navigators/TimelineStackNavigator';
+import { TimelineStackParamList } from '../../navigators/TimelineStackNavigator';
 
 interface SelectedImage {
   uri: string;

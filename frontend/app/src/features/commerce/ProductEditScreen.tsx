@@ -11,12 +11,12 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Product } from '../api/queries';
+import { Product } from '../../api/queries';
 // ★ 追加: 自作フック
-import { useImageUpload } from '../hooks/useImageUpload';
+import { useImageUpload } from '../../hooks/useImageUpload';
 
 type ProductEditScreenRouteProp = RouteProp<
   { params: { productId: number } },

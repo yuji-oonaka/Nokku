@@ -10,7 +10,7 @@ import {
   RefreshControl, // ★ 追加
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // ★ 追加: キャッシュ操作用
 import { useQueryClient } from '@tanstack/react-query';

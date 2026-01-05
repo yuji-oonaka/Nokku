@@ -10,11 +10,11 @@ import {
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { TimelineStackParamList } from '../navigators/TimelineStackNavigator';
+import { TimelineStackParamList } from '../../navigators/TimelineStackNavigator';
 
 // 3. ★ React Query と新しい関数をインポート
 import { useQuery } from '@tanstack/react-query';
-import { Post, fetchPostById } from '../api/queries';
+import { Post, fetchPostById } from '../../api/queries';
 
 type PostDetailRouteProp = RouteProp<TimelineStackParamList, 'PostDetail'>;
 

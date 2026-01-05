@@ -11,15 +11,15 @@ import {
   TouchableOpacity,
   Image, // ★ 追加
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { Event } from '../api/queries';
+import { Event } from '../../api/queries';
 // ★ 追加: 自作フック
-import { useImageUpload } from '../hooks/useImageUpload';
+import { useImageUpload } from '../../hooks/useImageUpload';
 
 type EventEditScreenRouteProp = RouteProp<
   { params: { eventId: number } },

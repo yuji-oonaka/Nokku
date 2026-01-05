@@ -9,9 +9,9 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import api from '../services/api';
+import api from '../../services/api';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../context/AuthContext'; // 1. ★ ユーザー情報を取得するため
+import { useAuth } from '../../context/AuthContext'; // 1. ★ ユーザー情報を取得するため
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const InquiryScreen = () => {
