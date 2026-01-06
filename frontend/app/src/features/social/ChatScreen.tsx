@@ -8,49 +8,28 @@ import {
   TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
-  Platform, // Platformをインポート
+  Platform,
   Alert,
   Modal,
   TouchableWithoutFeedback,
-  Image,
-  StatusBar, // ステータスバーの高さを取得するためにインポート
+  StatusBar,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
-import firestore, {
-  FirebaseFirestoreTypes,
-} from '@react-native-firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-// ★ 変更1: SafeAreaViewではなく、Insetsを取得するフックを使う
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventStackParamList } from '../../navigators/EventStackNavigator';
+// ★ 作成したコンポーネントをインポート
+import { MessageBubble, ChatMessage } from './components/MessageBubble';
 
 type ChatScreenRouteProp = RouteProp<EventStackParamList, 'Chat'>;
-
-interface ChatMessage {
-  id: string;
-  text: string;
-  createdAt: FirebaseFirestoreTypes.Timestamp;
-  userId: number;
-  userName: string;
-  userImage?: string;
-  deletedAt?: FirebaseFirestoreTypes.Timestamp;
-  replyTo?: {
-    id: string;
-    userName: string;
-    text: string;
-  };
-  reactions?: {
-    [userId: number]: string;
-  };
-}
 
 const ChatScreen = () => {
   const route = useRoute<ChatScreenRouteProp>();
   const { eventId, threadId } = route.params;
   const { user: authUser } = useAuth();
 
-  // ★ 変更2: 画面の安全領域（ノッチやホームバー）の高さを取得
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight ? useHeaderHeight() : 0;
 
@@ -72,6 +51,7 @@ const ChatScreen = () => {
     .doc(threadId)
     .collection('messages');
 
+  // --- 1. メッセージ取得 ---
   useEffect(() => {
     if (!eventId) return;
 
@@ -115,25 +95,7 @@ const ChatScreen = () => {
     }
   };
 
-  const formatMessageTime = (timestamp: FirebaseFirestoreTypes.Timestamp) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate();
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    const isThisYear = date.getFullYear() === now.getFullYear();
-    const timeString = date.toLocaleTimeString('ja-JP', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    if (isToday) return timeString;
-    if (isThisYear)
-      return `${date.getMonth() + 1}/${date.getDate()} ${timeString}`;
-    return `${date.getFullYear()}/${
-      date.getMonth() + 1
-    }/${date.getDate()} ${timeString}`;
-  };
-
+  // --- 2. メッセージ送信 ---
   const handleSend = useCallback(() => {
     if (inputText.trim().length === 0 || !authUser) return;
 
@@ -158,6 +120,7 @@ const ChatScreen = () => {
     setReplyingTo(null);
   }, [inputText, authUser, messagesRef, replyingTo]);
 
+  // --- 3. アクション処理 (削除・リアクション) ---
   const handleDelete = async (messageId: string) => {
     try {
       await messagesRef.doc(messageId).update({
@@ -178,11 +141,11 @@ const ChatScreen = () => {
     setMenuVisible(false);
   };
 
-  const onLongPressMessage = (message: ChatMessage) => {
+  const onLongPressMessage = useCallback((message: ChatMessage) => {
     if (message.deletedAt) return;
     setSelectedMessage(message);
     setMenuVisible(true);
-  };
+  }, []);
 
   const handleMenuAction = (action: 'reply' | 'delete' | 'copy' | 'report') => {
     setMenuVisible(false);
@@ -208,101 +171,10 @@ const ChatScreen = () => {
     }
   };
 
-  const renderTextWithMentions = (text: string) => {
-    const parts = text.split(/(\s+)/);
-    return (
-      <Text style={styles.messageText}>
-        {parts.map((part, index) => {
-          if (part.startsWith('@')) {
-            return (
-              <Text key={index} style={styles.mentionText}>
-                {part}
-              </Text>
-            );
-          }
-          return <Text key={index}>{part}</Text>;
-        })}
-      </Text>
-    );
-  };
-
-  const renderMessage = ({ item }: { item: ChatMessage }) => {
-    const isMyMessage = authUser && item.userId === authUser.id;
-    const isDeleted = !!item.deletedAt;
-
-    return (
-      <View
-        style={[
-          styles.rowContainer,
-          isMyMessage ? styles.rowRight : styles.rowLeft,
-        ]}
-      >
-        {!isMyMessage && (
-          <View style={styles.avatarContainer}>
-            {item.userImage ? (
-              <Image source={{ uri: item.userImage }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]} />
-            )}
-          </View>
-        )}
-
-        <View style={styles.bubbleWrapper}>
-          {!isMyMessage && !isDeleted && (
-            <Text style={styles.messageSenderName}>{item.userName}</Text>
-          )}
-
-          <TouchableOpacity
-            onLongPress={() => onLongPressMessage(item)}
-            activeOpacity={0.8}
-            style={[
-              styles.messageBubble,
-              isMyMessage ? styles.myMessageBubble : styles.otherMessageBubble,
-              isDeleted && styles.deletedBubble,
-            ]}
-          >
-            {item.replyTo && !isDeleted && (
-              <View style={styles.replyBubble}>
-                <Text style={styles.replySender}>@{item.replyTo.userName}</Text>
-                <Text numberOfLines={1} style={styles.replyText}>
-                  {item.replyTo.text}
-                </Text>
-              </View>
-            )}
-
-            {isDeleted ? (
-              <Text style={styles.deletedText}>
-                🚫 メッセージは削除されました
-              </Text>
-            ) : (
-              renderTextWithMentions(item.text)
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.metaContainer}>
-            {item.reactions &&
-              Object.keys(item.reactions).length > 0 &&
-              !isDeleted && (
-                <View style={styles.reactionsContainer}>
-                  {Object.values(item.reactions).map((emoji, idx) => (
-                    <Text key={idx} style={styles.reactionEmoji}>
-                      {emoji}
-                    </Text>
-                  ))}
-                </View>
-              )}
-            <Text style={styles.messageTime}>
-              {formatMessageTime(item.createdAt)}
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+  // ❌ 削除: renderMessage, formatMessageTime, renderTextWithMentions
 
   if (loading && messages.length === 0) {
     return (
-      // ★ 変更3: ここもSafeAreaViewではなくView + paddingTopで調整
       <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color="#0A84FF" />
       </View>
@@ -310,13 +182,10 @@ const ChatScreen = () => {
   }
 
   return (
-    // ★ 変更4: 一番外側をSafeAreaViewではなく通常のViewにし、上部の余白(insets.top)を付与
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        // ★修正: Androidでも 'padding' を強制的に適用します
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-        // iOSの場合、ヘッダーの高さ分（約60〜90）をオフセット
         keyboardVerticalOffset={
           Platform.OS === 'ios'
             ? headerHeight
@@ -325,7 +194,14 @@ const ChatScreen = () => {
       >
         <FlatList
           data={messages}
-          renderItem={renderMessage}
+          // ★ここでコンポーネントを使用
+          renderItem={({ item }) => (
+            <MessageBubble
+              item={item}
+              currentUserId={authUser?.id}
+              onLongPress={onLongPressMessage}
+            />
+          )}
           keyExtractor={item => item.id}
           inverted
           contentContainerStyle={{ paddingVertical: 10 }}
@@ -342,6 +218,7 @@ const ChatScreen = () => {
           }
         />
 
+        {/* リプライバー */}
         {replyingTo && (
           <View style={styles.replyingBar}>
             <View>
@@ -358,13 +235,11 @@ const ChatScreen = () => {
           </View>
         )}
 
-        {/* ★ 変更6: 入力エリアの下部に、ホームバーの高さ分(insets.bottom)の余白を与える */}
+        {/* 入力エリア */}
         <View
           style={[
             styles.inputContainer,
             {
-              // ★修正: 'padding'挙動にする場合、iOSのみ下底の余白(Home Indicator)を確保
-              // AndroidはKeyboardAvoidingViewが押し上げるので余計なpaddingは不要
               paddingBottom:
                 Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10,
             },
@@ -391,6 +266,7 @@ const ChatScreen = () => {
         </View>
       </KeyboardAvoidingView>
 
+      {/* メニューモーダル */}
       <Modal
         visible={menuVisible}
         transparent
@@ -448,6 +324,7 @@ const ChatScreen = () => {
   );
 };
 
+// ★ スタイルの大掃除完了版
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   loadingContainer: {
@@ -456,88 +333,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#000000',
   },
-  rowContainer: {
-    flexDirection: 'row',
-    marginVertical: 6,
-    paddingHorizontal: 10,
-    alignItems: 'flex-start',
-  },
-  rowRight: {
-    justifyContent: 'flex-end',
-  },
-  rowLeft: {
-    justifyContent: 'flex-start',
-  },
-  avatarContainer: {
-    marginRight: 8,
-    marginTop: 0,
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#333',
-  },
-  avatarPlaceholder: {
-    backgroundColor: '#555',
-  },
-  bubbleWrapper: {
-    maxWidth: '70%',
-  },
-  messageSenderName: {
-    fontSize: 11,
-    color: '#CCC',
-    marginBottom: 2,
-    marginLeft: 4,
-  },
-  messageBubble: {
-    padding: 10,
-    borderRadius: 14,
-    minWidth: 40,
-  },
-  myMessageBubble: {
-    backgroundColor: '#0A84FF',
-    borderTopRightRadius: 2,
-  },
-  otherMessageBubble: {
-    backgroundColor: '#2C2C2E',
-    borderTopLeftRadius: 2,
-  },
-  deletedBubble: { backgroundColor: '#333', opacity: 0.8 },
+  // ❌ 削除: rowContainer, avatar..., bubble... など吹き出し関連のスタイル
 
-  messageText: { fontSize: 15, color: '#FFFFFF', lineHeight: 20 },
-  mentionText: { fontWeight: 'bold', color: '#64D2FF' },
-  deletedText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
-
-  metaContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    marginTop: 2,
-    flexWrap: 'wrap',
-    marginRight: 2,
-  },
-  messageTime: {
-    fontSize: 10,
-    color: '#666',
-    marginLeft: 4,
-  },
-
-  replyBubble: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderLeftWidth: 3,
-    borderLeftColor: '#CCC',
-    padding: 5,
-    marginBottom: 5,
-    borderRadius: 4,
-  },
-  replySender: { fontSize: 11, color: '#EEE', fontWeight: 'bold' },
-  replyText: { fontSize: 12, color: '#DDD' },
-
+  // --- 入力エリア ---
   inputContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 10, // 上下のパディングはインラインスタイルで制御するため削除
-    paddingTop: 10, // 上だけ固定
+    paddingHorizontal: 10,
+    paddingTop: 10,
     backgroundColor: '#1C1C1E',
     borderTopWidth: 1,
     borderTopColor: '#333',
@@ -561,10 +363,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 15,
     height: 40,
-    marginBottom: 2, // ボタンの位置微調整
+    marginBottom: 2,
   },
   sendButtonDisabled: { backgroundColor: '#555' },
   sendButtonText: { color: '#FFFFFF', fontWeight: 'bold' },
+
+  // --- リプライバー ---
   replyingBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -577,15 +381,8 @@ const styles = StyleSheet.create({
   replyingTitle: { color: '#AAA', fontSize: 12 },
   replyingMessage: { color: '#FFF', fontSize: 14 },
   cancelReply: { color: '#AAA', fontSize: 20, padding: 5 },
-  reactionsContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#333',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginRight: 4,
-  },
-  reactionEmoji: { fontSize: 10, marginHorizontal: 1 },
+
+  // --- モーダル・メニュー ---
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
