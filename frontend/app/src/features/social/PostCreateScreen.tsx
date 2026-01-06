@@ -10,15 +10,17 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Platform, // 1. ★ Platform をインポート
+  Platform,
+  KeyboardAvoidingView, // ★追加
 } from 'react-native';
 import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native'; // ★追加
 import {
   launchImageLibrary,
   ImagePickerResponse,
+  ImageLibraryOptions, // ★型定義追加
 } from 'react-native-image-picker';
-// 2. ★ DateTimePicker をインポート
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
@@ -29,27 +31,22 @@ interface SelectedImage {
   fileName: string;
 }
 
-// 3. ★ API送信用に日付を 'YYYY-MM-DD HH:MM:SS' 形式に変換するヘルパー
+// 日付フォーマッター (API用 YYYY-MM-DD HH:MM:SS)
 const formatApiDateTime = (date: Date | null): string | null => {
   if (!date) return null;
-
-  // toISOString() はUTCなので、ローカル（JST）の各部分を取得
   const pad = (num: number) => num.toString().padStart(2, '0');
   const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1); // getMonth() は 0-indexed
+  const month = pad(date.getMonth() + 1);
   const day = pad(date.getDate());
   const hours = pad(date.getHours());
   const minutes = pad(date.getMinutes());
   const seconds = pad(date.getSeconds());
-
-  // Laravel の 'date' バリデーションが解釈できる形式
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// 4. ★ 表示用に日付をフォーマットするヘルパー
+// 日付フォーマッター (表示用)
 const formatDisplayDateTime = (date: Date | null): string => {
   if (!date) return '設定しない';
-  // '2025/11/14 14:30' のような形式
   return date.toLocaleString('ja-JP', {
     year: 'numeric',
     month: 'numeric',
@@ -60,6 +57,7 @@ const formatDisplayDateTime = (date: Date | null): string => {
 };
 
 const PostCreateScreen = () => {
+  const navigation = useNavigation(); // ★ナビゲーションフック
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,44 +65,43 @@ const PostCreateScreen = () => {
     null,
   );
 
-  // 5. ★ 日時 State を追加
   const [publishAt, setPublishAt] = useState<Date | null>(null);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
-
-  // 6. ★ ピッカーの表示 State を追加
   const [showPublishPicker, setShowPublishPicker] = useState(false);
   const [showExpirePicker, setShowExpirePicker] = useState(false);
 
+  // 画像選択処理
   const handleChoosePhoto = () => {
-    launchImageLibrary(
-      {
-        mediaType: 'photo',
-        quality: 1,
-        includeBase64: false,
-      },
-      (response: ImagePickerResponse) => {
-        if (response.didCancel) {
-          console.log('User cancelled image picker');
-        } else if (response.errorCode) {
-          console.log('ImagePicker Error: ', response.errorMessage);
-          Alert.alert('エラー', '画像の読み込みに失敗しました。');
-        } else if (response.assets && response.assets.length > 0) {
-          const asset = response.assets[0];
-          if (asset.uri && asset.type && asset.fileName) {
-            setSelectedImage({
-              uri: asset.uri,
-              type: asset.type,
-              fileName: asset.fileName,
-            });
-          }
+    // ★★★ 画像圧縮設定 ★★★
+    // これをしないと数MBの画像を送信することになり、アプリが激重になります
+    const options: ImageLibraryOptions = {
+      mediaType: 'photo',
+      quality: 0.8, // 画質を80%に落とす（見た目はほぼ変わらない）
+      maxWidth: 1024, // 幅を最大1024pxにリサイズ
+      maxHeight: 1024, // 高さも制限
+      includeBase64: false,
+      selectionLimit: 1, // 1枚だけ選択
+    };
+
+    launchImageLibrary(options, (response: ImagePickerResponse) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('エラー', '画像の読み込みに失敗しました。');
+      } else if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0];
+        if (asset.uri && asset.type && asset.fileName) {
+          setSelectedImage({
+            uri: asset.uri,
+            type: asset.type,
+            fileName: asset.fileName,
+          });
         }
-      },
-    );
+      }
+    });
   };
 
-  // 7. ★ (NEW) 日時ピッカーの onChange ハンドラ
   const onPublishChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    // Android は 'set' と 'dismissed' の両方のイベントが飛ぶので 'set' だけを拾う
     if (Platform.OS === 'android') {
       setShowPublishPicker(false);
       if (event.type !== 'set') return;
@@ -114,7 +111,6 @@ const PostCreateScreen = () => {
 
     if (selectedDate) {
       setPublishAt(selectedDate);
-      // もし公開日時より前に終了日時が設定されていたら、終了日時をリセット
       if (expiresAt && expiresAt < selectedDate) {
         setExpiresAt(null);
       }
@@ -130,7 +126,6 @@ const PostCreateScreen = () => {
     }
 
     if (selectedDate) {
-      // 公開日時より前には設定させない
       if (publishAt && selectedDate < publishAt) {
         Alert.alert(
           'エラー',
@@ -143,7 +138,6 @@ const PostCreateScreen = () => {
     }
   };
 
-  // 8. ★ 投稿処理 (handleSubmit) を修正
   const handleSubmit = async () => {
     if (title.trim().length === 0 || content.trim().length === 0) {
       Alert.alert('エラー', 'タイトルと投稿内容を入力してください。');
@@ -154,9 +148,8 @@ const PostCreateScreen = () => {
     let uploadedImageUrl: string | null = null;
 
     try {
-      // 9. ★ ステップ1: 画像アップロード (変更なし)
+      // 1. 画像アップロード
       if (selectedImage) {
-        // [・・・(FormData, api.post('/upload-image') は変更なし)・・・]
         const formData = new FormData();
         formData.append('type', 'post');
         formData.append('image', {
@@ -164,33 +157,35 @@ const PostCreateScreen = () => {
           type: selectedImage.type,
           name: selectedImage.fileName,
         });
+
+        // ヘッダーは api インスタンス側で自動制御される場合が多いが、明示的に指定
         const uploadResponse = await api.post('/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         uploadedImageUrl = uploadResponse.data.url;
       }
 
-      // 10. ★ ステップ2: /api/posts に 'title' と「日付」を含めて投稿
+      // 2. 投稿データ送信
       await api.post('/posts', {
         title: title,
         content: content,
         image_url: uploadedImageUrl,
-        publish_at: formatApiDateTime(publishAt), // 👈 ★ 'publish_at' を追加
-        expires_at: formatApiDateTime(expiresAt), // 👈 ★ 'expires_at' を追加
+        publish_at: formatApiDateTime(publishAt),
+        expires_at: formatApiDateTime(expiresAt),
       });
 
-      // 成功したら入力欄を空にする
-      setTitle('');
-      setContent('');
-      setSelectedImage(null);
-      setPublishAt(null); // 👈 ★ リセット
-      setExpiresAt(null); // 👈 ★ リセット
-      Alert.alert('成功', '投稿が完了しました。');
-      // (TODO: 投稿後にタイムライン画面に自動遷移する)
+      Alert.alert('成功', '投稿が完了しました。', [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack(), // ★成功したら前の画面に戻る
+        },
+      ]);
     } catch (error: any) {
-      // [・・・(エラーハンドリングは変更なし)・・・]
       console.error('投稿エラー:', error.response?.data || error.message);
-      Alert.alert('エラー', '投稿に失敗しました。');
+      Alert.alert(
+        'エラー',
+        '投稿に失敗しました。時間をおいて再試行してください。',
+      );
     } finally {
       setLoading(false);
     }
@@ -198,118 +193,125 @@ const PostCreateScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <View style={styles.form}>
-          {/* --- 必須項目 --- */}
-          <Text style={styles.label}>タイトル</Text>
-          <TextInput
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="お知らせのタイトル"
-            placeholderTextColor="#888"
-          />
+      {/* ★ KeyboardAvoidingView でラップして、入力中のキーボード被りを防ぐ */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.form}>
+            {/* タイトル */}
+            <Text style={styles.label}>タイトル</Text>
+            <TextInput
+              style={styles.titleInput}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="お知らせのタイトル"
+              placeholderTextColor="#888"
+            />
 
-          <Text style={styles.label}>投稿内容</Text>
-          <TextInput
-            style={styles.input}
-            value={content}
-            onChangeText={setContent}
-            placeholder="いまどうしてる？"
-            multiline={true}
-            numberOfLines={6}
-          />
+            {/* 内容 */}
+            <Text style={styles.label}>投稿内容</Text>
+            <TextInput
+              style={styles.input}
+              value={content}
+              onChangeText={setContent}
+              placeholder="いまどうしてる？"
+              placeholderTextColor="#888"
+              multiline={true}
+              numberOfLines={6}
+            />
 
-          <TouchableOpacity
-            style={styles.imagePicker}
-            onPress={handleChoosePhoto}
-          >
-            {selectedImage ? (
-              <Image
-                source={{ uri: selectedImage.uri }}
-                style={styles.previewImage}
-              />
-            ) : (
-              <Text style={styles.imagePickerText}>画像を選択</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* 11. ★★★ (NEW) オプションセクション ★★★ */}
-          <Text style={styles.label}>オプション</Text>
-
-          {/* 公開日時ピッカーボタン */}
-          <View style={styles.datePickerContainer}>
-            <Text style={styles.datePickerLabel}>公開日時</Text>
+            {/* 画像選択 */}
             <TouchableOpacity
-              style={styles.datePickerButton}
-              onPress={() => setShowPublishPicker(true)}
+              style={styles.imagePicker}
+              onPress={handleChoosePhoto}
             >
-              <Text style={styles.datePickerValue}>
-                {formatDisplayDateTime(publishAt)}
-              </Text>
+              {selectedImage ? (
+                <Image
+                  source={{ uri: selectedImage.uri }}
+                  style={styles.previewImage}
+                />
+              ) : (
+                <Text style={styles.imagePickerText}>📷 画像を追加 (任意)</Text>
+              )}
             </TouchableOpacity>
-          </View>
-          <Text style={styles.datePickerHelp}>
-            ※未設定の場合は「即時公開」されます
-          </Text>
 
-          {/* 掲載終了日時ピッカーボタン */}
-          <View style={styles.datePickerContainer}>
-            <Text style={styles.datePickerLabel}>掲載終了</Text>
-            <TouchableOpacity
-              style={styles.datePickerButton}
-              onPress={() => setShowExpirePicker(true)}
-            >
-              <Text style={styles.datePickerValue}>
-                {formatDisplayDateTime(expiresAt)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.datePickerHelp}>
-            ※未設定の場合は「無期限」で掲載されます
-          </Text>
+            {/* オプション */}
+            <Text style={styles.sectionHeader}>公開オプション</Text>
 
-          {/* 12. ★ 投稿ボタン */}
-          {loading ? (
-            <ActivityIndicator size="large" style={styles.buttonSpacing} />
-          ) : (
-            <View style={styles.buttonSpacing}>
-              <Button title="投稿する" onPress={handleSubmit} />
+            {/* 公開日時 */}
+            <View style={styles.datePickerContainer}>
+              <Text style={styles.datePickerLabel}>公開日時</Text>
+              <TouchableOpacity
+                style={styles.datePickerButton}
+                onPress={() => setShowPublishPicker(true)}
+              >
+                <Text style={styles.datePickerValue}>
+                  {formatDisplayDateTime(publishAt)}
+                </Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
-      </ScrollView>
 
-      {/* 13. ★★★ (NEW) 日付ピッカー本体 (非表示) ★★★ */}
+            {/* 終了日時 */}
+            <View style={styles.datePickerContainer}>
+              <Text style={styles.datePickerLabel}>掲載終了</Text>
+              <TouchableOpacity
+                style={styles.datePickerButton}
+                onPress={() => setShowExpirePicker(true)}
+              >
+                <Text style={styles.datePickerValue}>
+                  {formatDisplayDateTime(expiresAt)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 送信ボタン */}
+            <View style={styles.buttonContainer}>
+              {loading ? (
+                <ActivityIndicator size="large" color="#0A84FF" />
+              ) : (
+                <Button
+                  title="投稿する"
+                  onPress={handleSubmit}
+                  disabled={loading} // 連打防止
+                />
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* DatePickers */}
       {showPublishPicker && (
         <DateTimePicker
-          value={publishAt || new Date()} // 1. 現在の時刻
+          value={publishAt || new Date()}
           mode="datetime"
           display="default"
           onChange={onPublishChange}
-          minimumDate={new Date()} // 2. 過去の日時は選択不可
-          timeZoneName={'Asia/Tokyo'} // 3. JST
+          minimumDate={new Date()}
         />
       )}
       {showExpirePicker && (
         <DateTimePicker
-          value={expiresAt || publishAt || new Date()} // 4. 終了日時は公開日時以降
+          value={expiresAt || publishAt || new Date()}
           mode="datetime"
           display="default"
           onChange={onExpireChange}
-          minimumDate={publishAt || new Date()} // 5. 公開日時より前は選択不可
-          timeZoneName={'Asia/Tokyo'} // 6. JST
+          minimumDate={publishAt || new Date()}
         />
       )}
     </SafeAreaView>
   );
 };
 
-// 14. ★ スタイルを追加
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  scrollContent: {
+    paddingBottom: 40, // 下部の余白確保
   },
   form: {
     padding: 20,
@@ -320,83 +322,90 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: 8,
     color: '#FFFFFF',
-    marginTop: 10, // 👈 (NEW) ラベル間のマージン
+    marginTop: 10,
+  },
+  sectionHeader: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#888',
+    marginTop: 20,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    paddingBottom: 5,
   },
   titleInput: {
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 5,
-    padding: 10,
+    padding: 12,
     fontSize: 16,
     backgroundColor: '#333333',
     color: '#FFFFFF',
-    marginBottom: 20,
+    marginBottom: 15,
   },
   input: {
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 5,
-    padding: 10,
+    padding: 12,
     fontSize: 16,
-    textAlignVertical: 'top',
+    textAlignVertical: 'top', // Androidで上寄せ
     minHeight: 120,
     marginBottom: 20,
     backgroundColor: '#333333',
     color: '#FFFFFF',
   },
   imagePicker: {
-    height: 150,
+    height: 180,
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#333333',
-    marginBottom: 20,
+    backgroundColor: '#2C2C2E',
+    marginBottom: 10,
+    overflow: 'hidden',
   },
   imagePickerText: {
     color: '#0A84FF',
     fontSize: 16,
+    fontWeight: '600',
   },
   previewImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 5,
-    resizeMode: 'contain',
+    resizeMode: 'cover',
   },
-  // --- ↓↓↓ (NEW) Date Picker Styles ↓↓↓ ---
   datePickerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 5,
+    marginBottom: 12,
   },
   datePickerLabel: {
-    fontSize: 16,
-    color: '#FFFFFF',
+    fontSize: 15,
+    color: '#DDD',
   },
   datePickerButton: {
     backgroundColor: '#333333',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 5,
     borderWidth: 1,
     borderColor: '#333',
+    minWidth: 140,
+    alignItems: 'center',
   },
   datePickerValue: {
-    color: '#0A84FF', // 選択された日付は青
-    fontSize: 16,
+    color: '#0A84FF',
+    fontSize: 14,
+    fontWeight: '500',
   },
-  datePickerHelp: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 20,
-  },
-  // --- ↑↑↑ (NEW) Date Picker Styles ↑↑↑ ---
-  buttonSpacing: {
-    marginTop: 20,
+  buttonContainer: {
+    marginTop: 30,
   },
 });
 

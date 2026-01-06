@@ -5,80 +5,126 @@ import {
   StyleSheet,
   Image,
   ScrollView,
-  ActivityIndicator, // 1. ★ ActivityIndicator をインポート
-  RefreshControl, // 2. ★ RefreshControl をインポート
+  ActivityIndicator,
+  RefreshControl,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { TimelineStackParamList } from '../../navigators/TimelineStackNavigator';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-// 3. ★ React Query と新しい関数をインポート
-import { useQuery } from '@tanstack/react-query';
-import { Post, fetchPostById } from '../../api/queries';
+import { TimelineStackParamList } from '../../navigators/TimelineStackNavigator';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
+import { fetchPostById } from '../../api/queries';
 
 type PostDetailRouteProp = RouteProp<TimelineStackParamList, 'PostDetail'>;
 
 const PostDetailScreen: React.FC = () => {
   const route = useRoute<PostDetailRouteProp>();
-  // 4. ★ route.params からの 'post' を 'initialPost' (初期データ) として受け取る
+  const navigation = useNavigation<any>();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // 前画面から渡された初期データ
   const { post: initialPost } = route.params;
 
   const [isManualRefetching, setIsManualRefetching] = useState(false);
 
-  // 5. ★★★ useQuery フック ★★★
+  // データ取得
   const {
     data: post,
     isLoading,
-    // 3. ★ isRefetching は RefreshControl では "使わない"
-    isRefetching,
     refetch,
     isError,
   } = useQuery({
     queryKey: ['post', initialPost.id],
     queryFn: () => fetchPostById(initialPost.id),
-    initialData: initialPost,
+    initialData: initialPost, // 即座に表示
     refetchOnWindowFocus: true,
   });
 
-  // 4. ★ (NEW) RefreshControl が呼び出す "専用" の関数
+  // 削除機能
+  const deleteMutation = useMutation({
+    mutationFn: (postId: number) => api.delete(`/posts/${postId}`),
+    onSuccess: () => {
+      // キャッシュを更新して一覧画面に戻る
+      queryClient.invalidateQueries({ queryKey: ['posts'] });
+      Alert.alert('成功', '投稿を削除しました', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'エラー',
+        '削除に失敗しました: ' +
+          (error.response?.data?.message || error.message),
+      );
+    },
+  });
+
+  const handleDelete = () => {
+    Alert.alert('確認', '本当にこの投稿を削除しますか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(initialPost.id),
+      },
+    ]);
+  };
+
+  const handleEdit = () => {
+    // 編集画面へ遷移（PostEditScreenが必要）
+    navigation.navigate('PostEdit', { post });
+  };
+
   const onRefresh = useCallback(async () => {
-    setIsManualRefetching(true); // 👈 クルクル開始
+    setIsManualRefetching(true);
     try {
-      await refetch(); // 👈 useQuery の refetch を実行
+      await refetch();
     } catch (error) {
-      // (エラーは useQuery の isError が検知)
+      // ignore
     }
-    setIsManualRefetching(false); // 👈 クルクル停止
+    setIsManualRefetching(false);
   }, [refetch]);
 
-  // 10. ★ データが (万が一) 無い場合のローディング/エラー処理
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, styles.center]}>
+      <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#FFFFFF" />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (isError || !post) {
     return (
-      <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={styles.title}>お知らせの取得に失敗しました。</Text>
-      </SafeAreaView>
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>お知らせの取得に失敗しました。</Text>
+      </View>
     );
   }
 
-  // 11. ★ post.created_at は useQuery の 'post' から取得
-  const postDate = new Date(post.created_at).toLocaleString('ja-JP');
+  // 日付フォーマット
+  const postDate = new Date(post.created_at).toLocaleString('ja-JP', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const isOwner = user?.id === post.user.id || user?.role === 'admin';
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 12. ★ ScrollView に RefreshControl を追加 */}
       <ScrollView
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isManualRefetching} // 👈 'isManualRefetching' を渡す
-            onRefresh={onRefresh} // 👈 'onRefresh' (自作した関数) を渡す
+            refreshing={isManualRefetching}
+            onRefresh={onRefresh}
             tintColor="#FFFFFF"
           />
         }
@@ -91,12 +137,35 @@ const PostDetailScreen: React.FC = () => {
           <Text style={styles.title}>{post.title}</Text>
 
           <View style={styles.metadataContainer}>
-            <Text style={styles.user}>{post.user.nickname}</Text>
+            <View style={styles.authorContainer}>
+              {/* アイコンがあれば表示などの拡張性あり */}
+              <Text style={styles.user}>
+                {post.user.nickname || '不明なユーザー'}
+              </Text>
+            </View>
             <Text style={styles.date}>{postDate}</Text>
           </View>
 
           <Text style={styles.content}>{post.content}</Text>
         </View>
+
+        {/* 本人確認ができた場合のみ表示するアクションボタン */}
+        {isOwner && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.editButton]}
+              onPress={handleEdit}
+            >
+              <Text style={styles.actionButtonText}>編集する</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={handleDelete}
+            >
+              <Text style={styles.actionButtonText}>削除する</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -107,10 +176,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  // 13. ★ (NEW) 中央配置用のスタイル
   center: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   image: {
     width: '100%',
@@ -125,6 +197,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 15,
+    lineHeight: 32,
   },
   metadataContainer: {
     flexDirection: 'row',
@@ -135,19 +208,55 @@ const styles = StyleSheet.create({
     borderBottomColor: '#333',
     marginBottom: 20,
   },
+  authorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   user: {
-    color: '#888',
+    color: '#CCCCCC',
     fontSize: 14,
     fontWeight: '600',
   },
   date: {
-    color: '#888',
-    fontSize: 14,
+    color: '#888888',
+    fontSize: 12,
   },
   content: {
     fontSize: 16,
     color: '#DDDDDD',
-    lineHeight: 26,
+    lineHeight: 28,
+  },
+  errorText: {
+    color: '#888',
+    fontSize: 16,
+  },
+  // アクションボタン用スタイル
+  actionContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 20,
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#222',
+  },
+  actionButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  editButton: {
+    backgroundColor: '#333',
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  deleteButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.15)', // 薄い赤
+  },
+  actionButtonText: {
+    color: '#FFF',
+    fontWeight: 'bold',
   },
 });
 
