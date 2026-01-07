@@ -1,197 +1,117 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  useCodeScanner,
-} from 'react-native-vision-camera';
-import { useIsFocused } from '@react-navigation/native';
-import api from '../../services/api';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { Camera } from 'react-native-vision-camera';
+import { useIsFocused, useRoute, RouteProp } from '@react-navigation/native';
+import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
 
-// スキャン結果の状態を定義
-type ScanResult = 'idle' | 'scanning' | 'success' | 'error';
+// カスタムフック & コンポーネント
+import { useGateScanner } from '../../hooks/useGateScanner';
+import { ScannerModeSelector } from './components/ScannerModeSelector';
+import { ScannerGuide } from './components/ScannerGuide';
+import { ScanResultOverlay } from './components/ScanResultOverlay';
 
-const GateScannerScreen = () => {
-  const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('back');
-  const isFocused = useIsFocused(); // 画面がフォーカスされているか
+type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
 
-  const [scanState, setScanState] = useState<ScanResult>('idle');
-  const [message, setMessage] = useState(''); // 表示するメッセージ
+export default function GateScannerScreen() {
+  const isFocused = useIsFocused();
+  const route = useRoute<ScannerScreenRouteProp>();
 
-  // 1. カメラ権限のリクエスト
-  useEffect(() => {
-    if (!hasPermission) {
-      requestPermission();
-    }
-  }, [hasPermission, requestPermission]);
+  // ロジック呼び出し
+  const {
+    device,
+    hasPermission,
+    scanState,
+    scanMode,
+    resultMessage,
+    ticketInfo,
+    setScanMode,
+    resetScanner,
+    openSettings,
+    codeScanner,
+  } = useGateScanner({ initialMode: route.params?.scanMode });
 
-  // 2. スキャン処理
-  const handleScan = useCallback(
-    async (qrCodeId: string) => {
-      // 既に処理中、または結果表示中はスキャンしない
-      if (scanState !== 'idle') return;
-
-      setScanState('scanning');
-
-      try {
-        // APIを呼び出し (既存のAPIを流用)
-        const response = await api.post('/tickets/scan', {
-          qr_code_id: qrCodeId,
-        });
-
-        // 成功 (200 OK)
-        setScanState('success');
-        setMessage(response.data.message || '入場OKです。');
-      } catch (error: any) {
-        // 失敗 (409: 使用済み, 404: 不正, 403: 権限なし)
-        setScanState('error');
-        if (error.response) {
-          setMessage(error.response.data.message || '無効なチケットです。');
-        } else {
-          setMessage('ネットワークエラーが発生しました。');
-        }
-      } finally {
-        // 3. ★ 3秒後に自動でアイドル状態に戻る
-        setTimeout(() => {
-          setScanState('idle');
-          setMessage('');
-        }, 3000);
-      }
+  // 画面テキスト定義
+  const uiTexts = {
+    ticket: {
+      instruction: '入場チケットのQRコードを\n枠内に合わせてください',
+      successHeader: '入場OK',
     },
-    [scanState],
-  ); // scanState が 'idle' に戻るまで handleScan を再生成しない
-
-  // 4. QRコードスキャナーの設定
-  const codeScanner = useCodeScanner({
-    codeTypes: ['qr'],
-    onCodeScanned: codes => {
-      if (scanState === 'idle' && codes.length > 0 && codes[0].value) {
-        handleScan(codes[0].value);
-      }
+    order: {
+      instruction: '注文詳細のQRコードを\n枠内に合わせてください',
+      successHeader: '引換完了',
     },
-  });
+  };
 
-  // 5. 権限やデバイスがない場合の表示
-  if (!hasPermission || !device) {
+  // 権限/デバイスエラー処理
+  if (device == null || !hasPermission) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <Text style={styles.messageText}>
-          {hasPermission
-            ? 'カメラデバイスが見つかりません'
-            : 'カメラ権限がありません'}
+      <View style={styles.centerContainer}>
+        <Text style={styles.permissionText}>
+          {device ? 'カメラの権限が必要です' : 'カメラデバイスが見つかりません'}
         </Text>
-      </SafeAreaView>
+        {hasPermission === false && (
+          <Text style={styles.link} onPress={openSettings}>
+            設定を開く
+          </Text>
+        )}
+      </View>
     );
   }
 
-  // 6. メインのJSX
   return (
-    <SafeAreaView style={styles.container}>
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        // ★ 画面フォーカス中、かつアイドル状態の時のみカメラを起動
-        isActive={isFocused && scanState === 'idle'}
-        codeScanner={codeScanner}
-        enableZoomGesture={true}
-      />
-
-      {/* --- プロンプト表示 (アイドル時) --- */}
-      {scanState === 'idle' && (
-        <View style={styles.promptContainer}>
-          <Text style={styles.promptText}>QRコードをかざしてください</Text>
-        </View>
+    <View style={styles.container}>
+      {/* 1. カメラレイヤー */}
+      {isFocused && (
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+          codeScanner={codeScanner}
+          enableZoomGesture={true}
+        />
       )}
 
-      {/* --- 結果表示 (成功/エラー時) --- */}
-      {scanState === 'success' && (
-        <View style={[styles.overlay, styles.successOverlay]}>
-          <Text style={styles.resultText}>✅</Text>
-          <Text style={styles.resultText}>入場OK</Text>
-          <Text style={styles.messageText}>{message}</Text>
-        </View>
-      )}
+      {/* 2. UIオーバーレイレイヤー */}
+      <View style={styles.overlay}>
+        {/* モード切替タブ */}
+        <ScannerModeSelector
+          currentMode={scanMode}
+          onModeChange={setScanMode}
+          disabled={scanState !== 'idle'}
+        />
 
-      {scanState === 'error' && (
-        <View style={[styles.overlay, styles.errorOverlay]}>
-          <Text style={styles.resultText}>❌</Text>
-          <Text style={styles.resultText}>エラー</Text>
-          <Text style={styles.messageText}>{message}</Text>
-        </View>
-      )}
+        {/* スキャン枠 (アイドル時のみ) */}
+        {scanState === 'idle' && (
+          <ScannerGuide instruction={uiTexts[scanMode].instruction} />
+        )}
 
-      {/* --- スキャン中 (一瞬) --- */}
-      {scanState === 'scanning' && (
-        <View style={[styles.overlay, styles.scanningOverlay]}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-        </View>
-      )}
-    </SafeAreaView>
+        {/* 結果表示オーバーレイ (処理中/成功/エラー) */}
+        <ScanResultOverlay
+          state={scanState}
+          headerText={uiTexts[scanMode].successHeader}
+          message={resultMessage} // エラー文言 or 成功メッセージ
+          subMessage={ticketInfo} // チケット情報
+          onReset={resetScanner}
+        />
+      </View>
+    </View>
   );
-};
+}
 
-// 7. ★ スタイル
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: 'black',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  promptContainer: {
-    position: 'absolute',
-    top: 100,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  promptText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 15,
-    borderRadius: 10,
-  },
-  // --- オーバーレイ ---
+  container: { flex: 1, backgroundColor: '#000' },
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 40,
+  },
+  centerContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#000',
   },
-  successOverlay: {
-    backgroundColor: 'rgba(10, 132, 255, 0.8)', // iOS Blue (Success)
-  },
-  errorOverlay: {
-    backgroundColor: 'rgba(255, 59, 48, 0.8)', // iOS Red (Error)
-  },
-  scanningOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  resultText: {
-    fontSize: 60,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-  },
-  messageText: {
-    fontSize: 24,
-    color: 'white',
-    textAlign: 'center',
-    marginTop: 20,
-  },
+  permissionText: { color: '#FFF', fontSize: 16, marginBottom: 10 },
+  link: { color: '#4DA6FF', fontSize: 16 },
 });
-
-export default GateScannerScreen;
