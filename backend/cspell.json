@@ -1,0 +1,14 @@
+{
+  "version": "0.1",
+  "language": "en",
+  "words": [
+    "Kreait",
+    "Firestore",
+    "firestore"
+  ],
+  "ignorePaths": [
+    "vendor/**",
+    "node_modules/**",
+    "storage/**"
+  ]
+}
