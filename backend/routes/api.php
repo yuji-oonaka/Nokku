@@ -49,6 +49,8 @@ Route::middleware('firebase.auth')->group(function () {
     Route::get('/my-tickets', [UserTicketController::class, 'index']);
     Route::apiResource('ticket-types', TicketTypeController::class);
     Route::post('/tickets/scan', [UserTicketController::class, 'scanTicket']); // 👈 チケット用スキャン
+    // ★ 追加: 手入力入場ルート
+    Route::post('/tickets/manual', [UserTicketController::class, 'enterManually']);
 
     // --- E-commerce v2 (注文API) ---
     Route::post('/orders', [OrderController::class, 'store']);

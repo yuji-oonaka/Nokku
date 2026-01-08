@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB; // ★ Transaction用に必須
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\UserTicket;
 use App\Models\Order;
@@ -26,43 +26,77 @@ class UserTicketController extends Controller
         return response()->json($myTickets);
     }
 
+    /**
+     * QRコードによるスキャン入場
+     */
     public function scanTicket(Request $request)
     {
         $validated = $request->validate([
             'qr_code_id' => 'required|string',
         ]);
 
-        $qrCodeId = $validated['qr_code_id'];
+        // 共通ロジック呼び出し
+        return $this->handleAdmission(function () use ($validated) {
+            // QRコードで検索 & ロック
+            return UserTicket::where('qr_code_id', $validated['qr_code_id'])
+                ->lockForUpdate()
+                ->with('event')
+                ->first();
+        }, $validated['qr_code_id']); // エラー判定用にQRコードを渡す
+    }
+
+    /**
+     * ★ 追加: ID手入力による入場
+     */
+    public function enterManually(Request $request)
+    {
+        $validated = $request->validate([
+            'ticket_id' => 'required|integer',
+        ]);
+
+        // 共通ロジック呼び出し
+        return $this->handleAdmission(function () use ($validated) {
+            // IDで検索 & ロック
+            return UserTicket::where('id', $validated['ticket_id'])
+                ->lockForUpdate()
+                ->with('event')
+                ->first();
+        });
+    }
+
+    /**
+     * 共通入場処理ロジック (DRY原則)
+     * @param callable $ticketRetrieval ロック付きでチケットを取得する関数
+     * @param string|null $qrCodeIdForError QRスキャン時のエラー判定用ID
+     */
+    private function handleAdmission(callable $ticketRetrieval, $qrCodeIdForError = null)
+    {
         $scannerUser = Auth::user();
 
-        // 1. スキャン実行者の基本権限チェック (Admin or Artist)
+        // 1. 権限チェック
         if ($scannerUser->role !== 'admin' && $scannerUser->role !== 'artist') {
             return response()->json(['message' => '権限がありません。'], 403);
         }
 
-        // 2. トランザクション開始（ここからコミットまでデータがロックされる）
-        // ※ 外部API (Firestore) はトランザクション外または影響しないように配置
         try {
-            $result = DB::transaction(function () use ($qrCodeId, $scannerUser) {
+            $result = DB::transaction(function () use ($ticketRetrieval, $scannerUser, $qrCodeIdForError) {
 
-                // ★ 悲観的ロック (Pessimistic Locking)
-                // この行が実行されている間、他のリクエストはこの行を読み込めず待機状態になる
-                $ticket = UserTicket::where('qr_code_id', $qrCodeId)
-                    ->lockForUpdate()
-                    ->with('event')
-                    ->first();
+                // チケット取得 (悲観的ロック適用)
+                $ticket = $ticketRetrieval();
 
-                // 3. チケットが存在しない場合の処理
+                // 2. 存在チェック
                 if (!$ticket) {
-                    // グッズ引換QRかどうかの判定 (ここはロック不要)
-                    $isOrder = Order::where('qr_code_id', $qrCodeId)->exists();
-                    if ($isOrder) {
-                        throw new \Exception('これはグッズ引換用のQRコードです。「グッズ引換」モードに切り替えてください。', 400);
+                    // QRスキャンの場合のみ、グッズ引換券チェックを行う
+                    if ($qrCodeIdForError) {
+                        $isOrder = Order::where('qr_code_id', $qrCodeIdForError)->exists();
+                        if ($isOrder) {
+                            throw new \Exception('これはグッズ引換用のQRコードです。「グッズ引換」モードに切り替えてください。', 400);
+                        }
                     }
                     throw new \Exception('チケットが見つかりません', 404);
                 }
 
-                // 4. イベント主催者権限チェック
+                // 3. イベント主催者権限チェック
                 if ($scannerUser->role !== 'admin') {
                     $eventOwnerId = $ticket->event->artist_id;
                     if ($eventOwnerId !== $scannerUser->id) {
@@ -70,16 +104,13 @@ class UserTicketController extends Controller
                     }
                 }
 
-                // 5. 使用済みチェック (ロック中なので確実に判定可能)
+                // 4. 使用済みチェック
                 if ($ticket->is_used) {
-                    // フロントエンドで詳細を表示するためにチケット情報を例外に乗せる等の工夫も可だが、
-                    // ここではシンプルにステータスコードで返すために例外を投げる
-                    // ※ load() はトランザクション内でも有効
                     $ticket->load('event', 'ticketType');
                     return ['status' => 409, 'message' => 'このチケットは既に使用済みです。', 'ticket' => $ticket];
                 }
 
-                // 6. 更新処理
+                // 5. 更新処理
                 $ticket->is_used = true;
                 $ticket->used_at = now();
                 $ticket->save();
@@ -87,7 +118,7 @@ class UserTicketController extends Controller
                 return ['status' => 200, 'message' => "認証成功！\n{$ticket->event->title} / {$ticket->seat_number}", 'ticket' => $ticket];
             });
 
-            // トランザクションが正常終了した場合の戻り値を判定
+            // トランザクション結果の判定
             if ($result['status'] === 409) {
                 return response()->json([
                     'message' => $result['message'],
@@ -95,10 +126,9 @@ class UserTicketController extends Controller
                 ], 409);
             }
 
-            $ticket = $result['ticket']; // 更新後のチケット
+            $ticket = $result['ticket'];
 
-            // 7. Firestore通知 (トランザクション確定後に実行)
-            // ここが失敗してもMySQL側はロールバックしない（入場事実は確定させる）
+            // 6. Firestore通知 (トランザクション確定後に実行)
             $this->syncToFirestore($ticket, $scannerUser);
 
             return response()->json([
@@ -106,19 +136,19 @@ class UserTicketController extends Controller
                 'ticket' => $ticket->load('event', 'ticketType')
             ], 200);
         } catch (\Exception $e) {
-            // トランザクション内のカスタム例外(400, 404, 403)を処理
             $code = $e->getCode();
             $status = ($code && $code >= 400 && $code < 600) ? $code : 500;
-
             return response()->json(['message' => $e->getMessage()], $status);
         }
     }
 
     /**
-     * Firestoreへの同期処理を分離
+     * Firestoreへの同期処理
      */
     private function syncToFirestore($ticket, $scannerUser)
     {
+        if (!$ticket->qr_code_id) return;
+
         try {
             $firestore = Firebase::firestore();
             $database = $firestore->database();
@@ -130,10 +160,10 @@ class UserTicketController extends Controller
                     'is_used' => true,
                     'scanned_at' => new \DateTime(),
                     'scanner_id' => $scannerUser->id,
+                    'ticket_id' => $ticket->id,
                 ]);
         } catch (\Exception $e) {
             Log::error('Firestore write failed: ' . $e->getMessage());
-            // クライアントにはエラーを返さない
         }
     }
 }
