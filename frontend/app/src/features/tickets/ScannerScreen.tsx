@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Camera } from 'react-native-vision-camera';
 import { useIsFocused, useRoute, RouteProp } from '@react-navigation/native';
 import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
@@ -9,12 +9,14 @@ import { useGateScanner } from '../../hooks/useGateScanner';
 import { ScannerModeSelector } from './components/ScannerModeSelector';
 import { ScannerGuide } from './components/ScannerGuide';
 import { ScanResultOverlay } from './components/ScanResultOverlay';
+import { ManualEntryModal } from './components/ManualEntryModal';
 
 type ScannerScreenRouteProp = RouteProp<MyPageStackParamList, 'Scan'>;
 
 export default function ScannerScreen() {
   const isFocused = useIsFocused();
   const route = useRoute<ScannerScreenRouteProp>();
+  const [isManualModalVisible, setManualModalVisible] = useState(false);
 
   // ★ Logic: useGateScannerフックを使うことで、約100行のロジックを削除
   const {
@@ -28,6 +30,7 @@ export default function ScannerScreen() {
     resetScanner,
     openSettings,
     codeScanner,
+    executeManualEntry,
   } = useGateScanner({ initialMode: route.params?.scanMode });
 
   // 画面表示テキスト定義
@@ -60,7 +63,6 @@ export default function ScannerScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 1. カメラレイヤー */}
       {isFocused && (
         <Camera
           style={StyleSheet.absoluteFill}
@@ -71,27 +73,42 @@ export default function ScannerScreen() {
         />
       )}
 
-      {/* 2. UIオーバーレイレイヤー */}
       <View style={styles.overlay}>
-        {/* モード切替 (共通コンポーネント) */}
         <ScannerModeSelector
           currentMode={scanMode}
           onModeChange={setScanMode}
           disabled={scanState !== 'idle'}
         />
 
-        {/* ガイド枠 (共通コンポーネント) */}
         {scanState === 'idle' && (
-          <ScannerGuide instruction={uiTexts[scanMode].instruction} />
+          <>
+            <ScannerGuide instruction={uiTexts[scanMode].instruction} />
+
+            {/* ★ 追加: 手入力ボタン (スキャン枠の下に配置) */}
+            {scanMode === 'ticket' && (
+              <TouchableOpacity
+                style={styles.manualButton}
+                onPress={() => setManualModalVisible(true)}
+              >
+                <Text style={styles.manualButtonText}>🔢 ID手入力</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
-        {/* 結果表示 (共通コンポーネント) */}
         <ScanResultOverlay
           state={scanState}
           headerText={uiTexts[scanMode].successHeader}
           message={resultMessage}
           subMessage={ticketInfo}
           onReset={resetScanner}
+        />
+
+        {/* ★ 追加: モーダル */}
+        <ManualEntryModal
+          visible={isManualModalVisible}
+          onClose={() => setManualModalVisible(false)}
+          onSubmit={executeManualEntry}
         />
       </View>
     </View>
@@ -114,4 +131,20 @@ const styles = StyleSheet.create({
   },
   permissionText: { color: '#FFF', fontSize: 16, marginBottom: 10 },
   link: { color: '#4DA6FF', fontSize: 16 },
+
+  manualButton: {
+    position: 'absolute',
+    bottom: 80, // 画面下部
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  manualButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
