@@ -22,7 +22,7 @@ class ArtistController extends Controller
         // ★ selectを追加し、passwordやemailなどの個人情報を除外して軽量化
         $query = User::where('role', 'artist')
             ->where('id', '!=', $user->id)
-            ->select('id', 'nickname', 'image_url', 'bio');
+            ->select('id', 'nickname', 'image_url');
 
         // 3. 検索キーワードがあれば絞り込み
         if ($request->has('search') && $request->filled('search')) {
@@ -101,7 +101,6 @@ class ArtistController extends Controller
             'id' => $artistData->id,
             'nickname' => $artistData->nickname,
             'image_url' => $artistData->image_url,
-            'bio' => $artistData->bio,
             'posts' => $artistData->posts,
             'events' => $artistData->events,
             'products' => $artistData->products,

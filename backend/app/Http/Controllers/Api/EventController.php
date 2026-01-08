@@ -18,8 +18,7 @@ class EventController extends Controller
         $filter = $request->input('filter', 'upcoming');
         $now = Carbon::now();
 
-        // N+1対策 & セキュリティ強化: artistの必要なカラムのみ取得
-        // ここで password や email などを除外します
+        // ✅ 正しいカラム指定 (image_url)
         $query = Event::with('artist:id,nickname,image_url');
 
         if ($filter === 'past') {
@@ -30,11 +29,9 @@ class EventController extends Controller
                 ->orderBy('event_date', 'asc');
         }
 
-        // ページネーションを追加 (パフォーマンス対策)
-        // 全件取得(get)はデータ量が増えるとサーバーを圧迫するため避ける
         $events = $query->paginate(20);
 
-        return response()->json($events->items()); // 配列のみ返す (paginateオブジェクト全体が必要なら $events そのままで)
+        return response()->json($events->items());
     }
 
     /**
@@ -44,7 +41,6 @@ class EventController extends Controller
     {
         $user = Auth::user();
 
-        // 厳密な権限チェック
         if (!$user || ($user->role !== 'artist' && $user->role !== 'admin')) {
             return response()->json(['message' => 'イベントを作成する権限がありません'], 403);
         }
@@ -53,7 +49,7 @@ class EventController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'venue' => 'required|string|max:255',
-            'event_date' => 'required|date|after:now', // 作成時は未来日付必須
+            'event_date' => 'required|date|after:now',
             'image_url' => 'nullable|string',
         ]);
 
@@ -67,19 +63,17 @@ class EventController extends Controller
 
     /**
      * 特定のイベント詳細を取得 (show)
-     * チケット情報もまとめて返すことで、フロントエンドの通信回数を減らす
      */
     public function show($id)
     {
-        // 存在チェックを含めて検索
-        // artist と ticketTypes をEager Loading
-        $event = Event::with(['artist:id,nickname,avatar_url,name', 'ticketTypes'])
+        // ★★★ 修正箇所 ★★★
+        // avatar_url -> image_url に変更し、存在しない name を削除
+        $event = Event::with(['artist:id,nickname,image_url', 'ticketTypes'])
             ->findOrFail($id);
 
         return response()->json([
             'event' => $event,
-            'tickets' => $event->ticketTypes, // フロントエンドの期待する構造に合わせる
-            // 閲覧者がオーナーかどうかのフラグも便利なので追加
+            'tickets' => $event->ticketTypes,
             'is_owner' => Auth::id() === $event->artist_id,
         ]);
     }
@@ -95,7 +89,6 @@ class EventController extends Controller
             return response()->json(['message' => '権限がありません'], 403);
         }
 
-        // 過去イベントの編集禁止
         if (Carbon::parse($event->event_date)->isPast()) {
             return response()->json(['message' => '終了したイベントは編集できません'], 403);
         }
@@ -124,16 +117,13 @@ class EventController extends Controller
             return response()->json(['message' => 'このイベントを削除する権限がありません'], 403);
         }
 
-        // トランザクション推奨 (関連データ削除のため)
-        // 今回はシンプルにdelete
         $event->delete();
 
         return response()->json(null, 204);
     }
 
     /**
-     * Deprecated: showメソッドに統合されたため非推奨
-     * フロントエンドの修正が完了次第削除予定
+     * Deprecated
      */
     public function getTicketTypes(Event $event)
     {
