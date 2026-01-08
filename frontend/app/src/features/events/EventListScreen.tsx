@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -15,6 +14,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { EventStackParamList } from '../../navigators/EventStackNavigator';
 import { useQuery } from '@tanstack/react-query';
 import { Event, fetchEvents } from '../../api/queries';
+import EventItem from './components/EventItem'; // 作成したコンポーネントをimport
 
 type EventListNavigationProp = StackNavigationProp<
   EventStackParamList,
@@ -37,48 +37,26 @@ const EventListScreen: React.FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  const handleEventPress = (item: Event) => {
-    navigation.navigate('EventDetail', {
-      eventId: item.id,
-    });
-  };
-
-  const renderItem = ({ item }: { item: Event }) => (
-    <TouchableOpacity
-      onPress={() => handleEventPress(item)}
-      activeOpacity={0.9}
-    >
-      <View style={styles.eventItem}>
-        {/* ★ 左側: イベント画像 (あれば表示) */}
-        {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.eventImage} />
-        ) : (
-          <View style={[styles.eventImage, styles.imagePlaceholder]} />
-        )}
-
-        {/* ★ 右側: 情報エリア */}
-        <View style={styles.eventInfo}>
-          {/* 1. 主催者名 (テキストのみでシンプルに) */}
-          {item.artist && (
-            <Text style={styles.organizerNameSimple} numberOfLines={1}>
-              {item.artist.nickname} presents
-            </Text>
-          )}
-
-          {/* 2. イベント情報 */}
-          <Text style={styles.eventTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.eventVenue} numberOfLines={1}>
-            📍 {item.venue}
-          </Text>
-          <Text style={styles.eventDate}>
-            📅 {new Date(item.event_date).toLocaleString('ja-JP')}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+  // 関数をメモ化して再生成を防ぐ
+  const handleEventPress = useCallback(
+    (item: Event) => {
+      navigation.navigate('EventDetail', {
+        eventId: item.id,
+      });
+    },
+    [navigation],
   );
+
+  // renderItemもメモ化し、子コンポーネント(EventItem)へ渡す
+  const renderItem = useCallback(
+    ({ item }: { item: Event }) => (
+      <EventItem item={item} onPress={handleEventPress} />
+    ),
+    [handleEventPress],
+  );
+
+  // keyExtractorもメモ化（微細な最適化）
+  const keyExtractor = useCallback((item: Event) => item.id.toString(), []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -131,8 +109,12 @@ const EventListScreen: React.FC = () => {
         <FlatList
           data={events || []}
           renderItem={renderItem}
-          keyExtractor={item => item.id.toString()}
+          keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
+          // パフォーマンス最適化設定
+          initialNumToRender={10}
+          windowSize={5}
+          maxToRenderPerBatch={10}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emptyText}>
@@ -192,46 +174,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
-  // カードレイアウト
-  eventItem: {
-    backgroundColor: '#1C1C1E',
-    marginVertical: 6,
-    marginHorizontal: 10,
-    borderRadius: 8,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    height: 110,
-  },
-  eventImage: {
-    width: 110,
-    height: '100%',
-    resizeMode: 'cover',
-    backgroundColor: '#333',
-  },
-  imagePlaceholder: {
-    backgroundColor: '#333',
-  },
-  eventInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'center',
-  },
-  // ★ シンプルな主催者名スタイル
-  organizerNameSimple: {
-    color: '#AAA',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    flex: 1,
-  },
-  eventVenue: { fontSize: 12, color: '#BBBBBB', marginBottom: 2 },
-  eventDate: { fontSize: 12, color: '#0A84FF', fontWeight: 'bold' },
   emptyText: {
     color: '#FFFFFF',
     textAlign: 'center',

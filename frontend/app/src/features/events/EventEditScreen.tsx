@@ -1,31 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Button,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  TouchableOpacity,
-  Image, // ★ 追加
-} from 'react-native';
-import api from '../../services/api';
+import { StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
+import api from '../../services/api';
 import { Event } from '../../api/queries';
-// ★ 追加: 自作フック
-import { useImageUpload } from '../../hooks/useImageUpload';
+import EventForm, { EventFormData } from './components/EventForm';
 
 type EventEditScreenRouteProp = RouteProp<
   { params: { eventId: number } },
   'params'
 >;
 
+// API形式への変換用ユーティリティ
 const formatDateTimeForAPI = (date: Date): string => {
   const dateString = date.toISOString().split('T')[0];
   const timeString = date.toLocaleTimeString('ja-JP', {
@@ -42,26 +28,13 @@ const EventEditScreen = () => {
   const route = useRoute<EventEditScreenRouteProp>();
   const { eventId } = route.params;
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [venue, setVenue] = useState('');
-  const [date, setDate] = useState(new Date());
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
-
-  // ★ 追加: useImageUpload フック
-  const {
-    imageUri,
-    uploadedPath,
-    isUploading,
-    selectImage,
-    setImageFromUrl, // 既存画像のセット用
-  } = useImageUpload('event');
-
+  const [initialData, setInitialData] = useState<Partial<EventFormData> | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  // 1. 初回読み込み
+  // 1. データ取得
   useEffect(() => {
     const fetchEvent = async () => {
       if (!eventId) {
@@ -71,17 +44,17 @@ const EventEditScreen = () => {
       }
       try {
         setLoading(true);
-        // 型を指定して取得
         const response = await api.get<Event>(`/events/${eventId}`);
         const event = response.data;
 
-        setTitle(event.title);
-        setDescription(event.description);
-        setVenue(event.venue);
-        setDate(new Date(event.event_date));
-
-        // ★ 既存の画像URLをフックにセット (プレビュー用)
-        setImageFromUrl(event.image_url);
+        // EventFormに渡す初期値を構築
+        setInitialData({
+          title: event.title,
+          description: event.description,
+          venue: event.venue,
+          event_date: new Date(event.event_date),
+          image_url: event.image_url,
+        });
       } catch (error) {
         console.error('イベント取得エラー:', error);
         Alert.alert('エラー', 'イベント情報の取得に失敗しました。');
@@ -92,42 +65,26 @@ const EventEditScreen = () => {
     };
 
     fetchEvent();
-  }, [eventId, navigation, setImageFromUrl]);
-
-  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    setShowPicker(false);
-    if (selectedDate) {
-      setDate(selectedDate);
-    }
-  };
-
-  const showMode = (currentMode: 'date' | 'time') => {
-    setShowPicker(true);
-    setPickerMode(currentMode);
-  };
+  }, [eventId, navigation]);
 
   // 2. 更新処理
-  const handleUpdate = async () => {
-    if (!title || !description || !venue) {
-      Alert.alert('エラー', 'すべての項目を入力してください。');
-      return;
-    }
-
+  const handleUpdate = async (data: EventFormData) => {
     setUpdating(true);
     try {
-      const formattedEventDate = formatDateTimeForAPI(date);
+      const formattedEventDate = formatDateTimeForAPI(data.event_date);
 
-      // ★ 変更: JSON形式で送信
+      // 変更内容をpayload化
       const payload: any = {
-        title,
-        description,
-        venue,
+        title: data.title,
+        description: data.description,
+        venue: data.venue,
         event_date: formattedEventDate,
       };
 
-      // ★ 新しい画像がアップロードされていればパスを追加
-      if (uploadedPath) {
-        payload.image_url = uploadedPath;
+      // 画像パス（新規アップロードがあればそのパス、なければ既存URLはバックエンド側で無視あるいは維持される想定）
+      // ※EventFormは「新規パス」があればそれを `image_url` として返してきます
+      if (data.image_url && data.image_url !== initialData?.image_url) {
+        payload.image_url = data.image_url;
       }
 
       await api.put(`/events/${eventId}`, payload);
@@ -153,110 +110,17 @@ const EventEditScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView>
-        <View style={styles.form}>
-          <Text style={styles.label}>イベント名</Text>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="NOKKU SPECIAL LIVE"
-            placeholderTextColor="#888"
-          />
-
-          <Text style={styles.label}>イベント説明</Text>
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="イベントの詳細..."
-            placeholderTextColor="#888"
-            multiline
-          />
-
-          <Text style={styles.label}>会場</Text>
-          <TextInput
-            style={styles.input}
-            value={venue}
-            onChangeText={setVenue}
-            placeholder="Zepp Fukuoka"
-            placeholderTextColor="#888"
-          />
-
-          <Text style={styles.label}>開催日時</Text>
-          <TouchableOpacity
-            onPress={() => showMode('date')}
-            style={styles.datePickerButton}
-          >
-            <Text style={styles.datePickerText}>
-              日付を選択: {date.toLocaleDateString('ja-JP')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => showMode('time')}
-            style={styles.datePickerButton}
-          >
-            <Text style={styles.datePickerText}>
-              時刻を選択:{' '}
-              {date.toLocaleTimeString('ja-JP', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
-          </TouchableOpacity>
-
-          {showPicker && (
-            <DateTimePicker
-              testID="dateTimePicker"
-              value={date}
-              mode={pickerMode}
-              is24Hour={true}
-              display="default"
-              onChange={onDateChange}
-            />
-          )}
-
-          {/* ★ 追加: 画像選択 UI */}
-          <Text style={styles.label}>イベント画像 (任意)</Text>
-          <TouchableOpacity
-            style={styles.imagePickerButton}
-            onPress={selectImage}
-            disabled={isUploading}
-          >
-            <Text style={styles.imagePickerButtonText}>
-              {imageUri ? '画像を変更' : '画像を選択'}
-            </Text>
-          </TouchableOpacity>
-
-          {isUploading && (
-            <ActivityIndicator
-              size="small"
-              color="#0A84FF"
-              style={{ marginBottom: 10 }}
-            />
-          )}
-
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-          ) : (
-            <View style={[styles.imagePreview, styles.imagePlaceholder]} />
-          )}
-          {/* ★★★ */}
-
-          {updating ? (
-            <ActivityIndicator size="large" style={styles.buttonSpacing} />
-          ) : (
-            <View style={styles.buttonSpacing}>
-              <Button
-                title="更新する"
-                onPress={handleUpdate}
-                disabled={isUploading}
-              />
-            </View>
-          )}
-        </View>
-      </ScrollView>
+      {/* initialData がセットされてからレンダリングすることで、
+        EventForm 内の useState に正しい初期値が入ります。
+      */}
+      {initialData && (
+        <EventForm
+          initialValues={initialData}
+          onSubmit={handleUpdate}
+          submitLabel="更新する"
+          isLoading={updating}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -267,73 +131,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   center: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000000',
-  },
-  form: {
-    padding: 20,
-    backgroundColor: '#1C1C1E',
-    margin: 15,
-    borderRadius: 8,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#FFFFFF',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 5,
-    padding: 10,
-    fontSize: 16,
-    backgroundColor: '#333333',
-    color: '#FFFFFF',
-    marginBottom: 20,
-  },
-  textarea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  datePickerButton: {
-    backgroundColor: '#333333',
-    borderRadius: 5,
-    padding: 15,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  datePickerText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  buttonSpacing: {
-    marginTop: 20,
-  },
-  // ★ 追加スタイル
-  imagePickerButton: {
-    backgroundColor: '#0A84FF',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  imagePickerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  imagePreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 5,
-    marginBottom: 20,
-    resizeMode: 'cover',
-  },
-  imagePlaceholder: {
-    backgroundColor: '#333',
   },
 });
 
