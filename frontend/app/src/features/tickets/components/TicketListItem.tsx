@@ -1,142 +1,137 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { UserTicket } from '../../../api/queries';
 
-type Props = {
+interface Props {
   item: UserTicket;
   onPress: (ticket: UserTicket) => void;
-};
+}
 
-const TicketListItem: React.FC<Props> = React.memo(({ item, onPress }) => {
-  // 日付計算とステータス判定のロジック整理
-  const { eventDateString, statusInfo } = useMemo(() => {
-    const eventDate = new Date(item.event.event_date);
-    const now = new Date();
+const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
+  // デバッグ用: コンソールにデータが出ているか確認してください
+  console.log('Ticket Item:', item);
 
-    // 終了判定: イベント日時 + 24時間 を過ぎているか
-    const isFinished =
-      now.getTime() > eventDate.getTime() + 24 * 60 * 60 * 1000;
-
-    let statusText = '';
-    let statusStyle = {};
-
-    if (isFinished) {
-      statusText = '終了';
-      statusStyle = styles.badgeFinished;
-    } else if (item.is_used) {
-      statusText = '入場済み';
-      statusStyle = styles.badgeUsed;
-    } else {
-      statusText = '未使用';
-      statusStyle = styles.badgeUnused;
-    }
-
-    return {
-      eventDateString: eventDate.toLocaleString('ja-JP'),
-      statusInfo: { text: statusText, style: statusStyle },
-    };
-  }, [item.event.event_date, item.is_used]);
+  const isUsed = item.is_used;
+  const dateObj = new Date(item.event.event_date);
+  const day = dateObj.getDate();
+  const month = dateObj
+    .toLocaleString('en-US', { month: 'short' })
+    .toUpperCase();
 
   return (
     <TouchableOpacity
-      style={[styles.ticketItem, item.is_used && styles.ticketItemUsed]}
+      style={[styles.card, isUsed ? styles.cardUsed : null]}
       onPress={() => onPress(item)}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={styles.ticketInfo}>
-        {/* ステータスバッジ */}
-        <View style={styles.statusBadgeRow}>
-          <Text style={statusInfo.style}>{statusInfo.text}</Text>
-        </View>
-
-        <Text style={styles.eventTitle}>{item.event.title}</Text>
-        <Text style={styles.ticketDetail}>
-          {item.ticket_type.name} / {item.seat_number}
-        </Text>
-        <Text style={styles.ticketDetail}>{item.event.venue}</Text>
-        <Text style={styles.ticketDetail}>{eventDateString}</Text>
+      <View style={[styles.dateBox, isUsed ? styles.dateBoxUsed : null]}>
+        <Text style={styles.dateText}>{day}</Text>
+        <Text style={styles.monthText}>{month}</Text>
       </View>
 
-      {/* 右端の矢印 */}
-      <View style={styles.rightIcon}>
-        <Text style={styles.arrow}>›</Text>
+      <View style={styles.infoContainer}>
+        <Text style={styles.eventTitle} numberOfLines={1}>
+          {item.event.title}
+        </Text>
+
+        <View style={styles.row}>
+          <Text style={styles.seatText}>
+            {item.ticket_type.name} / {item.seat_number}
+          </Text>
+        </View>
+
+        <View style={styles.idRow}>
+          <Text style={styles.idLabel}>Ticket ID:</Text>
+          <Text style={styles.idValue}>#{item.id}</Text>
+        </View>
+
+        {isUsed ? (
+          <View style={styles.usedBadge}>
+            <Text style={styles.usedText}>USED</Text>
+          </View>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
-});
+};
 
 const styles = StyleSheet.create({
-  ticketItem: {
-    backgroundColor: '#222',
-    padding: 15,
-    marginVertical: 8,
+  card: {
+    flexDirection: 'row',
+    backgroundColor: '#1E1E1E',
     borderRadius: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginBottom: 12,
+    overflow: 'hidden',
+    height: 100,
+  },
+  cardUsed: { opacity: 0.6 },
+  dateBox: {
+    width: 70,
+    backgroundColor: '#7C4DFF',
+    justifyContent: 'center',
     alignItems: 'center',
-    borderLeftWidth: 5,
-    borderLeftColor: '#0A84FF', // 未使用色
   },
-  ticketItemUsed: {
-    backgroundColor: '#1C1C1E',
-    borderLeftColor: '#34C759', // 使用済み色
-    opacity: 0.8,
+  dateBoxUsed: { backgroundColor: '#555' },
+  dateText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
-  ticketInfo: {
+  monthText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  infoContainer: {
     flex: 1,
-  },
-  statusBadgeRow: {
-    marginBottom: 5,
-    flexDirection: 'row',
-  },
-  badgeUnused: {
-    color: '#0A84FF',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(10, 132, 255, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  badgeUsed: {
-    color: '#34C759',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(52, 199, 89, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  badgeFinished: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: 'bold',
-    backgroundColor: 'rgba(136, 136, 136, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
+    padding: 12,
+    justifyContent: 'center',
   },
   eventTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#FFF',
     marginBottom: 4,
   },
-  ticketDetail: {
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  seatText: {
+    color: '#CCC',
     fontSize: 14,
-    color: '#BBBBBB',
-    marginBottom: 2,
   },
-  rightIcon: {
-    justifyContent: 'center',
-    paddingLeft: 10,
+  idRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
   },
-  arrow: {
-    color: '#555',
-    fontSize: 24,
+  idLabel: {
+    color: '#888',
+    fontSize: 12,
+    marginRight: 4,
+  },
+  idValue: {
+    color: '#AAA',
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  usedBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#666',
+  },
+  usedText: {
+    color: '#AAA',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
 

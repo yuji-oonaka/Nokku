@@ -60,6 +60,11 @@ export const TicketStatusSection: React.FC<Props> = ({
         <Text style={styles.errorText}>QRコード情報がありません</Text>
       )}
 
+      <View style={styles.idContainer}>
+        <Text style={styles.idLabel}>Ticket ID (手入力用)</Text>
+        <Text style={styles.idValue}>#{ticket.id}</Text>
+      </View>
+
       <SecurityClock />
       <Text style={styles.qrNote}>入場ゲートにかざしてください</Text>
     </View>
@@ -114,4 +119,26 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   thankYouText: { fontSize: 16, color: '#444', marginBottom: 5 },
+
+  idContainer: {
+    marginTop: 15,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
+    width: '100%',
+  },
+  idLabel: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 2,
+  },
+  idValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    fontFamily: 'monospace', // 数字の読み間違い防止
+    letterSpacing: 2,
+  },
 });
