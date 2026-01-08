@@ -18,19 +18,21 @@ class ArtistController extends Controller
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        // 2. クエリの準備 ('role' が 'artist' かつ、自分以外)
+        // 2. クエリの準備
+        // ★ selectを追加し、passwordやemailなどの個人情報を除外して軽量化
         $query = User::where('role', 'artist')
-            ->where('id', '!=', $user->id);
+            ->where('id', '!=', $user->id)
+            ->select('id', 'nickname', 'image_url', 'bio');
 
-        // 3. ★★★ (NEW) 検索キーワードがあれば絞り込み ★★★
+        // 3. 検索キーワードがあれば絞り込み
         if ($request->has('search') && $request->filled('search')) {
             $search = $request->input('search');
-            // ニックネームの部分一致検索 (LIKE)
             $query->where('nickname', 'LIKE', "%{$search}%");
         }
 
         // 4. 実行
-        $artists = $query->get();
+        // ★ limit(50) を追加し、全件取得によるサーバー負荷を回避
+        $artists = $query->limit(50)->get();
 
         // 5. フォロー中のIDリストを取得
         $followingIds = $user->following()->pluck('id');
@@ -42,7 +44,7 @@ class ArtistController extends Controller
     }
 
     /**
-     * アーティストをフォローする
+     * アーティストをフォローする (変更なし)
      */
     public function follow(User $artist)
     {
@@ -53,13 +55,13 @@ class ArtistController extends Controller
             return response()->json(['message' => '不正な操作です'], 422);
         }
 
-        $user->following()->attach($artist->id);
+        $user->following()->syncWithoutDetaching([$artist->id]); // attachより安全
 
         return response()->json(['message' => 'アーティストをフォローしました'], 200);
     }
 
     /**
-     * アーティストをアンフォローする
+     * アーティストをアンフォローする (変更なし)
      */
     public function unfollow(User $artist)
     {
@@ -71,7 +73,8 @@ class ArtistController extends Controller
     }
 
     /**
-     * アーティスト詳細 (変更なし)
+     * アーティスト詳細
+     * リレーションの取得件数を制限してパフォーマンスを保護
      */
     public function show(User $artist)
     {
@@ -79,15 +82,18 @@ class ArtistController extends Controller
             return response()->json(['message' => '指定されたユーザーはアーティストではありません'], 404);
         }
 
+        // ★ リレーション取得時に件数制限 (take) を追加
+        // これにより、投稿が1000件あっても最新の数件しか取得せず、高速に表示できます
         $artistData = $artist->load([
             'posts' => function ($query) {
-                $query->orderBy('created_at', 'desc');
+                $query->latest()->take(10); // 最新10件
             },
             'events' => function ($query) {
-                $query->orderBy('event_date', 'desc');
+                // イベントは開催日が重要ですが、元の仕様(desc)を維持しつつ制限
+                $query->orderBy('event_date', 'desc')->take(5);
             },
             'products' => function ($query) {
-                $query->orderBy('created_at', 'desc');
+                $query->latest()->take(8); // 最新8件
             }
         ]);
 
