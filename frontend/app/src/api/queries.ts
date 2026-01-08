@@ -14,6 +14,7 @@ export interface PublicArtistInfo {
   id: number;
   nickname: string;
   image_url: string | null;
+  name?: string; // バックエンドの変更に合わせてnameを追加（任意）
 }
 
 export interface Post {
@@ -49,12 +50,15 @@ export interface Event {
   image_url: string | null;
   artist?: PublicArtistInfo;
 }
+
 export const fetchEvents = async (
   filter: 'upcoming' | 'past',
 ): Promise<Event[]> => {
+  // バックエンドは paginate(...)->items() を返しているため、直接配列が来る想定
   const response = await api.get<Event[]>(`/events?filter=${filter}`);
   return response.data;
 };
+
 export interface TicketType {
   id: number;
   event_id: number;
@@ -63,21 +67,21 @@ export interface TicketType {
   capacity: number;
   seating_type: 'random' | 'free';
 }
+
+// ★ 修正: is_owner を追加
 export interface EventDetailData {
   event: Event;
   tickets: TicketType[];
+  is_owner: boolean; 
 }
+
+// ★★★ 修正箇所: 1回のリクエストで取得するように変更 ★★★
 export const fetchEventDetailData = async (
   eventId: number,
 ): Promise<EventDetailData> => {
-  const [eventResponse, ticketsResponse] = await Promise.all([
-    api.get<Event>(`/events/${eventId}`),
-    api.get<TicketType[]>(`/events/${eventId}/ticket-types`),
-  ]);
-  return {
-    event: eventResponse.data,
-    tickets: ticketsResponse.data,
-  };
+  // バックエンド構造: { event: {...}, tickets: [...], is_owner: bool }
+  const response = await api.get<EventDetailData>(`/events/${eventId}`);
+  return response.data;
 };
 
 // --- (Product) ---
@@ -107,6 +111,7 @@ export interface Artist {
   id: number;
   nickname: string;
   image_url?: string | null;
+  bio?: string; // バックエンドのselectに追加したため定義
 }
 export interface ArtistListResponse {
   artists: Artist[];
@@ -119,10 +124,12 @@ export const fetchArtists = async (
   const response = await api.get<ArtistListResponse>('/artists', { params });
   return response.data;
 };
+
 export interface ArtistPostMin {
   id: number;
   content: string;
   created_at: string;
+  // title, image_url もバックエンドは返すが、使用しないなら定義不要
 }
 export interface ArtistEventMin {
   id: number;
@@ -197,7 +204,6 @@ export interface OrderItem {
   product_name: string;
   quantity: number;
   price_at_purchase: number;
-  // 商品詳細画面で使うため product も定義しておくと便利です（任意）
   product?: Product;
 }
 export interface ShippingAddress {
@@ -206,7 +212,6 @@ export interface ShippingAddress {
   city: string | null;
   address_line1: string | null;
   address_line2: string | null;
-  // ★追加: これが不足していてエラーになっていました
   name?: string | null;
 }
 export interface Order {
@@ -230,7 +235,7 @@ export const fetchMyFavorites = async (): Promise<Product[]> => {
   const response = await api.get<Product[]>('/my-favorites');
   return response.data;
 };
-// ★★★ 追加: 注文IDから1件取得 ★★★
+
 export const fetchOrderById = async (orderId: number): Promise<Order> => {
   const response = await api.get<Order>(`/orders/${orderId}`);
   return response.data;
