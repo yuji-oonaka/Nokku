@@ -20,7 +20,7 @@ class EventController extends Controller
 
         // N+1対策 & セキュリティ強化: artistの必要なカラムのみ取得
         // ここで password や email などを除外します
-        $query = Event::with('artist:id,nickname,avatar_url,name');
+        $query = Event::with('artist:id,nickname,image_url');
 
         if ($filter === 'past') {
             $query->where('event_date', '<', $now)
