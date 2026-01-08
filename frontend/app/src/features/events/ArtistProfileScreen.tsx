@@ -4,21 +4,18 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   TouchableOpacity,
-  FlatList,
-  RefreshControl,
   Image,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import {
-  ArtistPostMin,
-  ArtistEventMin,
-  ArtistProductMin,
-  fetchArtistProfileData,
-} from '../../api/queries';
+import { fetchArtistProfileData } from '../../api/queries';
+
+// 分離したタブコンポーネント
+import ArtistPostsTab from './tabs/ArtistPostsTab';
+import ArtistEventsTab from './tabs/ArtistEventsTab';
+import ArtistProductsTab from './tabs/ArtistProductsTab';
 
 type ArtistProfileRouteParams = {
   ArtistProfile: { artistId: number };
@@ -56,7 +53,7 @@ const ArtistProfileScreen = () => {
     setIsManualRefetching(false);
   }, [refetch]);
 
-  // 1. ★ 修正: メインタブのスタック名を経由して遷移するように変更
+  // --- Actions ---
   const handleEventPress = (eventId: number) => {
     navigation.navigate('EventsStack', {
       screen: 'EventDetail',
@@ -71,98 +68,40 @@ const ArtistProfileScreen = () => {
     });
   };
 
+  // --- Render Content ---
   const renderTabContent = () => {
     if (!artistData) return null;
 
-    let data: any[] = [];
-    let renderItem: any;
-    let emptyText = '';
-
     switch (activeTab) {
       case 'posts':
-        data = artistData.posts;
-        emptyText = 'お知らせはありません';
-        renderItem = ({ item }: { item: ArtistPostMin }) => (
-          <View style={styles.listItem}>
-            <Text style={styles.listText}>{item.content}</Text>
-            <Text style={styles.subText}>
-              {new Date(item.created_at).toLocaleString('ja-JP')}
-            </Text>
-          </View>
-        );
-        break;
-
-      case 'events':
-        data = artistData.events;
-        emptyText = 'イベントはありません';
-        renderItem = ({ item }: { item: ArtistEventMin }) => (
-          <TouchableOpacity
-            style={styles.listItem}
-            onPress={() => handleEventPress(item.id)}
-          >
-            <Text style={styles.listText}>{item.title}</Text>
-            <Text style={styles.subText}>
-              {new Date(item.event_date).toLocaleString('ja-JP')}
-            </Text>
-          </TouchableOpacity>
-        );
-        break;
-
-      case 'products':
-        data = artistData.products;
-        emptyText = 'グッズはありません';
-        renderItem = ({ item }: { item: ArtistProductMin }) => (
-          <TouchableOpacity
-            style={styles.listItem} // スタイルは共通ですが、中身をRowレイアウトにします
-            onPress={() => handleProductPress(item.id)}
-          >
-            {/* 2. ★ 追加: グッズ画像の表示エリア */}
-            <View style={styles.productRow}>
-              {item.image_url ? (
-                <Image
-                  source={{ uri: item.image_url }}
-                  style={styles.productImage}
-                />
-              ) : (
-                <View
-                  style={[styles.productImage, styles.productPlaceholder]}
-                />
-              )}
-
-              {/* テキスト情報 */}
-              <View style={styles.productInfo}>
-                <Text style={styles.listText}>{item.name}</Text>
-                <Text style={styles.subText}>
-                  ¥{item.price.toLocaleString()}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        );
-        break;
-    }
-
-    return (
-      <FlatList
-        data={data}
-        keyExtractor={item => item.id.toString()}
-        renderItem={renderItem}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>{emptyText}</Text>
-          </View>
-        }
-        style={styles.tabContent}
-        contentContainerStyle={data.length === 0 ? { flex: 1 } : undefined}
-        refreshControl={
-          <RefreshControl
-            refreshing={isManualRefetching}
+        return (
+          <ArtistPostsTab
+            data={artistData.posts}
+            isRefreshing={isManualRefetching}
             onRefresh={onRefresh}
-            tintColor="#FFFFFF"
           />
-        }
-      />
-    );
+        );
+      case 'events':
+        return (
+          <ArtistEventsTab
+            data={artistData.events}
+            isRefreshing={isManualRefetching}
+            onRefresh={onRefresh}
+            onPress={handleEventPress}
+          />
+        );
+      case 'products':
+        return (
+          <ArtistProductsTab
+            data={artistData.products}
+            isRefreshing={isManualRefetching}
+            onRefresh={onRefresh}
+            onPress={handleProductPress}
+          />
+        );
+      default:
+        return null;
+    }
   };
 
   if (isLoading) {
@@ -206,56 +145,33 @@ const ArtistProfileScreen = () => {
         </View>
 
         <Text style={styles.artistName}>{artistData.nickname}</Text>
-
         {artistData.bio && (
           <Text style={styles.artistBio}>{artistData.bio}</Text>
         )}
       </View>
 
-      {/* タブ */}
+      {/* タブバー */}
       <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'posts' && styles.activeTab]}
-          onPress={() => setActiveTab('posts')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'posts' && styles.activeTabText,
-            ]}
+        {(['posts', 'events', 'products'] as TabKey[]).map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tabButton, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab)}
           >
-            お知らせ
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'events' && styles.activeTab]}
-          onPress={() => setActiveTab('events')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'events' && styles.activeTabText,
-            ]}
-          >
-            イベント
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            activeTab === 'products' && styles.activeTab,
-          ]}
-          onPress={() => setActiveTab('products')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'products' && styles.activeTabText,
-            ]}
-          >
-            グッズ
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.activeTabText,
+              ]}
+            >
+              {tab === 'posts'
+                ? 'お知らせ'
+                : tab === 'events'
+                ? 'イベント'
+                : 'グッズ'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* タブコンテンツ */}
@@ -343,51 +259,7 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: '#FFF',
   },
-
   contentWrapper: { flex: 1 },
-  tabContent: { flex: 1 },
-  listItem: {
-    backgroundColor: '#1C1C1E',
-    padding: 15,
-    marginVertical: 5,
-    marginHorizontal: 10,
-    borderRadius: 8,
-  },
-  listText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  subText: { color: '#888', fontSize: 12 },
-
-  // 3. ★ 追加: グッズ表示用のスタイル
-  productRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  productImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 4,
-    marginRight: 15,
-    backgroundColor: '#333',
-  },
-  productPlaceholder: {
-    backgroundColor: '#333',
-  },
-  productInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  emptyText: { color: '#888', fontSize: 16 },
 });
 
 export default ArtistProfileScreen;
