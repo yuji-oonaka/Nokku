@@ -82,10 +82,11 @@ class DatabaseSeeder extends Seeder
         $mainArtist = $this->createAccount(
             'artist@nokku.com',
             $password,
-            '手巣戸 亜手須斗',
+            'balconny',
             'artist',
             'テストアーティスト',
-            'https://i.pravatar.cc/150?u=artist@nokku.com'
+            'https://i.pravatar.cc/150?u=artist@nokku.com',
+            "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error"
         );
 
         // =========================================================
@@ -121,7 +122,8 @@ class DatabaseSeeder extends Seeder
                 "Artist No.{$i}",
                 'artist',
                 "Artist No.{$i}",
-                "https://i.pravatar.cc/150?u=artist{$i}@test.com"
+                "https://i.pravatar.cc/150?u=artist{$i}@test.com",
+                "【公式】Artist No.{$i}のアカウントです。\nライブ情報やグッズ情報を発信します！"
             );
 
             // A. イベント作成
@@ -182,7 +184,7 @@ class DatabaseSeeder extends Seeder
         $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 
-    private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null)
+    private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null, $bio = null)
     {
         $nickname = $nickname ?? $realName;
 
@@ -200,6 +202,7 @@ class DatabaseSeeder extends Seeder
                 'role' => $role,
                 'firebase_uid' => $uid,
                 'image_url' => $imageUrl,
+                'bio' => $bio,
                 'postal_code' => fake()->postcode(),
                 'prefecture' => fake()->prefecture(),
                 'city' => fake()->city(),

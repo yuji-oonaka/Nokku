@@ -19,6 +19,7 @@ class UserFactory extends Factory
             // firebase_uid はSeederで上書きするのでダミーでOK
             'firebase_uid' => Str::uuid(),
             'image_url' => 'https://i.pravatar.cc/150?u=' . $this->faker->unique()->safeEmail(),
+            'bio' => null,
             'postal_code' => fake()->postcode(),
             'prefecture' => fake()->prefecture(),
             'city' => fake()->city(),
@@ -34,6 +35,8 @@ class UserFactory extends Factory
         return $this->state(function (array $attributes) {
             return [
                 'role' => 'artist',
+                // ★ アーティストのときだけ、それっぽいプロフィールを入れる
+                'bio' => "【Official】\n" . $this->faker->realText(150) . "\n\n■次回ライブ情報など配信中！",
             ];
         });
     }
