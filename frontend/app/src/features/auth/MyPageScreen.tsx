@@ -7,13 +7,45 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
-  RefreshControl, // ★ 追加
+  RefreshControl,
+  Linking, // 必要であれば外部リンク用に
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// ★ 追加: キャッシュ操作用
 import { useQueryClient } from '@tanstack/react-query';
+
+// ★ リファクタリング: メニュー行をコンポーネント化して記述量を削減
+const MenuRow = ({
+  title,
+  onPress,
+  isDestructive = false,
+  isSpecial = false,
+}: {
+  title: string;
+  onPress: () => void;
+  isDestructive?: boolean;
+  isSpecial?: boolean;
+}) => (
+  <TouchableOpacity
+    style={[
+      styles.menuButton,
+      isSpecial && styles.gateButton, // 特別なボタン（緑など）
+      isDestructive && styles.logoutButton, // 破壊的なボタン（赤枠など）
+    ]}
+    onPress={onPress}
+  >
+    <Text
+      style={[
+        styles.menuButtonText,
+        isSpecial && styles.gateButtonText,
+        isDestructive && styles.logoutButtonText,
+      ]}
+    >
+      {title}
+    </Text>
+  </TouchableOpacity>
+);
 
 interface MyPageScreenProps {
   onLogout: () => void;
@@ -21,19 +53,15 @@ interface MyPageScreenProps {
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   const navigation = useNavigation<any>();
-  // ★ 修正: firebaseUser も取得 (リフレッシュ時のキー指定に必要)
   const { user, loading, firebaseUser } = useAuth();
-
-  // ★ 追加: リフレッシュ用フック
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
-  // ★ 追加: 引っ張って更新する処理
+  // 引っ張って更新
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (firebaseUser?.uid) {
       try {
-        // App.tsx で使っているキー ['profile', uid] を無効化し、強制再取得させる
         await queryClient.invalidateQueries({
           queryKey: ['profile', firebaseUser.uid],
         });
@@ -56,9 +84,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <Text style={styles.errorText}>ユーザー情報の取得に失敗しました。</Text>
-        <TouchableOpacity style={styles.menuButton} onPress={onLogout}>
-          <Text style={styles.menuButtonText}>ログアウト</Text>
-        </TouchableOpacity>
+        <MenuRow title="ログアウト" onPress={onLogout} isDestructive />
       </SafeAreaView>
     );
   }
@@ -68,18 +94,19 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        // ★ 追加: リフレッシュコントロールの設定
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#FFFFFF" // ローディングくるくるの色
+            tintColor="#FFFFFF"
           />
         }
       >
-        {/* 1. プロフィール情報表示 (リッチ版) */}
+        {/* =============================================
+            1. プロフィール情報表示エリア
+           ============================================= */}
         <View style={styles.profileHeader}>
-          {/* ★★★ アイコン表示エリア ★★★ */}
+          {/* アイコン */}
           <View style={styles.avatarContainer}>
             {user.image_url ? (
               <Image
@@ -100,117 +127,105 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
               </View>
             )}
           </View>
-          {/* ★★★★★★★★★★★★★★★★★ */}
 
+          {/* 名前・メール */}
           <Text style={styles.profileName}>{user.nickname}</Text>
           <Text style={styles.profileEmail}>{user.email}</Text>
+
+          {/* ★ 追加: Bio (自己紹介文) */}
+          {/* user型にbioがない場合は表示されませんが、APIから返ってくれば表示されます */}
+          {user.bio && <Text style={styles.profileBio}>{user.bio}</Text>}
         </View>
 
-        {/* 2. 共通メニュー */}
+        {/* =============================================
+            2. アカウント設定
+           ============================================= */}
         <View style={styles.menuGroup}>
           <Text style={styles.menuGroupTitle}>アカウント</Text>
-          <TouchableOpacity
-            style={styles.menuButton}
+          <MenuRow
+            title="プロフィールを編集"
             onPress={() => navigation.navigate('ProfileEdit')}
-          >
-            <Text style={styles.menuButtonText}>プロフィールを編集</Text>
-          </TouchableOpacity>
+          />
         </View>
 
-        {/* 3. 一般ユーザー用メニュー */}
+        {/* =============================================
+            3. 一般ユーザー用メニュー (購入・履歴)
+           ============================================= */}
         {!isArtistOrAdmin && (
           <View style={styles.menuGroup}>
             <Text style={styles.menuGroupTitle}>チケット・購入履歴</Text>
-            <TouchableOpacity
-              style={styles.menuButton}
+            <MenuRow
+              title="購入済みチケット一覧"
               onPress={() => navigation.navigate('MyTickets')}
-            >
-              <Text style={styles.menuButtonText}>購入済みチケット一覧</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="お気に入りグッズ一覧 ❤️"
               onPress={() => navigation.navigate('FavoriteProducts')}
-            >
-              <Text style={styles.menuButtonText}>お気に入りグッズ一覧 ❤️</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="グッズ購入履歴"
               onPress={() => navigation.navigate('OrderHistory')}
-            >
-              <Text style={styles.menuButtonText}>グッズ購入履歴</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="運営へのお問い合わせ"
               onPress={() => navigation.navigate('Inquiry')}
-            >
-              <Text style={styles.menuButtonText}>運営へのお問い合わせ</Text>
-            </TouchableOpacity>
+            />
           </View>
         )}
 
-        {/* 4. アーティスト/管理者用メニュー */}
+        {/* =============================================
+            4. アーティスト/管理者用メニュー (管理機能)
+           ============================================= */}
         {isArtistOrAdmin && (
           <View style={styles.menuGroup}>
             <Text style={styles.menuGroupTitle}>
               アーティスト・管理者メニュー
             </Text>
-            <TouchableOpacity
-              style={styles.menuButton}
+            <MenuRow
+              title="イベントを作成する"
               onPress={() => navigation.navigate('EventCreate')}
-            >
-              <Text style={styles.menuButtonText}>イベントを作成する</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="グッズを作成する"
               onPress={() => navigation.navigate('ProductCreate')}
-            >
-              <Text style={styles.menuButtonText}>グッズを作成する</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="投稿を作成する"
               onPress={() => navigation.navigate('PostCreate')}
-            >
-              <Text style={styles.menuButtonText}>投稿を作成する</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+
+            {/* スキャン関連 */}
+            <View style={styles.separator} />
+            <MenuRow
+              title="チケット入場スキャン"
               onPress={() =>
                 navigation.navigate('Scan', { scanMode: 'ticket' })
               }
-            >
-              <Text style={styles.menuButtonText}>チケット入場スキャン</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuButton}
+            />
+            <MenuRow
+              title="グッズ引換スキャン"
               onPress={() => navigation.navigate('Scan', { scanMode: 'order' })}
-            >
-              <Text style={styles.menuButtonText}>グッズ引換スキャン</Text>
-            </TouchableOpacity>
+            />
 
-            <TouchableOpacity
-              style={[styles.menuButton, styles.gateButton]}
+            {/* 特殊ボタン: ゲート */}
+            <View style={styles.separator} />
+            <MenuRow
+              title="(会場用) 自動入場ゲートを起動"
               onPress={() => navigation.navigate('GateScanner')}
-            >
-              <Text style={styles.gateButtonText}>
-                (会場用) 自動入場ゲートを起動
-              </Text>
-            </TouchableOpacity>
+              isSpecial
+            />
           </View>
         )}
 
-        {/* 5. ログアウト */}
+        {/* =============================================
+            5. ログアウト
+           ============================================= */}
         <View style={styles.menuGroup}>
-          <TouchableOpacity
-            style={[styles.menuButton, styles.logoutButton]}
-            onPress={onLogout}
-          >
-            <Text style={styles.logoutButtonText}>ログアウト</Text>
-          </TouchableOpacity>
+          <MenuRow title="ログアウト" onPress={onLogout} isDestructive />
         </View>
+
+        {/* スクロール下部の余白 */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -230,11 +245,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
   },
+  /* Profile Header */
   profileHeader: {
     padding: 30,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#222', // 少し薄く
     backgroundColor: '#111',
   },
   avatarContainer: {
@@ -288,48 +304,68 @@ const styles = StyleSheet.create({
   profileEmail: {
     fontSize: 14,
     color: '#888',
+    marginBottom: 10,
   },
+  // ★ Bioのスタイル
+  profileBio: {
+    fontSize: 14,
+    color: '#CCC',
+    textAlign: 'center',
+    marginTop: 10,
+    lineHeight: 20,
+    paddingHorizontal: 10,
+  },
+  /* Menu Items */
   menuGroup: {
-    marginVertical: 15,
+    marginTop: 20,
+    marginBottom: 5,
   },
   menuGroupTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
     paddingHorizontal: 20,
-    marginBottom: 10,
+    marginBottom: 8,
+    textTransform: 'uppercase',
   },
   menuButton: {
     backgroundColor: '#1C1C1E',
-    paddingVertical: 15,
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#333',
+    borderBottomWidth: StyleSheet.hairlineWidth, // 細い線にする
+    borderBottomColor: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   menuButtonText: {
-    color: '#0A84FF',
+    color: '#0A84FF', // iOS Blue
     fontSize: 17,
   },
+  /* Special Buttons */
   gateButton: {
-    backgroundColor: '#34C759',
-    borderColor: '#34C759',
+    backgroundColor: '#34C759', // Green
+    marginTop: 10,
+    borderRadius: 8,
+    marginHorizontal: 10, // 少し内側に入れる
+    justifyContent: 'center',
+    borderBottomWidth: 0,
   },
   gateButtonText: {
     color: '#FFFFFF',
-    fontSize: 17,
     fontWeight: 'bold',
-    textAlign: 'center',
   },
   logoutButton: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    marginTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: '#333',
   },
   logoutButtonText: {
-    color: '#FF3B30',
-    fontSize: 17,
+    color: '#FF3B30', // Red
     textAlign: 'center',
+    width: '100%',
+  },
+  separator: {
+    height: 10, // グループ内の小分け用
   },
 });
 
