@@ -11,7 +11,7 @@ export interface DbUser {
   nickname: string; // 表示用なのでOK
   role: 'user' | 'artist' | 'admin';
   image_url?: string | null; // アイコンも表示用なのでOK
-
+  bio?: string | null;
   // 削除: 以下の住所情報はここには持たせない
   // phone_number: string | null;
   // postal_code: string | null;
