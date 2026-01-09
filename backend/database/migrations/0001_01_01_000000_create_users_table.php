@@ -14,23 +14,30 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
 
-            // ★ Firebase UID (必須)
+            // Firebase UID (必須)
             $table->string('firebase_uid')->unique();
 
-            // ★ 名前関連 (修正・統合済み)
-            $table->string('real_name'); // 本名 (name から変更)
-            $table->string('nickname');  // ニックネーム (新規追加)
+            // 名前関連
+            $table->string('real_name');
+            $table->string('nickname');
 
+            // プロフィール画像と自己紹介 (★統合: bio)
             $table->string('image_url')->nullable();
+            $table->text('bio')->nullable();
 
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
 
-            // ★ 権限管理
+            // ★統合: 2要素認証 (Two Factor)
+            $table->string('two_factor_secret')->nullable();
+            $table->string('two_factor_recovery_codes')->nullable();
+            $table->timestamp('two_factor_confirmed_at')->nullable();
+
+            // 権限管理
             $table->enum('role', ['user', 'artist', 'admin'])->default('user');
 
-            // ★ 住所情報 (統合済み)
+            // 住所情報
             $table->string('phone_number', 20)->nullable();
             $table->string('postal_code', 8)->nullable();
             $table->string('prefecture', 10)->nullable();

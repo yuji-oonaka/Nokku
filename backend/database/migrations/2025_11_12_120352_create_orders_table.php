@@ -17,8 +17,13 @@ return new class extends Migration
             // 1. 誰が買ったか
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
 
-            // 2. 合計金額
+            // 2. 金額関連
             $table->unsignedInteger('total_price');
+
+            // ★統合: 手数料関連 (Commission)
+            // 金額計算に関わるので total_price の直後に配置
+            $table->decimal('platform_fee', 10, 2)->default(0)->comment('プラットフォーム手数料');
+            $table->decimal('payout_amount', 10, 2)->default(0)->comment('アーティスト受取額');
 
             // 3. 注文の状態 ('pending', 'paid', 'shipped', 'redeemed')
             $table->string('status', 20)->default('pending');
@@ -29,13 +34,17 @@ return new class extends Migration
             // 5. 受取方法 ('mail', 'venue')
             $table->string('delivery_method', 20);
 
+            // ★統合: 追跡番号関連 (Tracking)
+            $table->string('tracking_number')->nullable()->comment('追跡番号');
+            $table->timestamp('shipped_at')->nullable()->comment('発送日時');
+
             // 6. 配送先住所 (JSON形式)
             $table->json('shipping_address')->nullable();
 
             // 7. Stripe決済ID
             $table->string('stripe_payment_intent_id')->nullable()->index();
 
-            // 8. ★ 統合: 会場受取用QRコードID (UUID)
+            // 8. 会場受取用QRコードID (UUID)
             $table->uuid('qr_code_id')->nullable()->unique();
 
             $table->timestamps();
