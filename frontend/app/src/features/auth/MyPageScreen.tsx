@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,47 +8,181 @@ import {
   ScrollView,
   Image,
   RefreshControl,
-  Linking, // 必要であれば外部リンク用に
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../../context/AuthContext';
+import auth from '@react-native-firebase/auth'; // ★ 追加: これが必要です
+import { useAuth, DbUser } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 
-// ★ リファクタリング: メニュー行をコンポーネント化して記述量を削減
-const MenuRow = ({
-  title,
-  onPress,
-  isDestructive = false,
-  isSpecial = false,
-}: {
+// --- Types ---
+type MenuItem = {
+  id: string;
   title: string;
-  onPress: () => void;
+  action: () => void;
   isDestructive?: boolean;
   isSpecial?: boolean;
-}) => (
+};
+
+type MenuSection = {
+  id: string;
+  title?: string;
+  items: MenuItem[];
+};
+
+// --- Components ---
+
+const MenuRow: React.FC<{ item: MenuItem }> = ({ item }) => (
   <TouchableOpacity
     style={[
       styles.menuButton,
-      isSpecial && styles.gateButton, // 特別なボタン（緑など）
-      isDestructive && styles.logoutButton, // 破壊的なボタン（赤枠など）
+      item.isSpecial && styles.gateButton,
+      item.isDestructive && styles.logoutButton,
     ]}
-    onPress={onPress}
+    onPress={item.action}
+    activeOpacity={0.7}
   >
     <Text
       style={[
         styles.menuButtonText,
-        isSpecial && styles.gateButtonText,
-        isDestructive && styles.logoutButtonText,
+        item.isSpecial && styles.gateButtonText,
+        item.isDestructive && styles.logoutButtonText,
       ]}
     >
-      {title}
+      {item.title}
     </Text>
+    {!item.isSpecial && !item.isDestructive && (
+      <Text style={styles.chevron}>›</Text>
+    )}
   </TouchableOpacity>
 );
 
+// --- Hooks ---
+
+const useMenuConfig = (
+  user: DbUser | null,
+  navigation: any,
+  onLogout: () => void,
+) => {
+  return useMemo(() => {
+    if (!user) return [];
+
+    const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
+    const sections: MenuSection[] = [];
+
+    // 1. アカウント設定
+    sections.push({
+      id: 'account',
+      title: 'アカウント',
+      items: [
+        {
+          id: 'profile_edit',
+          title: 'プロフィールを編集',
+          action: () => navigation.navigate('ProfileEdit'),
+        },
+      ],
+    });
+
+    // 2. 一般ユーザー向け
+    if (!isArtistOrAdmin) {
+      sections.push({
+        id: 'user_general',
+        title: 'チケット・購入履歴',
+        items: [
+          {
+            id: 'my_tickets',
+            title: '購入済みチケット一覧',
+            action: () => navigation.navigate('MyTickets'),
+          },
+          {
+            id: 'favorites',
+            title: 'お気に入りグッズ一覧 ❤️',
+            action: () => navigation.navigate('FavoriteProducts'),
+          },
+          {
+            id: 'history',
+            title: 'グッズ購入履歴',
+            action: () => navigation.navigate('OrderHistory'),
+          },
+          {
+            id: 'inquiry',
+            title: '運営へのお問い合わせ',
+            action: () => navigation.navigate('Inquiry'),
+          },
+        ],
+      });
+    }
+
+    // 3. アーティスト・管理者向け
+    if (isArtistOrAdmin) {
+      sections.push({
+        id: 'artist_tools',
+        title: 'アーティスト・管理者メニュー',
+        items: [
+          {
+            id: 'event_create',
+            title: 'イベントを作成する',
+            action: () => navigation.navigate('EventCreate'),
+          },
+          {
+            id: 'product_create',
+            title: 'グッズを作成する',
+            action: () => navigation.navigate('ProductCreate'),
+          },
+          {
+            id: 'post_create',
+            title: '投稿を作成する',
+            action: () => navigation.navigate('PostCreate'),
+          },
+        ],
+      });
+
+      sections.push({
+        id: 'artist_scan',
+        title: 'スキャン・会場管理',
+        items: [
+          {
+            id: 'scan_ticket',
+            title: 'チケット入場スキャン',
+            action: () => navigation.navigate('Scan', { scanMode: 'ticket' }),
+          },
+          {
+            id: 'scan_order',
+            title: 'グッズ引換スキャン',
+            action: () => navigation.navigate('Scan', { scanMode: 'order' }),
+          },
+          {
+            id: 'gate_scanner',
+            title: '(会場用) 自動入場ゲート起動',
+            action: () => navigation.navigate('GateScanner'),
+            isSpecial: true,
+          },
+        ],
+      });
+    }
+
+    // 4. システム (ログアウト)
+    sections.push({
+      id: 'system',
+      items: [
+        {
+          id: 'logout',
+          title: 'ログアウト',
+          action: onLogout,
+          isDestructive: true,
+        },
+      ],
+    });
+
+    return sections;
+  }, [user, navigation, onLogout]);
+};
+
+// --- Main Component ---
+
 interface MyPageScreenProps {
-  onLogout: () => void;
+  onLogout?: () => void;
 }
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
@@ -57,14 +191,32 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
-  // 引っ張って更新
+  // ログアウト処理
+  const handleLogout = useCallback(() => {
+    // Propsで渡された場合はそれを使う（Storybookや特殊な親コンポーネント用）
+    if (onLogout) {
+      onLogout();
+    } else {
+      // 通常時は直接Firebaseを呼ぶ
+      Alert.alert('ログアウト', 'ログアウトしますか？', [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'ログアウト',
+          style: 'destructive',
+          onPress: () => auth().signOut(), // ★ 修正: useAuth().logout ではなく直接 SDK を呼ぶ
+        },
+      ]);
+    }
+  }, [onLogout]);
+
+  // メニュー構成を取得
+  const menuSections = useMenuConfig(user, navigation, handleLogout);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (firebaseUser?.uid) {
       try {
-        await queryClient.invalidateQueries({
-          queryKey: ['profile', firebaseUser.uid],
-        });
+        await queryClient.invalidateQueries({ queryKey: ['profile'] });
       } catch (error) {
         console.error('Refresh failed', error);
       }
@@ -83,8 +235,15 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>ユーザー情報の取得に失敗しました。</Text>
-        <MenuRow title="ログアウト" onPress={onLogout} isDestructive />
+        <Text style={styles.errorText}>ユーザー情報が見つかりません</Text>
+        <MenuRow
+          item={{
+            id: 'logout',
+            title: 'ログアウト',
+            action: handleLogout,
+            isDestructive: true,
+          }}
+        />
       </SafeAreaView>
     );
   }
@@ -101,12 +260,10 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             tintColor="#FFFFFF"
           />
         }
+        contentContainerStyle={{ paddingBottom: 40 }}
       >
-        {/* =============================================
-            1. プロフィール情報表示エリア
-           ============================================= */}
+        {/* === プロフィールヘッダー === */}
         <View style={styles.profileHeader}>
-          {/* アイコン */}
           <View style={styles.avatarContainer}>
             {user.image_url ? (
               <Image
@@ -120,7 +277,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
                 </Text>
               </View>
             )}
-            {/* アーティストバッジ */}
             {isArtistOrAdmin && (
               <View style={styles.badgeContainer}>
                 <Text style={styles.badgeText}>ARTIST</Text>
@@ -128,139 +284,48 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
             )}
           </View>
 
-          {/* 名前・メール */}
           <Text style={styles.profileName}>{user.nickname}</Text>
           <Text style={styles.profileEmail}>{user.email}</Text>
-
-          {/* ★ 追加: Bio (自己紹介文) */}
-          {/* user型にbioがない場合は表示されませんが、APIから返ってくれば表示されます */}
-          {user.bio && <Text style={styles.profileBio}>{user.bio}</Text>}
+          {user.bio ? <Text style={styles.profileBio}>{user.bio}</Text> : null}
         </View>
 
-        {/* =============================================
-            2. アカウント設定
-           ============================================= */}
-        <View style={styles.menuGroup}>
-          <Text style={styles.menuGroupTitle}>アカウント</Text>
-          <MenuRow
-            title="プロフィールを編集"
-            onPress={() => navigation.navigate('ProfileEdit')}
-          />
-        </View>
-
-        {/* =============================================
-            3. 一般ユーザー用メニュー (購入・履歴)
-           ============================================= */}
-        {!isArtistOrAdmin && (
-          <View style={styles.menuGroup}>
-            <Text style={styles.menuGroupTitle}>チケット・購入履歴</Text>
-            <MenuRow
-              title="購入済みチケット一覧"
-              onPress={() => navigation.navigate('MyTickets')}
-            />
-            <MenuRow
-              title="お気に入りグッズ一覧 ❤️"
-              onPress={() => navigation.navigate('FavoriteProducts')}
-            />
-            <MenuRow
-              title="グッズ購入履歴"
-              onPress={() => navigation.navigate('OrderHistory')}
-            />
-            <MenuRow
-              title="運営へのお問い合わせ"
-              onPress={() => navigation.navigate('Inquiry')}
-            />
+        {/* === メニューレンダリング === */}
+        {menuSections.map(section => (
+          <View key={section.id} style={styles.menuGroup}>
+            {section.title && (
+              <Text style={styles.menuGroupTitle}>{section.title}</Text>
+            )}
+            {section.items.map(item => (
+              <MenuRow key={item.id} item={item} />
+            ))}
           </View>
-        )}
-
-        {/* =============================================
-            4. アーティスト/管理者用メニュー (管理機能)
-           ============================================= */}
-        {isArtistOrAdmin && (
-          <View style={styles.menuGroup}>
-            <Text style={styles.menuGroupTitle}>
-              アーティスト・管理者メニュー
-            </Text>
-            <MenuRow
-              title="イベントを作成する"
-              onPress={() => navigation.navigate('EventCreate')}
-            />
-            <MenuRow
-              title="グッズを作成する"
-              onPress={() => navigation.navigate('ProductCreate')}
-            />
-            <MenuRow
-              title="投稿を作成する"
-              onPress={() => navigation.navigate('PostCreate')}
-            />
-
-            {/* スキャン関連 */}
-            <View style={styles.separator} />
-            <MenuRow
-              title="チケット入場スキャン"
-              onPress={() =>
-                navigation.navigate('Scan', { scanMode: 'ticket' })
-              }
-            />
-            <MenuRow
-              title="グッズ引換スキャン"
-              onPress={() => navigation.navigate('Scan', { scanMode: 'order' })}
-            />
-
-            {/* 特殊ボタン: ゲート */}
-            <View style={styles.separator} />
-            <MenuRow
-              title="(会場用) 自動入場ゲートを起動"
-              onPress={() => navigation.navigate('GateScanner')}
-              isSpecial
-            />
-          </View>
-        )}
-
-        {/* =============================================
-            5. ログアウト
-           ============================================= */}
-        <View style={styles.menuGroup}>
-          <MenuRow title="ログアウト" onPress={onLogout} isDestructive />
-        </View>
-
-        {/* スクロール下部の余白 */}
-        <View style={{ height: 40 }} />
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorText: {
-    color: '#FF3B30',
-    fontSize: 16,
-    marginBottom: 20,
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
+  center: { justifyContent: 'center', alignItems: 'center' },
+  errorText: { color: '#FF3B30', fontSize: 16, marginBottom: 20 },
+
   /* Profile Header */
   profileHeader: {
     padding: 30,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#222', // 少し薄く
+    borderBottomColor: '#222',
     backgroundColor: '#111',
   },
   avatarContainer: {
     marginBottom: 15,
+    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.5,
     shadowRadius: 4,
     elevation: 5,
-    position: 'relative',
   },
   avatarImage: {
     width: 100,
@@ -274,11 +339,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarInitials: {
-    fontSize: 40,
-    color: '#888',
-    fontWeight: 'bold',
-  },
+  avatarInitials: { fontSize: 40, color: '#888', fontWeight: 'bold' },
   badgeContainer: {
     position: 'absolute',
     bottom: 0,
@@ -290,23 +351,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#000',
   },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
+  badgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
   },
-  profileEmail: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 10,
-  },
-  // ★ Bioのスタイル
+  profileEmail: { fontSize: 14, color: '#888', marginBottom: 10 },
   profileBio: {
     fontSize: 14,
     color: '#CCC',
@@ -315,11 +367,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 10,
   },
+
   /* Menu Items */
-  menuGroup: {
-    marginTop: 20,
-    marginBottom: 5,
-  },
+  menuGroup: { marginTop: 20, marginBottom: 5 },
   menuGroupTitle: {
     fontSize: 13,
     fontWeight: '600',
@@ -332,41 +382,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#1C1C1E',
     paddingVertical: 16,
     paddingHorizontal: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth, // 細い線にする
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#333',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  menuButtonText: {
-    color: '#0A84FF', // iOS Blue
-    fontSize: 17,
-  },
+  menuButtonText: { color: '#0A84FF', fontSize: 17 },
+  chevron: { color: '#666', fontSize: 18, fontWeight: 'bold' },
+
   /* Special Buttons */
   gateButton: {
-    backgroundColor: '#34C759', // Green
+    backgroundColor: '#34C759',
     marginTop: 10,
     borderRadius: 8,
-    marginHorizontal: 10, // 少し内側に入れる
+    marginHorizontal: 10,
     justifyContent: 'center',
     borderBottomWidth: 0,
   },
-  gateButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
+  gateButtonText: { color: '#FFFFFF', fontWeight: 'bold', textAlign: 'center' },
   logoutButton: {
     marginTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: '#333',
+    justifyContent: 'center',
   },
-  logoutButtonText: {
-    color: '#FF3B30', // Red
-    textAlign: 'center',
-    width: '100%',
-  },
-  separator: {
-    height: 10, // グループ内の小分け用
-  },
+  logoutButtonText: { color: '#FF3B30', textAlign: 'center', width: '100%' },
 });
 
 export default MyPageScreen;
