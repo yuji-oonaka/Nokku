@@ -16,8 +16,6 @@ use Illuminate\Support\Str;
 
 class OrderController extends Controller
 {
-    // index, show は変更なしのため省略可能ですが、念のためそのまま残してください。
-    
     public function index(Request $request)
     {
         /** @var \App\Models\User $user */
@@ -78,12 +76,10 @@ class OrderController extends Controller
         }
 
         // ★★★ トランザクション開始 ★★★
-        // 在庫チェックから注文作成までを一気通貫で行うことで整合性を保つ
         try {
             return DB::transaction(function () use ($user, $productId, $quantity, $paymentMethod, $deliveryMethod, $shippingAddress) {
-                
-                // 1. 商品行をロックして取得 (悲観ロック)
-                // この処理中、他のユーザーはこのproduct_idの行を読み込めず待機状態になる
+
+                // 1. 商品行をロックして取得 (悲観ロック: lockForUpdate)
                 $product = Product::where('id', $productId)->lockForUpdate()->first();
 
                 // 2. 厳密な在庫チェック
@@ -91,14 +87,14 @@ class OrderController extends Controller
                     throw new \Exception('在庫が不足しています', 422);
                 }
 
-                // 3. 購入制限チェック (OrderItemの集計もロックの影響を受けるため安全)
+                // 3. 購入制限チェック
                 if ($product->limit_per_user) {
                     $pastQuantity = OrderItem::where('product_id', $product->id)
                         ->whereHas('order', function ($query) use ($user) {
                             $query->where('user_id', $user->id)
                                 ->where('status', '!=', 'cancelled');
                         })
-                        ->sum('quantity'); // ※ここも厳密にするならOrderItemテーブルもロックが必要だが、今回はProductロックで緩和
+                        ->sum('quantity');
 
                     if (($pastQuantity + $quantity) > $product->limit_per_user) {
                         throw new \Exception("お一人様 {$product->limit_per_user} 点までです。(過去の購入数: {$pastQuantity})", 409);
@@ -108,14 +104,14 @@ class OrderController extends Controller
                 $totalPrice = $product->price * $quantity;
 
                 // 4. Stripe決済等の外部API呼び出し
-                // 注意: トランザクション内での外部APIコールは、レスポンス待ちでDBロックが長引くリスクがあるが、
-                // 在庫確保を優先するため今回は許容する。高負荷時は「仮注文→決済→本注文」への分離が必要。
                 $clientSecret = null;
                 $stripePaymentIntentId = null;
 
                 if ($paymentMethod === 'stripe') {
                     Stripe::setApiKey(config('services.stripe.secret'));
                     try {
+                        // NOTE: トランザクション内の外部APIコールはロック時間が長くなるリスクがあるが、
+                        // データの不整合（在庫確保後の決済金額齟齬など）を防ぐため現在はここで実行する。
                         $paymentIntent = PaymentIntent::create([
                             'amount' => $totalPrice, // JPY
                             'currency' => 'jpy',
@@ -125,11 +121,12 @@ class OrderController extends Controller
                                 'type' => 'order',
                                 'user_id' => $user->id,
                                 'product_id' => $product->id,
-                            ]
+                            ],
                         ]);
                         $clientSecret = $paymentIntent->client_secret;
                         $stripePaymentIntentId = $paymentIntent->id;
                     } catch (\Exception $e) {
+                        // 決済システムエラー時は500としてスローし、ロールバックさせる
                         throw new \Exception('決済システムの接続に失敗しました: ' . $e->getMessage(), 500);
                     }
                 }
@@ -157,6 +154,12 @@ class OrderController extends Controller
                     'product_name' => $product->name,
                 ]);
 
+                // =================================================================
+                // TODO: 定期実行バッチ(Cron)を作成し、作成から30分経過しても
+                // status='pending' (未決済) の注文を自動キャンセルし、
+                // product->increment('stock', $quantity) で在庫を戻す処理を実装すること。
+                // =================================================================
+
                 // Stripeメタデータ更新 (Order ID紐付け)
                 if ($paymentMethod === 'stripe' && $stripePaymentIntentId) {
                     PaymentIntent::update($stripePaymentIntentId, [
@@ -170,12 +173,15 @@ class OrderController extends Controller
                     'clientSecret' => $clientSecret,
                 ], 201);
             });
-
         } catch (\Exception $e) {
-            // エラーコードの処理
-            $status = $e->getCode();
-            if ($status < 100 || $status > 599) $status = 500;
-            return response()->json(['message' => $e->getMessage()], $status);
+            // エラーコードの処理 (数値以外や範囲外の場合は500に倒す)
+            $code = $e->getCode();
+            $status = (is_int($code) && $code >= 400 && $code < 600) ? $code : 500;
+
+            return response()->json([
+                'message' => $e->getMessage(),
+                // デバッグ時は $e->getTrace() をログに出すと良い
+            ], $status);
         }
     }
 }
