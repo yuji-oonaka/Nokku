@@ -4,12 +4,16 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  ReactNode,
 } from 'react';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import api from '../services/api'; // APIクライアントのパスは環境に合わせて調整してください
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { registerUnauthorizedCallback } from '../services/api';
 
-// 1. DBから取得するユーザー情報の型
-// ★ Security Fix: 個人情報(住所・電話番号・本名)をGlobal Stateから削除
+// ★ 元々使っていた fetchProfile をインポート (パスは環境に合わせてください)
+import { fetchProfile } from '../api/queries';
+
+// 1. DBから取得するユーザー情報の型 (queries.tsの定義と合わせる)
 export interface DbUser {
   id: number;
   email: string;
@@ -21,79 +25,97 @@ export interface DbUser {
 
 // 2. Contextが提供する値の型
 export interface AuthContextType {
-  user: DbUser | null; // DBのユーザー情報 (Laravel)
-  firebaseUser: FirebaseAuthTypes.User | null; // Firebaseの認証情報
-  loading: boolean; // 認証またはデータ取得中か
-  refreshUser: () => Promise<void>; // ユーザー情報を再取得する関数
+  user: DbUser | null;
+  firebaseUser: FirebaseAuthTypes.User | null;
+  loading: boolean;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<any>;
 }
 
-// 3. Context の作成
-export const AuthContext = createContext<AuthContextType | undefined>(
-  undefined,
-);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 4. Provider コンポーネントの実装
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [firebaseUser, setFirebaseUser] =
     useState<FirebaseAuthTypes.User | null>(null);
-  const [user, setUser] = useState<DbUser | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  // DBからユーザー情報を取得する関数
-  const fetchDbUser = async () => {
+  // ログアウト処理
+  const logout = async () => {
     try {
-      // Laravel側の '/api/me' エンドポイントを叩いて自分自身の情報を取得
-      const response = await api.get('/me');
-      setUser(response.data);
+      await auth().signOut();
+      // ★ ログアウト時はキャッシュをクリア (元のコードの挙動を再現)
+      queryClient.clear();
+      setFirebaseUser(null);
     } catch (error) {
-      console.error('Failed to fetch user data:', error);
-      // エラー時はDBユーザーをnullにするが、Firebase認証は維持（リトライなどのため）
-      setUser(null);
+      console.error('Logout failed:', error);
     }
   };
 
+  // api.ts へのコールバック登録
   useEffect(() => {
-    // Firebaseの認証状態を監視
-    const unsubscribe = auth().onAuthStateChanged(async currentUser => {
-      setFirebaseUser(currentUser);
-
-      if (currentUser) {
-        // ログイン時はDBからも情報を取得
-        await fetchDbUser();
-      } else {
-        // ログアウト時はDB情報もクリア
-        setUser(null);
-      }
-
-      setLoading(false);
+    registerUnauthorizedCallback(() => {
+      logout();
     });
+  }, []);
 
+  // Firebase Auth Stateの監視
+  useEffect(() => {
+    const unsubscribe = auth().onAuthStateChanged(currentUser => {
+      setFirebaseUser(currentUser);
+      setIsAuthInitializing(currentUser);
+    });
     return unsubscribe;
   }, []);
 
-  // ★ Performance Fix: useMemoでラップして不要な再レンダリングを防止
+  // Firebaseの状態確定時の処理
+  const setIsAuthInitializing = (user: FirebaseAuthTypes.User | null) => {
+    setIsAuthLoading(false);
+    if (!user) {
+      queryClient.clear();
+    }
+  };
+
+  // ★ 以前動いていたロジックを完全再現
+  const {
+    data: user,
+    isLoading: isProfileLoading,
+    refetch: refreshUser,
+  } = useQuery({
+    // ★ キーを 'me' から 'profile' に戻す
+    queryKey: ['profile', firebaseUser?.uid],
+    // ★ fetchProfile 関数を使用する (これが重要)
+    queryFn: () => fetchProfile(firebaseUser),
+    enabled: !isAuthLoading && !!firebaseUser,
+    staleTime: 1000 * 60 * 5,
+    // ★ リトライ設定を復活
+    retry: 3,
+    retryDelay: 1000,
+  });
+
+  // 全体のローディング判定
+  const loading = isAuthLoading || (!!firebaseUser && isProfileLoading);
+
   const value = useMemo(
     () => ({
-      user,
+      user: user || null,
       firebaseUser,
       loading,
-      refreshUser: fetchDbUser, // プロフィール更新後などに手動で呼べるように公開
+      logout,
+      refreshUser,
     }),
-    [user, firebaseUser, loading],
+    [user, firebaseUser, loading, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// 5. カスタムフック
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error(
-      'useAuth must be used within an AuthProvider (check App.tsx)',
-    );
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
