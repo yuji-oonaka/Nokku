@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Http\Resources\ProductResource; // ★追加
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -11,38 +12,37 @@ use Illuminate\Support\Facades\Storage;
 class ProductController extends Controller
 {
     /**
-     * グッズ一覧を取得 (index)
+     * グッズ一覧を取得
      */
     public function index()
     {
-        // 現在のユーザーIDを取得（未ログインなら null）
         $userId = Auth::id();
 
+        // ★ artist情報をEager Loadingしつつ、N+1問題を回避
         $query = Product::with('artist')
             ->withCount('favoritedBy as likes_count')
             ->orderBy('created_at', 'desc');
 
-        // ログインしている場合、自分が「いいね」しているかどうかのフラグ (is_liked) を追加
         if ($userId) {
             $query->withExists(['favoritedBy as is_liked' => function ($q) use ($userId) {
                 $q->where('user_id', $userId);
             }]);
         }
 
+        // ページネーションを追加 (グッズが増えた時のため)
+        // アプリ側でスクロールロードするなら paginate(20) などに変更可能
         $products = $query->get();
 
-        // JSONレスポンスの整形（必要に応じて）
-        // ここで is_liked がない場合（未ログイン時）は false をセットするなどの加工も可能ですが、
-        // フロントエンドの型定義で optional (?) になっているため、このままでも動作します。
-
-        return response()->json($products);
+        // ★ Resourceコレクションとして返す
+        return ProductResource::collection($products);
     }
 
     /**
-     * 新しいグッズを作成 (store)
+     * 新しいグッズを作成
      */
     public function store(Request $request)
     {
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         if ($user->role !== 'artist' && $user->role !== 'admin') {
@@ -63,29 +63,35 @@ class ProductController extends Controller
 
         $product = Product::create($productData);
 
-        return response()->json($product, 201);
+        // 作成直後はリレーションがないのでロードしておく
+        $product->load('artist');
+
+        // ★ Resourceで返す
+        return new ProductResource($product);
     }
 
     /**
-     * 特定のグッズ詳細を取得 (show)
+     * グッズ詳細
      */
     public function show(Product $product)
     {
         $userId = Auth::id();
 
+        // リレーション読み込み
         $product->load(['artist'])
             ->loadCount('favoritedBy as likes_count');
 
-        // showでも is_liked を判定
+        // is_liked の手動注入 (Eloquentの属性として追加)
         $product->is_liked = $userId
             ? $product->favoritedBy()->where('user_id', $userId)->exists()
             : false;
 
-        return response()->json($product);
+        // ★ Resourceで返す
+        return new ProductResource($product);
     }
 
     /**
-     * グッズ情報を更新 (update)
+     * グッズ更新
      */
     public function update(Request $request, Product $product)
     {
@@ -105,11 +111,12 @@ class ProductController extends Controller
 
         $product->update($validatedData);
 
-        return response()->json($product);
+        // 更新後もResourceで返す
+        return new ProductResource($product);
     }
 
     /**
-     * グッズを削除 (destroy)
+     * グッズ削除
      */
     public function destroy(Product $product)
     {
@@ -119,7 +126,9 @@ class ProductController extends Controller
             return response()->json(['message' => 'このグッズを削除する権限がありません'], 403);
         }
 
-        if ($product->image_url) {
+        // S3/ローカル画像の削除ロジック
+        // (httpで始まる外部画像の場合は削除しないガードを入れるとより安全)
+        if ($product->image_url && !str_starts_with($product->image_url, 'http')) {
             Storage::disk('public')->delete($product->image_url);
         }
 
