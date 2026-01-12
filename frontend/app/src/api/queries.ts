@@ -97,13 +97,22 @@ export interface Product {
   limit_per_user: number | null;
   artist?: PublicArtistInfo;
 }
+// --- 修正箇所 1: 一覧取得 ---
 export const fetchProducts = async (): Promise<Product[]> => {
-  const response = await api.get<Product[]>('/products');
-  return response.data;
+  // 型定義はいったん any か { data: Product[] } に逃げてもいいですが、
+  // 実行コードとしては .data.data にアクセスする必要があります。
+  const response = await api.get('/products');
+  
+  // ★ .data.data で箱の中身を取り出す
+  return response.data.data; 
 };
+
+// --- 修正箇所 2: 詳細取得 ---
 export const fetchProductById = async (productId: number): Promise<Product> => {
-  const response = await api.get<Product>(`/products/${productId}`);
-  return response.data;
+  const response = await api.get(`/products/${productId}`);
+  
+  // ★ 単体の取得も data で包まれています
+  return response.data.data; 
 };
 
 // --- (Artist) ---

@@ -19,12 +19,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, fetchProductById } from '../../api/queries';
 import SoundService from '../../services/SoundService';
+// ★追加: 作成したコンポーネントをインポート
+import ProductAdminControls from './components/ProductAdminControls';
 
 type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
 
 const ProductDetailScreen: React.FC = () => {
   const route = useRoute<ProductDetailRouteProp>();
-  // Navigationに型をつけることで、Paymentへの遷移パラメータが補完されるようになります
   const navigation = useNavigation<any>();
   const { productId } = route.params;
 
@@ -34,7 +35,7 @@ const ProductDetailScreen: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [isManualRefetching, setIsManualRefetching] = useState(false);
 
-  // 1. 商品データ取得 (React Query)
+  // 1. 商品データ取得
   const {
     data: product,
     isLoading,
@@ -46,11 +47,20 @@ const ProductDetailScreen: React.FC = () => {
     enabled: !!productId,
   });
 
-  // 2. お気に入り切り替え (Mutation)
+  // --- ★追加: 権限チェックロジック ---
+  const isOwner =
+    user?.id !== undefined &&
+    product?.artist?.id !== undefined &&
+    String(product.artist.id) === String(user.id);
+
+  const isAdmin = user?.role === 'admin';
+  const canEdit = isAdmin || isOwner;
+  // -----------------------------------
+
+  // 2. お気に入り切り替え
   const toggleFavoriteMutation = useMutation({
     mutationFn: () => api.post(`/products/${productId}/favorite`),
     onMutate: async () => {
-      // 楽観的更新のロジック (既存のまま)
       await queryClient.cancelQueries({ queryKey: ['product', productId] });
       await queryClient.cancelQueries({ queryKey: ['products'] });
 
@@ -95,11 +105,7 @@ const ProductDetailScreen: React.FC = () => {
   // 3. 購入ボタン押下時の処理
   const handlePressBuy = () => {
     if (!product) return;
-
     SoundService.triggerHaptic('impactMedium');
-
-    // ★ ここが重要: 決済処理はせず、PaymentScreenへ遷移するだけ
-    // user.postal_code などのチェックもここには不要 (PaymentScreenまたはBackendが担う)
     navigation.navigate('Payment', {
       product: product,
       quantity: quantity,
@@ -130,6 +136,40 @@ const ProductDetailScreen: React.FC = () => {
     toggleFavoriteMutation.mutate();
   };
 
+  // --- ★追加: 編集・削除ハンドラー ---
+  const handleEdit = () => {
+    navigation.navigate('ProductEdit', { productId });
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      '削除確認',
+      '本当にこのグッズを削除しますか？\nこの操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.delete(`/products/${productId}`);
+              Alert.alert('削除完了', 'グッズを削除しました。');
+              queryClient.invalidateQueries({ queryKey: ['products'] });
+              navigation.goBack();
+            } catch (error: any) {
+              if (error.response?.status === 403) {
+                Alert.alert('エラー', '削除権限がありません');
+              } else {
+                Alert.alert('エラー', '削除に失敗しました');
+              }
+            }
+          },
+        },
+      ],
+    );
+  };
+  // -----------------------------------
+
   const isSoldOut = product ? product.stock <= 0 : false;
 
   if (isLoading) {
@@ -152,6 +192,7 @@ const ProductDetailScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
             refreshing={isManualRefetching}
@@ -179,7 +220,6 @@ const ProductDetailScreen: React.FC = () => {
 
           <View style={styles.headerRow}>
             <Text style={styles.productName}>{product.name}</Text>
-            {/* アーティスト本人でなければ「いいね」を表示 */}
             {user?.role !== 'artist' && (
               <TouchableOpacity
                 style={styles.heartButton}
@@ -210,40 +250,52 @@ const ProductDetailScreen: React.FC = () => {
           <Text style={styles.productDescription}>{product.description}</Text>
         </View>
 
-        {/* 数量選択エリア */}
-        {!isSoldOut && (
-          <View style={styles.quantityContainer}>
-            <Text style={styles.quantityLabel}>数量:</Text>
-            <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={decrementQuantity}
-              disabled={quantity <= 1}
-            >
-              <Text style={styles.quantityButtonText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.quantityValue}>{quantity}</Text>
-            <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={incrementQuantity}
-              disabled={quantity >= product.stock}
-            >
-              <Text style={styles.quantityButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
+        {/* --- ★修正: 購入UIの表示制御 --- */}
+        {!isOwner && (
+          <>
+            {/* 数量選択エリア */}
+            {!isSoldOut && (
+              <View style={styles.quantityContainer}>
+                <Text style={styles.quantityLabel}>数量:</Text>
+                <TouchableOpacity
+                  style={styles.quantityButton}
+                  onPress={decrementQuantity}
+                  disabled={quantity <= 1}
+                >
+                  <Text style={styles.quantityButtonText}>-</Text>
+                </TouchableOpacity>
+                <Text style={styles.quantityValue}>{quantity}</Text>
+                <TouchableOpacity
+                  style={styles.quantityButton}
+                  onPress={incrementQuantity}
+                  disabled={quantity >= product.stock}
+                >
+                  <Text style={styles.quantityButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 購入ボタンエリア */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={[styles.buyButton, isSoldOut && styles.disabledButton]}
+                onPress={handlePressBuy}
+                disabled={isSoldOut}
+              >
+                <Text style={styles.buyButtonText}>
+                  {isSoldOut ? 'SOLD OUT' : '購入手続きへ'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
-        {/* 購入ボタンエリア */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.buyButton, isSoldOut && styles.disabledButton]}
-            onPress={handlePressBuy}
-            disabled={isSoldOut}
-          >
-            <Text style={styles.buyButtonText}>
-              {isSoldOut ? 'SOLD OUT' : '購入手続きへ'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* --- ★修正: コンポーネント化した管理者メニュー --- */}
+        <ProductAdminControls
+          visible={canEdit}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -320,7 +372,7 @@ const styles = StyleSheet.create({
     minWidth: 30,
     textAlign: 'center',
   },
-  buttonContainer: { padding: 20, paddingTop: 0, paddingBottom: 40 },
+  buttonContainer: { padding: 20, paddingTop: 0, paddingBottom: 0 },
   buyButton: {
     backgroundColor: '#E53935',
     paddingVertical: 16,
