@@ -6,9 +6,6 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
-  Image,
-  TouchableOpacity,
-  Button,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +17,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Product, fetchProducts } from '../../api/queries';
 import SoundService from '../../services/SoundService';
+// 作成したコンポーネントをインポート
+import ProductListItem from '../commerce/components/ProductListItem';
 
 type ProductListNavigationProp = StackNavigationProp<
   ProductStackParamList,
@@ -31,6 +30,7 @@ const ProductListScreen: React.FC = () => {
   const navigation = useNavigation<ProductListNavigationProp>();
   const queryClient = useQueryClient();
 
+  // --- データ取得 ---
   const {
     data: products,
     isLoading,
@@ -43,6 +43,7 @@ const ProductListScreen: React.FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // --- アクション: お気に入り ---
   const toggleFavoriteMutation = useMutation({
     mutationFn: (productId: number) =>
       api.post(`/products/${productId}/favorite`),
@@ -88,11 +89,15 @@ const ProductListScreen: React.FC = () => {
     },
   });
 
+  // --- ハンドラー ---
   const handleProductPress = (product: Product) => {
-    // ★ 修正: 誰でも詳細画面へ遷移できるようにする
     navigation.navigate('ProductDetail', {
       productId: product.id,
     });
+  };
+
+  const handleEditProduct = (product: Product) => {
+    navigation.navigate('ProductEdit', { productId: product.id });
   };
 
   const handleDeleteProduct = async (product: Product) => {
@@ -118,111 +123,12 @@ const ProductListScreen: React.FC = () => {
     ]);
   };
 
-  const handleEditProduct = (product: Product) => {
-    navigation.navigate('ProductEdit', { productId: product.id });
-  };
-
   const handleFavoritePress = (product: Product) => {
     SoundService.triggerHaptic('impactLight');
     toggleFavoriteMutation.mutate(product.id);
   };
 
-  const renderItem = ({ item }: { item: Product }) => {
-    // ★★★ 修正: 権限チェックを厳密にする ★★★
-    // 管理者かどうか
-    const isAdmin = user?.role === 'admin';
-    // 自分が作成したグッズかどうか (item.artist.id と自分の id が一致するか)
-    const isMyProduct = user?.role === 'artist' && item.artist?.id === user.id;
-
-    // 編集・削除ボタンを表示するか
-    const canEdit = isAdmin || isMyProduct;
-
-    return (
-      <TouchableOpacity
-        onPress={() => handleProductPress(item)}
-        // ★ 修正: 常にタップ可能にする (詳細画面へ飛べるように)
-        disabled={false}
-        activeOpacity={0.8}
-      >
-        <View style={styles.productItem}>
-          {/* 左側：画像 */}
-          {item.image_url ? (
-            <Image
-              source={{ uri: item.image_url }}
-              style={styles.productImage}
-            />
-          ) : (
-            <View style={[styles.productImage, styles.imagePlaceholder]} />
-          )}
-
-          {/* 右側：情報エリア */}
-          <View style={styles.productInfo}>
-            {item.artist && (
-              <Text style={styles.organizerNameSimple} numberOfLines={1}>
-                {item.artist.nickname} presents
-              </Text>
-            )}
-
-            <View style={styles.headerRow}>
-              <Text style={styles.productName} numberOfLines={2}>
-                {item.name}
-              </Text>
-
-              {/* いいねボタン: 自分の商品でなければ表示 */}
-              {!isMyProduct && (
-                <TouchableOpacity
-                  style={styles.heartButton}
-                  onPress={() => handleFavoritePress(item)}
-                >
-                  <View style={styles.heartContainer}>
-                    <Text style={styles.heartIcon}>
-                      {item.is_liked ? '❤️' : '🤍'}
-                    </Text>
-                    <Text style={styles.likeCountText}>
-                      {item.likes_count || 0}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* 価格と在庫 */}
-            <View style={styles.priceRow}>
-              <Text style={styles.productPrice}>
-                ¥{item.price.toLocaleString()}
-              </Text>
-              <Text style={styles.productStock}>/ 在庫: {item.stock}</Text>
-            </View>
-          </View>
-
-          {/* ★★★ 修正: 権限がある場合のみ編集・削除ボタンを表示 ★★★ */}
-          {canEdit && (
-            <View style={styles.adminButtonContainer}>
-              <Button
-                title="編集"
-                color="#0A84FF"
-                onPress={e => {
-                  e.stopPropagation();
-                  handleEditProduct(item);
-                }}
-              />
-              <View style={{ marginLeft: 5 }}>
-                <Button
-                  title="削除"
-                  color="#FF3B30"
-                  onPress={e => {
-                    e.stopPropagation();
-                    handleDeleteProduct(item);
-                  }}
-                />
-              </View>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
+  // --- レンダリング ---
   return (
     <SafeAreaView style={styles.container}>
       {isLoading ? (
@@ -240,7 +146,6 @@ const ProductListScreen: React.FC = () => {
       ) : (
         <FlatList
           data={products || []}
-          renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
           refreshControl={
             <RefreshControl
@@ -249,6 +154,18 @@ const ProductListScreen: React.FC = () => {
               tintColor="#FFFFFF"
             />
           }
+          // ここで切り出したコンポーネントを使用
+          renderItem={({ item }) => (
+            <ProductListItem
+              item={item}
+              currentUserId={user?.id} // 親から自分のIDを渡す
+              userRole={user?.role} // 親から自分のロールを渡す
+              onPress={handleProductPress}
+              onEdit={handleEditProduct}
+              onDelete={handleDeleteProduct}
+              onToggleFavorite={handleFavoritePress}
+            />
+          )}
         />
       )}
     </SafeAreaView>
@@ -261,90 +178,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  productItem: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 8,
-    marginVertical: 8,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    alignItems: 'center',
-    height: 120,
-  },
-  productImage: {
-    width: 100,
-    height: '100%',
-    backgroundColor: '#333',
-    resizeMode: 'cover',
-  },
-  imagePlaceholder: { width: 100, height: '100%', backgroundColor: '#333' },
-
-  productInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'center',
-    gap: 4,
-  },
-
-  organizerNameSimple: {
-    color: '#FF9F0A',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
-    marginRight: 10,
-    marginBottom: 4,
-  },
-
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  productPrice: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-    marginRight: 8,
-  },
-  productStock: {
-    fontSize: 12,
-    color: '#888888',
-  },
-
-  adminButtonContainer: {
-    flexDirection: 'row',
-    paddingRight: 10,
-    alignItems: 'center',
-    minWidth: 120,
-  },
-  heartButton: {
-    padding: 0,
-  },
-  heartContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 30,
-  },
-  heartIcon: {
-    fontSize: 18,
-  },
-  likeCountText: {
-    color: '#888',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: -2,
   },
   emptyText: {
     color: '#FFFFFF',

@@ -1,20 +1,21 @@
 import React from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
+  Text,
   FlatList,
   ActivityIndicator,
-  Image,
-  TouchableOpacity,
+  StyleSheet,
   RefreshControl,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import api from '../../services/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../../services/api';
 import { Product, fetchMyFavorites } from '../../api/queries';
+// コンポーネントのインポート
+import FavoriteProductItem from './components/FavoriteProductItem';
 
 const FavoriteProductsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -28,25 +29,23 @@ const FavoriteProductsScreen: React.FC = () => {
     refetch,
     isError,
   } = useQuery({
-    queryKey: ['myFavorites'], // ★ 専用のキー
+    queryKey: ['myFavorites'],
     queryFn: fetchMyFavorites,
     staleTime: 1000 * 60 * 5,
   });
 
-  // 2. いいね解除用 Mutation (ここでもトグル動作)
+  // 2. いいね解除用 Mutation
   const toggleFavoriteMutation = useMutation({
     mutationFn: (productId: number) =>
       api.post(`/products/${productId}/favorite`),
 
     onMutate: async productId => {
-      // 関連するキャッシュをすべてキャンセル
+      // 関連キャッシュのキャンセル
       await queryClient.cancelQueries({ queryKey: ['myFavorites'] });
       await queryClient.cancelQueries({ queryKey: ['products'] });
       await queryClient.cancelQueries({ queryKey: ['product', productId] });
 
-      // A. お気に入り一覧 ('myFavorites') の更新
-      // ※ここでリストから即座に消すか、ハートを白くするか選べますが、
-      //   誤操作防止のため「ハートを白くする（リストには残す）」挙動にします。
+      // A. お気に入り一覧の楽観的更新
       const previousFavorites = queryClient.getQueryData<Product[]>([
         'myFavorites',
       ]);
@@ -68,7 +67,7 @@ const FavoriteProductsScreen: React.FC = () => {
         });
       }
 
-      // B. 商品一覧 ('products') の更新 (同期)
+      // B. 商品一覧の楽観的更新
       const previousProducts = queryClient.getQueryData<Product[]>([
         'products',
       ]);
@@ -76,9 +75,7 @@ const FavoriteProductsScreen: React.FC = () => {
         queryClient.setQueryData<Product[]>(['products'], old => {
           return old?.map(p => {
             if (p.id === productId) {
-              const wasLiked = p.is_liked; // ※注意: リスト側の値を基準にするのは危険だが簡易実装
-              // 正しくは「APIの結果を待つ」か「myFavoritesの状態を信じる」ですが、
-              // ここではトグルなので反転させます
+              const wasLiked = p.is_liked;
               return {
                 ...p,
                 is_liked: !p.is_liked,
@@ -92,7 +89,7 @@ const FavoriteProductsScreen: React.FC = () => {
         });
       }
 
-      // C. 詳細データ ('product') の更新 (同期)
+      // C. 詳細データの楽観的更新
       const previousDetail = queryClient.getQueryData<Product>([
         'product',
         productId,
@@ -127,7 +124,6 @@ const FavoriteProductsScreen: React.FC = () => {
     },
 
     onSettled: (data, error, productId) => {
-      // すべて無効化して整合性を保つ
       queryClient.invalidateQueries({ queryKey: ['myFavorites'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
@@ -135,51 +131,12 @@ const FavoriteProductsScreen: React.FC = () => {
   });
 
   const handleProductPress = (product: Product) => {
-    // 詳細画面へ（スタックが異なる場合は工夫が必要ですが、通常は navigate で行けます）
-    // ※ ProductStack 内の画面ですが、MyPageStack からもアクセスできるようにする必要があります
-    //   簡単なのは navigate('ProductDetail' ...) ですが、ネスト構造によっては
-    //   navigation.navigate('ProductStack', { screen: 'ProductDetail', params: ... }) と書く必要があります
-    //   一旦シンプルに記述します。
     navigation.navigate('ProductDetail', { productId: product.id });
   };
 
-  const renderItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      onPress={() => handleProductPress(item)}
-      activeOpacity={0.8}
-    >
-      <View style={styles.productItem}>
-        {item.image_url && (
-          <Image source={{ uri: item.image_url }} style={styles.productImage} />
-        )}
-        <View style={styles.productInfo}>
-          <View style={styles.headerRow}>
-            <Text style={styles.productName} numberOfLines={1}>
-              {item.name}
-            </Text>
-            {/* ハートボタン */}
-            <TouchableOpacity
-              style={styles.heartButton}
-              onPress={() => toggleFavoriteMutation.mutate(item.id)}
-            >
-              <View style={styles.heartContainer}>
-                <Text style={styles.heartIcon}>
-                  {item.is_liked ? '❤️' : '🤍'}
-                </Text>
-                <Text style={styles.likeCountText}>{item.likes_count}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.productPrice}>
-            ¥{item.price.toLocaleString()}
-          </Text>
-          <Text style={styles.productStock}>
-            {item.stock > 0 ? `在庫: ${item.stock}` : '在庫切れ'}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  const handleToggleFavorite = (productId: number) => {
+    toggleFavoriteMutation.mutate(productId);
+  };
 
   if (isLoading) {
     return (
@@ -193,6 +150,9 @@ const FavoriteProductsScreen: React.FC = () => {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <Text style={styles.emptyText}>お気に入りの取得に失敗しました。</Text>
+        <TouchableOpacity onPress={() => refetch()} style={styles.retryButton}>
+          <Text style={styles.retryText}>再試行</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -201,8 +161,14 @@ const FavoriteProductsScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <FlatList
         data={products || []}
-        renderItem={renderItem}
         keyExtractor={item => item.id.toString()}
+        renderItem={({ item }) => (
+          <FavoriteProductItem
+            item={item}
+            onPress={handleProductPress}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        )}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.center}>
@@ -232,49 +198,14 @@ const styles = StyleSheet.create({
     marginTop: 50,
   },
   listContent: { paddingBottom: 20 },
-  productItem: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 8,
-    marginVertical: 8,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    alignItems: 'center',
-  },
-  productImage: { width: 80, height: 80, backgroundColor: '#333' },
-  productInfo: { flex: 1, padding: 10, justifyContent: 'center' },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
-    marginRight: 10,
-  },
-  productPrice: {
-    fontSize: 14,
-    color: '#4CAF50',
-    fontWeight: 'bold',
-    marginTop: 5,
-  },
-  productStock: { fontSize: 12, color: '#888', marginTop: 2 },
-  heartButton: { padding: 0 },
-  heartContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 30,
-  },
-  heartIcon: { fontSize: 18 },
-  likeCountText: {
-    color: '#888',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginTop: -2,
-  },
   emptyText: { color: '#888', fontSize: 16 },
+  retryButton: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#333',
+    borderRadius: 5,
+  },
+  retryText: { color: '#FFF' },
 });
 
 export default FavoriteProductsScreen;
