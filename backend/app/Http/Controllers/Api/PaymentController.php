@@ -8,17 +8,19 @@ use App\Models\Product;
 use App\Models\TicketType;
 use App\Models\UserTicket;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
-use Carbon\Carbon;
+use App\Http\Requests\Payment\CreateTicketPaymentRequest;
+use App\Http\Requests\Payment\ConfirmTicketPurchaseRequest;
+use App\Services\TicketService; // ★ 追加
 
 class PaymentController extends Controller
 {
+    // ★ Serviceをコンストラクタ注入、またはメソッド注入で利用可能にする
+    // 今回はメソッド注入を使います。
+
     /**
-     * グッズのPaymentIntentを作成する
-     * (※ 現在は OrderController で処理している場合は不要ですが、残しておきます)
+     * グッズのPaymentIntentを作成 (維持)
      */
     public function createPaymentIntent(Request $request)
     {
@@ -32,12 +34,10 @@ class PaymentController extends Controller
 
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
-
             $paymentIntent = PaymentIntent::create([
                 'amount' => $amount,
                 'currency' => 'jpy',
                 'automatic_payment_methods' => ['enabled' => true],
-                // グッズ用メタデータ (OrderControllerを使うならここは使われません)
                 'metadata' => [
                     'type' => 'product',
                     'product_id' => $product->id,
@@ -56,38 +56,26 @@ class PaymentController extends Controller
     }
 
     /**
-     * チケットのPaymentIntentを作成する (★ Webhook対応修正)
+     * チケットのPaymentIntentを作成 (維持)
      */
-    public function createTicketPaymentIntent(Request $request)
+    public function createTicketPaymentIntent(CreateTicketPaymentRequest $request)
     {
-        $validated = $request->validate([
-            'ticket_id' => 'required|integer|exists:ticket_types,id',
-            'quantity' => 'required|integer|min:1',
-        ]);
-
+        $validated = $request->validated();
         $ticket = TicketType::findOrFail($validated['ticket_id']);
-
-        // 過去イベントチェック
-        if ($ticket->event && Carbon::parse($ticket->event->event_date)->endOfDay()->isPast()) {
-            return response()->json(['message' => 'このイベントは既に終了しています'], 400);
-        }
-
         $amount = $ticket->price * $validated['quantity'];
 
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
-
             $paymentIntent = PaymentIntent::create([
                 'amount' => $amount,
                 'currency' => 'jpy',
                 'automatic_payment_methods' => ['enabled' => true],
-                // ★★★ 修正: Webhookに必要なメタデータを全て追加 ★★★
                 'metadata' => [
-                    'type' => 'ticket',            // ★ 必須: チケット購入であることを識別
+                    'type' => 'ticket',
                     'ticket_type_id' => $ticket->id,
                     'quantity' => $validated['quantity'],
                     'event_id' => $ticket->event_id,
-                    'user_id' => Auth::id(),       // ★ 必須: 誰が買ったか
+                    'user_id' => Auth::id(),
                 ]
             ]);
 
@@ -96,76 +84,46 @@ class PaymentController extends Controller
                 'amount' => $amount,
             ]);
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
+            return response()->json(['message' => '決済の準備に失敗しました: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * チケット購入を確定し、UserTicketを作成する
-     * (アプリ側での即時完了用。Webhookがバックアップとして機能します)
+     * チケット購入を確定し、UserTicketを作成する (★ Service利用へ変更)
      */
-    public function confirmTicketPurchase(Request $request)
+    public function confirmTicketPurchase(ConfirmTicketPurchaseRequest $request, TicketService $ticketService)
     {
-        $validated = $request->validate([
-            'ticket_type_id' => 'required|integer|exists:ticket_types,id',
-            'quantity' => 'required|integer|min:1',
-            'stripe_payment_id' => 'required|string',
-        ]);
+        // 1. バリデーション
+        $validated = $request->validated();
 
-        // 二重作成防止: 既にWebhook等で作られていないかチェック
-        $exists = UserTicket::where('stripe_payment_id', $validated['stripe_payment_id'])->exists();
-        if ($exists) {
+        // 2. 二重作成チェック (ここはControllerの責務: HTTPリクエストの制御)
+        $existingTickets = UserTicket::where('stripe_payment_id', $validated['stripe_payment_id'])->get();
+        if ($existingTickets->isNotEmpty()) {
             return response()->json([
                 'message' => 'チケットは既に作成されています',
-                'tickets' => UserTicket::where('stripe_payment_id', $validated['stripe_payment_id'])->get()
+                'tickets' => $existingTickets
             ], 200);
         }
 
-        $user = Auth::user();
-
         try {
-            DB::beginTransaction();
+            /** @var \App\Models\User $user */
+            $user = Auth::user();
 
-            $ticketType = TicketType::where('id', $validated['ticket_type_id'])->lockForUpdate()->first();
-
-            if ($ticketType->capacity < $validated['quantity']) {
-                throw new \Exception('チケットが売り切れました。');
-            }
-
-            $createdUserTickets = [];
-
-            for ($i = 0; $i < $validated['quantity']; $i++) {
-                $seatNumber = null;
-                if ($ticketType->seating_type === 'random') {
-                    $soldCount = UserTicket::where('ticket_type_id', $ticketType->id)->count();
-                    $seatNumber = $ticketType->name . '-' . ($soldCount + 1);
-                } else {
-                    $soldCount = UserTicket::where('ticket_type_id', $ticketType->id)->count();
-                    $seatNumber = '自由席-' . ($soldCount + 1);
-                }
-
-                $userTicket = UserTicket::create([
-                    'user_id' => $user->id,
-                    'ticket_type_id' => $ticketType->id,
-                    'event_id' => $ticketType->event_id,
-                    'stripe_payment_id' => $validated['stripe_payment_id'],
-                    'seat_number' => $seatNumber,
-                    'qr_code_id' => (string) Str::uuid(),
-                    'is_used' => false,
-                ]);
-                $createdUserTickets[] = $userTicket;
-            }
-
-            $ticketType->decrement('capacity', $validated['quantity']);
-
-            DB::commit();
+            // 3. Service層でビジネスロジック実行 (トランザクション・在庫処理など)
+            $createdUserTickets = $ticketService->purchaseTickets(
+                $user,
+                $validated['ticket_type_id'],
+                $validated['quantity'],
+                $validated['stripe_payment_id']
+            );
 
             return response()->json([
                 'message' => 'チケットの購入が完了しました！',
                 'tickets' => $createdUserTickets
             ], 201);
         } catch (\Exception $e) {
-            DB::rollBack();
+            // Serviceから投げられたエラー(売り切れ等)をキャッチしてレスポンス
+            // エラーログを残すなら Log::error($e); をここに入れる
             return response()->json(['message' => $e->getMessage()], 500);
         }
     }
