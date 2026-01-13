@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
@@ -42,21 +43,18 @@ class OrderController extends Controller
     /**
      * 注文作成（排他制御対応版）
      */
-    public function store(Request $request)
+    public function store(StoreOrderRequest $request)
     {
-        $validatedData = $request->validate([
-            'product_id' => 'required|integer|exists:products,id',
-            'quantity' => 'required|integer|min:1',
-            'payment_method' => ['required', 'string', Rule::in(['stripe', 'cash'])],
-            'delivery_method' => ['required', 'string', Rule::in(['mail', 'venue'])],
-        ]);
+        // バリデーション済みのデータを取得
+        // ※ ここに来る時点でルールは通過しているので安心
+        $validated = $request->validated();
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        $quantity = $validatedData['quantity'];
-        $paymentMethod = $validatedData['payment_method'];
-        $deliveryMethod = $validatedData['delivery_method'];
-        $productId = $validatedData['product_id'];
+        $quantity = $validated['quantity'];
+        $paymentMethod = $validated['payment_method'];
+        $deliveryMethod = $validated['delivery_method'];
+        $productId = $validated['product_id'];
 
         // 配送先情報の構築
         $shippingAddress = null;
@@ -153,12 +151,6 @@ class OrderController extends Controller
                     'price_at_purchase' => $product->price,
                     'product_name' => $product->name,
                 ]);
-
-                // =================================================================
-                // TODO: 定期実行バッチ(Cron)を作成し、作成から30分経過しても
-                // status='pending' (未決済) の注文を自動キャンセルし、
-                // product->increment('stock', $quantity) で在庫を戻す処理を実装すること。
-                // =================================================================
 
                 // Stripeメタデータ更新 (Order ID紐付け)
                 if ($paymentMethod === 'stripe' && $stripePaymentIntentId) {
