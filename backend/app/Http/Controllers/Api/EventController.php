@@ -7,9 +7,14 @@ use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use App\Http\Requests\Event\StoreEventRequest;  // 追加
+use App\Http\Requests\Event\UpdateEventRequest; // 追加
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class EventController extends Controller
 {
+    use AuthorizesRequests;
+
     /**
      * イベント一覧を取得 (index)
      */
@@ -18,7 +23,6 @@ class EventController extends Controller
         $filter = $request->input('filter', 'upcoming');
         $now = Carbon::now();
 
-        // ✅ 正しいカラム指定 (image_url)
         $query = Event::with('artist:id,nickname,image_url');
 
         if ($filter === 'past') {
@@ -31,29 +35,23 @@ class EventController extends Controller
 
         $events = $query->paginate(20);
 
+        // ※ 元の仕様通り items() のみを返す (メタデータなし)
         return response()->json($events->items());
     }
 
     /**
      * 新しいイベントを作成 (store)
      */
-    public function store(Request $request)
+    public function store(StoreEventRequest $request)
     {
+        // Policyで権限チェック
+        $this->authorize('create', Event::class);
+
+        /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        if (!$user || ($user->role !== 'artist' && $user->role !== 'admin')) {
-            return response()->json(['message' => 'イベントを作成する権限がありません'], 403);
-        }
-
-        $validatedData = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'venue' => 'required|string|max:255',
-            'event_date' => 'required|date|after:now',
-            'image_url' => 'nullable|string',
-        ]);
-
-        $eventData = $validatedData;
+        // バリデーション済みデータ取得
+        $eventData = $request->validated();
         $eventData['artist_id'] = $user->id;
 
         $event = Event::create($eventData);
@@ -66,10 +64,11 @@ class EventController extends Controller
      */
     public function show($id)
     {
-        // ★★★ 修正箇所 ★★★
-        // avatar_url -> image_url に変更し、存在しない name を削除
         $event = Event::with(['artist:id,nickname,image_url', 'ticketTypes'])
             ->findOrFail($id);
+
+        // Policyで閲覧権限チェック (現状trueだが将来のために)
+        $this->authorize('view', $event);
 
         return response()->json([
             'event' => $event,
@@ -81,27 +80,13 @@ class EventController extends Controller
     /**
      * イベント情報を更新 (update)
      */
-    public function update(Request $request, Event $event)
+    public function update(UpdateEventRequest $request, Event $event)
     {
-        $user = Auth::user();
+        // Policyでチェック
+        // (所有者チェック + 「過去のイベントでないか」もPolicy内で判定)
+        $this->authorize('update', $event);
 
-        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => '権限がありません'], 403);
-        }
-
-        if (Carbon::parse($event->event_date)->isPast()) {
-            return response()->json(['message' => '終了したイベントは編集できません'], 403);
-        }
-
-        $validatedData = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'venue' => 'required|string|max:255',
-            'event_date' => 'required|date',
-            'image_url' => 'nullable|string',
-        ]);
-
-        $event->update($validatedData);
+        $event->update($request->validated());
 
         return response()->json($event);
     }
@@ -111,11 +96,8 @@ class EventController extends Controller
      */
     public function destroy(Event $event)
     {
-        $user = Auth::user();
-
-        if ($user->id !== $event->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'このイベントを削除する権限がありません'], 403);
-        }
+        // Policyでチェック
+        $this->authorize('delete', $event);
 
         $event->delete();
 
