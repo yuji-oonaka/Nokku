@@ -4,21 +4,30 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use App\Http\Resources\ProductResource; // ★追加
+use App\Http\Resources\ProductResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // 👈 重要: これが必要な場合があります
 
 class ProductController extends Controller
 {
+    // Laravel 11等、バージョンによってはControllerクラスに標準で含まれていますが、
+    // 明示的にTraitを入れておくと安全です。
+    use AuthorizesRequests;
+
     /**
      * グッズ一覧を取得
      */
     public function index()
     {
+        // 閲覧権限はPolicyでも常にtrueなのでチェック不要だが、
+        // 将来「非公開グッズ」を作る場合はここで $this->authorize('viewAny', Product::class); を呼ぶ
+
         $userId = Auth::id();
 
-        // ★ artist情報をEager Loadingしつつ、N+1問題を回避
         $query = Product::with('artist')
             ->withCount('favoritedBy as likes_count')
             ->orderBy('created_at', 'desc');
@@ -29,44 +38,27 @@ class ProductController extends Controller
             }]);
         }
 
-        // ページネーションを追加 (グッズが増えた時のため)
-        // アプリ側でスクロールロードするなら paginate(20) などに変更可能
-        $products = $query->get();
-
-        // ★ Resourceコレクションとして返す
-        return ProductResource::collection($products);
+        return ProductResource::collection($query->paginate(20));
     }
 
     /**
      * 新しいグッズを作成
      */
-    public function store(Request $request)
+    public function store(StoreProductRequest $request)
     {
+        // ★ Policyでチェック: create権限があるか？
+        // (以前の if ($user->role !== 'artist'...) は不要に)
+        $this->authorize('create', Product::class);
+
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        if ($user->role !== 'artist' && $user->role !== 'admin') {
-            return response()->json(['message' => 'グッズを作成する権限がありません'], 403);
-        }
-
-        $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'price' => 'required|integer|min:0',
-            'stock' => 'required|integer|min:0',
-            'limit_per_user' => 'nullable|integer|min:1',
-            'image_url' => 'nullable|string',
-        ]);
-
-        $productData = $validatedData;
+        $productData = $request->validated();
         $productData['artist_id'] = $user->id;
 
         $product = Product::create($productData);
-
-        // 作成直後はリレーションがないのでロードしておく
         $product->load('artist');
 
-        // ★ Resourceで返す
         return new ProductResource($product);
     }
 
@@ -75,43 +67,31 @@ class ProductController extends Controller
      */
     public function show(Product $product)
     {
+        // ★ Policyでチェック: view権限があるか？ (現状は誰でもOK)
+        $this->authorize('view', $product);
+
         $userId = Auth::id();
 
-        // リレーション読み込み
         $product->load(['artist'])
             ->loadCount('favoritedBy as likes_count');
 
-        // is_liked の手動注入 (Eloquentの属性として追加)
         $product->is_liked = $userId
             ? $product->favoritedBy()->where('user_id', $userId)->exists()
             : false;
 
-        // ★ Resourceで返す
         return new ProductResource($product);
     }
 
     /**
      * グッズ更新
      */
-    public function update(Request $request, Product $product)
+    public function update(UpdateProductRequest $request, Product $product)
     {
-        $user = Auth::user();
-        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'グッズの編集権限がありません'], 403);
-        }
+        // ★ Policyでチェック: update権限があるか？ (所有者チェックもPolicy内で実行)
+        $this->authorize('update', $product);
 
-        $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'price' => 'required|integer|min:0',
-            'stock' => 'required|integer|min:0',
-            'limit_per_user' => 'nullable|integer|min:1',
-            'image_url' => 'nullable|string',
-        ]);
+        $product->update($request->validated());
 
-        $product->update($validatedData);
-
-        // 更新後もResourceで返す
         return new ProductResource($product);
     }
 
@@ -120,17 +100,10 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        $user = Auth::user();
+        // Policyでチェック
+        $this->authorize('delete', $product);
 
-        if ($user->id !== $product->artist_id && $user->role !== 'admin') {
-            return response()->json(['message' => 'このグッズを削除する権限がありません'], 403);
-        }
-
-        // S3/ローカル画像の削除ロジック
-        // (httpで始まる外部画像の場合は削除しないガードを入れるとより安全)
-        if ($product->image_url && !str_starts_with($product->image_url, 'http')) {
-            Storage::disk('public')->delete($product->image_url);
-        }
+        // ★ 画像削除ロジックを削除 (Observerが自動でやってくれる)
 
         $product->delete();
 
