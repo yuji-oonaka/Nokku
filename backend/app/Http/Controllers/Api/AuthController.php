@@ -4,15 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Kreait\Firebase\Contract\Auth as FirebaseAuth; // Firebase Auth
-use App\Models\User; // Userモデル
-use Illuminate\Validation\ValidationException;
+use Kreait\Firebase\Contract\Auth as FirebaseAuth;
+use App\Models\User;
+use App\Http\Requests\Auth\RegisterRequest; // Step 1で作ったリクエストを使用
+use Illuminate\Support\Facades\Log; // エラーログ記録用
 
 class AuthController extends Controller
 {
     protected $firebaseAuth;
 
-    // (1) FirebaseAuthのインスタンスを自動的に受け取る
     public function __construct(FirebaseAuth $firebaseAuth)
     {
         $this->firebaseAuth = $firebaseAuth;
@@ -20,96 +20,66 @@ class AuthController extends Controller
 
     /**
      * ユーザー登録処理
+     * バリデーションは RegisterRequest で自動的に行われます。
      */
-    public function register(Request $request)
+    public function register(RegisterRequest $request)
     {
-        // (2) リクエストからIDトークンを取得
-        // 'Authorization: Bearer <token>' 形式を想定
-        $idToken = $request->bearerToken(); 
-        
+        // 1. トークンの有無チェック
+        $idToken = $request->bearerToken();
         if (!$idToken) {
-            return response()->json(['message' => 'IDトークンが見つかりません'], 401);
+            return response()->json(['message' => 'IDトークンが必要です。'], 401);
         }
 
         try {
-            // (3) IDトークンをFirebaseに問い合わせて検証
+            // 2. IDトークンをFirebaseで検証
             $verifiedIdToken = $this->firebaseAuth->verifyIdToken($idToken);
-
         } catch (\Exception $e) {
-            // トークンが無効（期限切れなど）の場合
-            return response()->json(['message' => 'IDトークンが無効です: ' . $e->getMessage()], 401);
+            // ログに詳細を残し、ユーザーには汎用エラーを返す (セキュリティ対策)
+            Log::error('Firebase Token Error (Register): ' . $e->getMessage());
+            return response()->json(['message' => '認証トークンが無効です。'], 401);
         }
 
-        // (4) トークンからFirebaseのUID (ユーザーID) と Email を取得
+        // 3. トークンから情報を取得
         $firebaseUid = $verifiedIdToken->claims()->get('sub');
         $email = $verifiedIdToken->claims()->get('email');
 
-        // (5) 念のため、名前もリクエストから受け取る
-        $validated = $request->validate([
-        'real_name' => 'required|string|max:255',
-        'nickname' => 'required|string|max:255|unique:users,nickname', // ニックネームは重複不可
-        ]);
+        // 4. バリデーション済みデータを取得
+        $validated = $request->validated();
 
-        // (6) DBのusersテーブルに保存
-        $user = User::firstOrCreate(
-        ['firebase_uid' => $firebaseUid], // このUIDで検索
-        [
-            'email' => $email,
-            'real_name' => $validated['real_name'], // 👈 'name' から変更
-            'nickname' => $validated['nickname'], // 👈 追加
-            'firebase_uid' => $firebaseUid,
-            'role' => 'user'
-        ]
-        );
+        try {
+            // 5. ユーザー作成 (firstOrCreateで冪等性を担保)
+            $user = User::firstOrCreate(
+                ['firebase_uid' => $firebaseUid],
+                [
+                    'email' => $email,
+                    'real_name' => $validated['real_name'],
+                    'nickname' => $validated['nickname'],
+                    'firebase_uid' => $firebaseUid,
+                    'role' => 'user'
+                ]
+            );
 
-        // (7) 成功レスポンス（作成したユーザー情報）を返す
-        return response()->json([
-            'message' => 'ユーザー登録が成功しました',
-            'user' => $user
-        ], 201);
-
-    } // ← 🎯 ここで register メソッドを閉じる！
+            return response()->json([
+                'message' => 'ユーザー登録が成功しました',
+                'user' => $user
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('User Create Error: ' . $e->getMessage());
+            return response()->json(['message' => 'ユーザー情報の保存に失敗しました。'], 500);
+        }
+    }
 
     /**
-     * ユーザーログイン処理 (registerメソッドの外に定義)
+     * ユーザーログイン処理
+     * * ルーティング側で 'FirebaseApiAuth' ミドルウェアを適用しているため、
+     * ここに来た時点で「トークン検証」「DB存在確認」「Auth::login」は完了しています。
      */
     public function login(Request $request)
     {
-        // (1) リクエストからIDトークンを取得
-        $idToken = $request->bearerToken();
-        
-        if (!$idToken) {
-            return response()->json(['message' => 'IDトークンが見つかりません'], 401);
-        }
-
-        try {
-            // (2) IDトークンをFirebaseに問い合わせて検証
-            $verifiedIdToken = $this->firebaseAuth->verifyIdToken($idToken);
-
-        } catch (\Exception $e) {
-            // トークンが無効（期限切れなど）の場合
-            return response()->json(['message' => 'IDトークンが無効です: ' . $e->getMessage()], 401);
-        }
-
-        // (3) トークンからFirebaseのUIDを取得
-        $firebaseUid = $verifiedIdToken->claims()->get('sub');
-
-        // (4) DBから該当ユーザーを検索
-        $user = User::where('firebase_uid', $firebaseUid)->first();
-
-        // (5) ユーザーが見つからない場合の処理
-        if (!$user) {
-            return response()->json([
-                'message' => 'ユーザー情報がNOKKUのデータベースに見つかりません。'
-            ], 404); // 404 Not Found
-        }
-
-        // (6) 成功レスポンス（見つかったユーザー情報）を返す
+        // シンプルに、ミドルウェアがセットしたユーザー情報を返すだけ
         return response()->json([
             'message' => 'ログインに成功しました',
-            'user' => $user
+            'user' => $request->user()
         ], 200);
-
-    } // ← 🎯 ここで login メソッドを閉じる！
-
-} // ← 最後に class を閉じる
+    }
+}

@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\FirebaseApiAuth;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\ProductController;
@@ -28,7 +29,7 @@ Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle']);
 // --- 認証 ---
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login'])
-    ->middleware('throttle:5,1');
+    ->middleware([FirebaseApiAuth::class, 'throttle:5,1']);
 
 // --- 認証済みユーザーのみアクセス可能 ---
 Route::middleware('firebase.auth')->group(function () {
