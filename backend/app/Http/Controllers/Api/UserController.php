@@ -4,9 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use App\Models\User;
-use Illuminate\Validation\Rule;
+use App\Http\Requests\User\UpdateUserRequest; // 作成したFormRequestをインポート
 
 class UserController extends Controller
 {
@@ -15,43 +13,28 @@ class UserController extends Controller
      */
     public function show(Request $request)
     {
-        $user = Auth::user();
-        return response()->json($user);
+        return response()->json($request->user());
     }
 
     /**
      * 認証済みユーザーのプロフィール情報を更新 (update)
      */
-    public function update(Request $request)
+    public function update(UpdateUserRequest $request)
     {
         /** @var \App\Models\User $user */
-        $user = Auth::user();
+        $user = $request->user();
 
-        // 1. バリデーション
-        $validatedData = $request->validate([
-            'real_name' => 'required|string|max:255',
-            'nickname' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('users')->ignore($user->id),
-            ],
-            'phone_number' => 'nullable|string|max:20',
-            'postal_code' => 'nullable|string|max:8',
-            'prefecture' => 'nullable|string|max:10',
-            'city' => 'nullable|string|max:50',
-            'address_line1' => 'nullable|string|max:255',
-            'address_line2' => 'nullable|string|max:255',
-            'image_url' => 'nullable|string',
-        ]);
+        // 1. バリデーション済みのデータを取得
+        // (UpdateUserRequestですでにチェック済み)
+        $validatedData = $request->validated();
 
-        // 2. ★ 修正: 変数名を $validatedData に統一
-        // アーティスト以外が画像を送ってきたら、保存対象から削除する
-        if (isset($validatedData['image_url']) && $user->role !== 'artist') {
+        // 2. 【ビジネスロジック】アーティスト以外は画像URLを除外する
+        // クライアント側で誤って送ってきた場合や、不正なリクエストへの対策
+        if ($user->role !== 'artist') {
             unset($validatedData['image_url']);
         }
 
-        // 3. 更新
+        // 3. 更新実行
         $user->update($validatedData);
 
         return response()->json($user);
