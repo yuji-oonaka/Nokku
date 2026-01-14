@@ -2,14 +2,6 @@
 
 ![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 
-> **Note: Target Platform**
-> 本プロジェクトは **Windows (WSL2)** 環境下で開発を行っているため、現在は **Android** をメインターゲットとして最適化・実機検証を行っています。
-> (React Native製のため、macOS環境があればiOSビルドも可能です)
-
-**[📄 仕様書 (Notion)](https://Notionのリンク)**
-
-チケット購入、入場管理、そして熱狂の共有まで。ライブ体験のすべてを手のひらで完結させる、オールインワン・プラットフォームです。
-
 <div align="center">
   <img width="100%" alt="Nokku Concept" src="https://github.com/user-attachments/assets/5a21a3e3-485b-4f4e-a5f9-8b5f87b63be4" />
 </div>
@@ -23,10 +15,20 @@
   <img src="https://github.com/user-attachments/assets/efb8330c-f11e-4a13-a6f8-acedc814a03f" width="30%" alt="Screen 3">
 </div>
 
+### 💻 運営管理ダッシュボード (Web Admin)
+運営スタッフは、**Laravel Filament** で構築された管理画面から、売上分析やイベント・グッズのCMS管理を行えます。
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/e2f549ab-adf2-4ed2-982d-f9125cb98758" width="100%" alt="Filament Dashboard" style="border-radius: 8px;">
+</div>
+
+
 <br>
-(※画像は開発中の実機画面です。ダークモードUIを採用し、没入感を高めています)
+(※画像は開発中の画面です。ダークモードUIを採用し、没入感を高めています)
 
 ---
+<div align="center">
+
 ![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Laravel](https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
@@ -60,7 +62,7 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 * **🛠 アーティスト/運営管理 (Admin)**
     * イベント・グッズ・お知らせのCMS機能
     * **入場/引換スキャナー**: 権限チェック付きのQR読み取りカメラ内蔵
-    * 売上・入場者数のリアルタイム管理（Laravel Filament）
+    * 売上・入場者数のリアルタイム管理 (**Laravel Filament**)
 
 ---
 
@@ -79,6 +81,7 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 単なる機能実装に留まらず、現場でのオペレーションを考慮した設計を行っています。
 * **User Flow:** 準備 → 購入 → 当日入場までのUXを最適化
 * **Admin Flow:** 入場スキャン・物販消込のスタッフ動線を確立
+
 ---
 
 ## 🛠 技術スタック (Tech Stack)
@@ -91,9 +94,9 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 | **State / API** | React Query (@tanstack/react-query), Axios |
 | **UI / UX** | React Native Vector Icons, Haptic Feedback, React Native Sound |
 | **Hardware** | React Native Vision Camera (QR Scan), QRCode SVG |
-| **Backend** | Laravel 11 (PHP 8.4), Laravel Sail |
+| **Backend** | Laravel 11 (PHP 8.4), **Filament (Admin Panel)** |
 | **Database** | MySQL 8.0 (Main), Firestore (Realtime Chat) |
-| **Infra** | Docker (gRPC対応カスタムイメージ), WSL2 |
+| **Infra** | Docker (Laravel Sail), WSL2 |
 | **Auth** | Firebase Authentication |
 | **Payment** | Stripe (Payment Intents API) |
 
@@ -106,22 +109,20 @@ Backend (Laravel) と Frontend (React Native) を単一リポジトリで管理�
 ```text
 nokku/
 ├── backend/                # Laravel API & Admin Panel
-│   ├── app/                # Controllers, Models, Services
-│   ├── database/           # Migrations, Seeders
+│   ├── app/
+│   │   ├── Filament/       # Admin Resource Definitions
+│   │   │   ├── Resources/  # Event, Order, Product, User Resources
+│   │   │   └── Widgets/    # Dashboard Widgets
+│   │   └── Http/           # API Controllers
 │   ├── docker/             # PHP 8.4 + gRPC Custom Dockerfile
 │   └── docker-compose.yaml # Laravel Sail Configuration
 │
 └── frontend/               # React Native Client App
-    └── app/
-        ├── android/        # Android Native Code
-        ├── ios/            # iOS Native Code
-        └── src/            # TypeScript Source Code
-            ├── api/        # API Definitions (React Query)
-            ├── features/   # Feature-Based Design Modules
-            ├── components/ # Shared UI Components
-            ├── hooks/      # Custom Hooks
-            ├── navigators/ # React Navigation Config
-            └── services/   # External Services (Sound, Haptic)
+    ├── app/                # Application Root (React Native)
+    │   ├── android/        # Android Native Code
+    │   ├── ios/            # iOS Native Code
+    │   └── src/            # TypeScript Source Code
+    └── package.json        # Script Wrapper
 
 ```
 
@@ -129,16 +130,44 @@ nokku/
 
 ## 🚀 環境構築 (Setup)
 
+> [!NOTE]
+> **開発環境の最適化について**
+> 本プロジェクトは **Windows (WSL2)** と **PowerShell** を組み合わせたハイブリッド環境で構築しています。
+> (BackendはDocker on WSL2、FrontendはWindowsネイティブで動作させることで、ビルドパフォーマンスを最大化しています)
+
 ### 前提条件
 
-* **OS**: Windows 10/11 (WSL2 - Ubuntu推奨) または macOS
+* **OS**: Windows 10/11 (WSL2環境) または macOS
 * **Docker Desktop**: 必須
 * **Node.js**: v18以上 / **JDK**: 17以上
 * **Android Studio**: エミュレータまたは実機デバッグ環境
 
-### 自動セットアップ
+### セットアップ手順 (Windows推奨)
 
-リポジトリ直下の `setup.sh` を使用すると、環境構築を一括で行えます。
+Windows環境では、パフォーマンス最適化のため **BackendをWSL2**、**FrontendをPowerShell** で分離して実行することを推奨しています。
+
+**1. Backend (WSL2)**
+
+```bash
+# WSL2ターミナルで実行
+cd backend
+./vendor/bin/sail up -d
+./vendor/bin/sail artisan migrate:fresh --seed
+
+```
+
+**2. Frontend (PowerShell)**
+
+```powershell
+# PowerShellで実行
+cd frontend
+npm install
+
+```
+
+### macOS / Linux の場合
+
+リポジトリ直下の `setup.sh` を使用して一括構築が可能です。
 
 ```bash
 chmod +x setup.sh
@@ -146,82 +175,80 @@ chmod +x setup.sh
 
 ```
 
-### 手動設定 (重要)
-
-スクリプト実行後、`.env` ファイルの設定が必要です。
-
-**1. バックエンド (`backend/.env`)**
-Firebaseの秘密鍵 (`firebase_credentials.json`) を `backend/storage/app/` に配置してください。
-
-```ini
-STRIPE_KEY=pk_test_...
-STRIPE_SECRET=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-FIREBASE_CREDENTIALS=storage/app/firebase_credentials.json
-
-```
-
-**2. フロントエンド (`frontend/app/.env`)**
-実機テストを行う場合は、`API_URL` をPCのローカルIPアドレスに変更してください。
-
-```ini
-API_URL=[http://192.168.](http://192.168.)x.x/api
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-
-```
-
 ---
 
 ## ▶️ サーバー起動・開発コマンド
 
-開発時は以下の2つのターミナルを開いて実行します。
+開発時は2つのターミナル（WSL2とPowerShell）を使用します。
 
-**1. バックエンド (Laravel Sail)**
+**1. バックエンド (WSL2)**
 
 ```bash
 cd backend
 ./vendor/bin/sail up -d
-# APIサーバー: http://localhost:80
+# APIサーバー: http://localhost:8000
+# 管理画面: http://localhost:8000/admin
 
 ```
 
-**2. フロントエンド (Metro Bundler)**
+**2. フロントエンド (PowerShell)**
+`package.json` のスクリプトを経由して実行します。
 
-```bash
-cd frontend/app
-npx react-native start
+```powershell
+cd frontend
 
-```
+# Metro Bundlerの起動
+npm run start
 
-**3. アプリ起動 (Android)**
-
-```bash
-cd frontend/app
-npx react-native run-android
+# Androidアプリのビルドと起動
+npm run android
 
 ```
 
 ---
 
-## 📱 実機テストの手順
+## 📱 実機テストの手順 (USB Debugging)
 
-カメラ機能（QRスキャン）の確認には実機が必要です。
+WSL2環境でのネットワーク接続を安定させるため、**USB接続 (adb reverse)** による実機テストを行っています。
 
-1. **ネットワーク**: PCとスマホを同じWi-Fiに接続。
-2. **IP設定**: PCのIPを確認し、`.env` の `API_URL` を書き換える。
-3. **キャッシュクリア**: `cd backend && ./vendor/bin/sail artisan config:clear`
-4. **起動**: スマホをUSB接続し `npx react-native run-android`
-5. **デバッグメニュー**: アプリ起動後、シェイクしてメニューを開き `Settings` > `Debug server host...` に `192.168.x.x:8081` を入力。
+1. **USB接続**: PCとAndroid端末をケーブルで接続し、USBデバッグをONにします。
+2. **ポートフォワード設定**:
+Android端末からPC(WSL2)のサーバーへアクセスするため、ポートを転送します。
+```powershell
+# Laravel Sail (Port 8000) と Metro Bundler (Port 8081) を転送
+adb reverse tcp:8000 tcp:8000
+adb reverse tcp:8081 tcp:8081
+
+```
+
+
+3. **アプリ起動**:
+```powershell
+cd frontend
+npm run android
+
+```
+
+
 
 ---
 
 ## 💳 Stripe Webhook設定
 
-決済検知のため、Stripe CLIでの転送が必要です。
+ローカル環境で決済完了イベントを検知するために、Stripe CLIを使用してWebhookを転送します。
 
-```bash
-stripe listen --forward-to localhost/api/stripe/webhook
+1. **転送の開始 (PowerShell)**:
+```powershell
+stripe listen --forward-to localhost:8000/api/stripe/webhook
 
 ```
 
-出力された `whsec_...` キーを `backend/.env` に設定し、キャッシュをクリアしてください。
+
+2. **キーの設定**:
+出力された `whsec_...` キーを `backend/.env` に設定してください。
+3. **設定の反映 (WSL2)**:
+```bash
+cd backend
+./vendor/bin/sail artisan config:clear
+
+```
