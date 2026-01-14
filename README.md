@@ -7,30 +7,21 @@
 > (React Native製のため、macOS環境があればiOSビルドも可能です)
 
 #### 📱 [Nokku] ライブ運営プラットフォーム
- **[📄 仕様書 (Notion)](https://Notionのリンク)**
+**[📄 仕様書 (Notion)](https://Notionのリンク)**
 
 チケット購入、入場管理、そして熱狂の共有まで。ライブ体験のすべてを手のひらで完結させる、オールインワン・プラットフォームです。
 
 <div align="center">
-  <img src="ここに【image_5.pngの右側の画像など】のURL" width="100%" alt="Nokku Concept">
+  <img width="100%" alt="Nokku Concept" src="https://github.com/user-attachments/assets/5a21a3e3-485b-4f4e-a5f9-8b5f87b63be4" />
 </div>
 <br>
 
 **主な機能と画面イメージ:**
 
-<div align="center" style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
-  <div style="text-align: center; width: 30%;">
-    <strong>🎫 イベント＆チケット</strong><br>
-    <img src="ここに【image_4.png (イベント詳細)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
-  </div>
-  <div style="text-align: center; width: 30%;">
-    <strong>🛠 管理者・運営機能</strong><br>
-    <img src="ここに【image_6.png (管理者メニュー)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
-  </div>
-  <div style="text-align: center; width: 30%;">
-    <strong>💬 コミュニティチャット</strong><br>
-    <img src="ここに【image_7.png (チャット画面)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
-  </div>
+<div align="center" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+  <img src="https://github.com/user-attachments/assets/d07395ba-cc85-4228-af05-e2f5e6db06c0" width="30%" alt="Screen 1">
+  <img src="https://github.com/user-attachments/assets/e87b31ac-69a0-46d4-af13-9ba46e6c967a" width="30%" alt="Screen 2">
+  <img src="https://github.com/user-attachments/assets/efb8330c-f11e-4a13-a6f8-acedc814a03f" width="30%" alt="Screen 3">
 </div>
 
 <br>
@@ -52,16 +43,6 @@
 
 NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ特化型プラットフォームアプリです。
 チケットの購入から、当日のスムーズな入場（QR認証）、グッズの事前予約・決済、そしてファン同士のチャットコミュニティまで、ライブ体験のすべてをこのアプリ一つで完結させます。
-
----
-
-## 📸 スクリーンショット (Screenshots)
-
-<div align="center" style="display: flex; gap: 10px; justify-content: center;">
-  <img src="https://placehold.jp/150x300.png?text=Home" width="30%" alt="Home Screen" />
-  <img src="https://placehold.jp/150x300.png?text=Ticket" width="30%" alt="Ticket QR" />
-  <img src="https://placehold.jp/150x300.png?text=Admin" width="30%" alt="Admin Scan" />
-</div>
 
 ---
 
@@ -88,19 +69,17 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 
 実際のライブ会場での運用を想定し、ユーザー（ファン）向けおよび運営スタッフ向けの利用マニュアルを整備しています。
 
-**[📄 完全版マニュアルを見る (PDF)]([NOKKU 利用・運用マニュアル.pdf](https://github.com/user-attachments/files/24613966/NOKKU.pdf)
-)**
+**[📄 完全版マニュアルを見る (PDF)](https://github.com/user-attachments/files/24613966/NOKKU.pdf)**
 
-<div align="center">
-  <img src="docs/manual_cover.png" width="45%" alt="Manual Cover">
-  <img src="docs/manual_flow.png" width="45%" alt="User Flow">
+<div align="center" style="display: flex; justify-content: center; gap: 10px;">
+  <img src="https://github.com/user-attachments/assets/856c6168-a9e6-4ef4-9f9b-1964cae8c550" width="48%" alt="Manual Cover">
+  <img src="https://github.com/user-attachments/assets/12b8908c-af53-494f-af5b-6d59b107cdeb" width="48%" alt="Manual Intro">
 </div>
 
 ### 運用フローの設計
 単なる機能実装に留まらず、現場でのオペレーションを考慮した設計を行っています。
 * **User Flow:** 準備 → 購入 → 当日入場までのUXを最適化
 * **Admin Flow:** 入場スキャン・物販消込のスタッフ動線を確立
-
 ---
 
 ## 🛠 技術スタック (Tech Stack)
@@ -247,5 +226,3 @@ stripe listen --forward-to localhost/api/stripe/webhook
 ```
 
 出力された `whsec_...` キーを `backend/.env` に設定し、キャッシュをクリアしてください。
-
-```
