@@ -1,13 +1,42 @@
 # 📱 NOKKU (ノック) - ライブイベント・グッズ販売プラットフォーム
 
+![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+
+> **Note: Target Platform**
+> 本プロジェクトは **Windows (WSL2)** 環境下で開発を行っているため、現在は **Android** をメインターゲットとして最適化・実機検証を行っています。
+> (React Native製のため、macOS環境があればiOSビルドも可能です)
+
+#### 📱 [Nokku] ライブ運営プラットフォーム
+ **[📄 仕様書 (Notion)](https://Notionのリンク)**
+
+チケット購入、入場管理、そして熱狂の共有まで。ライブ体験のすべてを手のひらで完結させる、オールインワン・プラットフォームです。
+
 <div align="center">
-  <img src="https://placehold.jp/30/333333/ffffff/800x400.png?text=NOKKU%20App%20Concept" width="100%" alt="NOKKU App Banner" />
+  <img src="ここに【image_5.pngの右側の画像など】のURL" width="100%" alt="Nokku Concept">
+</div>
+<br>
+
+**主な機能と画面イメージ:**
+
+<div align="center" style="display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+  <div style="text-align: center; width: 30%;">
+    <strong>🎫 イベント＆チケット</strong><br>
+    <img src="ここに【image_4.png (イベント詳細)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+  </div>
+  <div style="text-align: center; width: 30%;">
+    <strong>🛠 管理者・運営機能</strong><br>
+    <img src="ここに【image_6.png (管理者メニュー)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+  </div>
+  <div style="text-align: center; width: 30%;">
+    <strong>💬 コミュニティチャット</strong><br>
+    <img src="ここに【image_7.png (チャット画面)】のURL" width="100%" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+  </div>
 </div>
 
 <br>
+(※画像は開発中の実機画面です。ダークモードUIを採用し、没入感を高めています)
 
-<div align="center">
-
+---
 ![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Laravel](https://img.shields.io/badge/Laravel-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
@@ -55,13 +84,32 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 
 ---
 
+## 📘 利用・運用マニュアル (User & Admin Guide)
+
+実際のライブ会場での運用を想定し、ユーザー（ファン）向けおよび運営スタッフ向けの利用マニュアルを整備しています。
+
+**[📄 完全版マニュアルを見る (PDF)]([NOKKU 利用・運用マニュアル.pdf](https://github.com/user-attachments/files/24613966/NOKKU.pdf)
+)**
+
+<div align="center">
+  <img src="docs/manual_cover.png" width="45%" alt="Manual Cover">
+  <img src="docs/manual_flow.png" width="45%" alt="User Flow">
+</div>
+
+### 運用フローの設計
+単なる機能実装に留まらず、現場でのオペレーションを考慮した設計を行っています。
+* **User Flow:** 準備 → 購入 → 当日入場までのUXを最適化
+* **Admin Flow:** 入場スキャン・物販消込のスタッフ動線を確立
+
+---
+
 ## 🛠 技術スタック (Tech Stack)
 
 本プロジェクトは **Feature-Based Design** を採用し、AIディレクションのもと保守性の高いアーキテクチャで構築されています。
 
 | カテゴリ | 技術・ライブラリ |
 | :--- | :--- |
-| **Frontend** | React Native (CLI 0.76), TypeScript |
+| **Frontend** | React Native, TypeScript |
 | **State / API** | React Query (@tanstack/react-query), Axios |
 | **UI / UX** | React Native Vector Icons, Haptic Feedback, React Native Sound |
 | **Hardware** | React Native Vision Camera (QR Scan), QRCode SVG |
@@ -96,3 +144,108 @@ nokku/
             ├── hooks/      # Custom Hooks
             ├── navigators/ # React Navigation Config
             └── services/   # External Services (Sound, Haptic)
+
+```
+
+---
+
+## 🚀 環境構築 (Setup)
+
+### 前提条件
+
+* **OS**: Windows 10/11 (WSL2 - Ubuntu推奨) または macOS
+* **Docker Desktop**: 必須
+* **Node.js**: v18以上 / **JDK**: 17以上
+* **Android Studio**: エミュレータまたは実機デバッグ環境
+
+### 自動セットアップ
+
+リポジトリ直下の `setup.sh` を使用すると、環境構築を一括で行えます。
+
+```bash
+chmod +x setup.sh
+./setup.sh
+
+```
+
+### 手動設定 (重要)
+
+スクリプト実行後、`.env` ファイルの設定が必要です。
+
+**1. バックエンド (`backend/.env`)**
+Firebaseの秘密鍵 (`firebase_credentials.json`) を `backend/storage/app/` に配置してください。
+
+```ini
+STRIPE_KEY=pk_test_...
+STRIPE_SECRET=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+FIREBASE_CREDENTIALS=storage/app/firebase_credentials.json
+
+```
+
+**2. フロントエンド (`frontend/app/.env`)**
+実機テストを行う場合は、`API_URL` をPCのローカルIPアドレスに変更してください。
+
+```ini
+API_URL=[http://192.168.](http://192.168.)x.x/api
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+
+```
+
+---
+
+## ▶️ サーバー起動・開発コマンド
+
+開発時は以下の2つのターミナルを開いて実行します。
+
+**1. バックエンド (Laravel Sail)**
+
+```bash
+cd backend
+./vendor/bin/sail up -d
+# APIサーバー: http://localhost:80
+
+```
+
+**2. フロントエンド (Metro Bundler)**
+
+```bash
+cd frontend/app
+npx react-native start
+
+```
+
+**3. アプリ起動 (Android)**
+
+```bash
+cd frontend/app
+npx react-native run-android
+
+```
+
+---
+
+## 📱 実機テストの手順
+
+カメラ機能（QRスキャン）の確認には実機が必要です。
+
+1. **ネットワーク**: PCとスマホを同じWi-Fiに接続。
+2. **IP設定**: PCのIPを確認し、`.env` の `API_URL` を書き換える。
+3. **キャッシュクリア**: `cd backend && ./vendor/bin/sail artisan config:clear`
+4. **起動**: スマホをUSB接続し `npx react-native run-android`
+5. **デバッグメニュー**: アプリ起動後、シェイクしてメニューを開き `Settings` > `Debug server host...` に `192.168.x.x:8081` を入力。
+
+---
+
+## 💳 Stripe Webhook設定
+
+決済検知のため、Stripe CLIでの転送が必要です。
+
+```bash
+stripe listen --forward-to localhost/api/stripe/webhook
+
+```
+
+出力された `whsec_...` キーを `backend/.env` に設定し、キャッシュをクリアしてください。
+
+```
