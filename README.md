@@ -232,11 +232,13 @@ npm run android
 データベースのシーディング (`migrate:fresh --seed`) により、以下のテスト用アカウントが作成されます。
 Admin/Artistは、Web管理画面での設定に加え、アプリ側での**QRスキャン機能**等のテストにも使用します。
 
-| Role | Access (Web & App) | Email | Password |
-| :--- | :--- | :--- | :--- |
-| **Admin** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | `admin@nokku.com` | `password` |
-| **Artist** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | `artist@nokku.com` | `password` |
-| **User** | App Login Only | `user@nokku.com` | `password` |
+サーバー起動 (`./vendor/bin/sail up -d`) 後、以下のURLからアクセス可能です。
+
+| Role | Access (Web & App) | Local URL | Email | Password |
+| :--- | :--- | :--- | :--- | :--- |
+| **Admin** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | http://localhost:8000/admin | `admin@nokku.com` | `password` |
+| **Artist** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | http://localhost:8000/admin | `artist@nokku.com` | `password` |
+| **User** | App Login Only | - | `user@nokku.com` | `password` |
 
 > [!WARNING]
 > これらのアカウント情報は **ローカル開発環境専用** です。
