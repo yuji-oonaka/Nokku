@@ -207,28 +207,21 @@ npm run android
 
 ---
 
-## ▶️ サーバー起動・開発コマンド
-
-開発時は2つのターミナル（WSL2とPowerShell）を使用します。
-
-**1. バックエンド (WSL2)**
-
-（...コマンド略...）
-# 管理画面: http://localhost:8000/admin
-
-**2. フロントエンド (PowerShell)**
-（...コマンド略...）
-
-### 🔐 管理画面へのログイン情報 (Default Credentials)
+### 🔐 管理画面・テスト用アカウント (Default Credentials)
 
 データベースのシーディング (`migrate:fresh --seed`) により、以下のテスト用アカウントが作成されます。
+Admin/Artistは、Web管理画面での設定に加え、アプリ側での**QRスキャン機能**等のテストにも使用します。
 
-| Role | URL | Email | Password |
+| Role | Access (Web & App) | Email | Password |
 | :--- | :--- | :--- | :--- |
-| **Admin** | [http://localhost:8000/admin](http://localhost:8000/admin) | `admin@nokku.com` | `password` |
-| **Artist** | [http://localhost:8000/admin](http://localhost:8000/admin) | `artist@nokku.com` | `password` |
-| **User** | (App Login) | `user@nokku.com` | `password` |
+| **Admin** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | `admin@nokku.com` | `password` |
+| **Artist** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | `artist@nokku.com` | `password` |
+| **User** | App Login Only | `user@nokku.com` | `password` |
 
+> [!TIP]
+> **Artist権限について**
+> Web管理画面では、Filamentの権限管理により**「自分のイベント・売上のみ」**が表示されます。
+> 本来はメール招待制ですが、開発環境用にデモアカウントを用意しています。
 ---
 
 ## 📱 実機テストの手順 (USB Debugging)
