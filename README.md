@@ -252,3 +252,17 @@ cd backend
 ./vendor/bin/sail artisan config:clear
 
 ```
+
+---
+
+## © Credits & License
+
+© 2025 Yuji Oonaka
+
+This project was designed, directed, and implemented by Yuji Oonaka.
+Development was carried out with extensive use of generative AI tools
+(ChatGPT, Gemini) under human-led architectural design and review.
+
+All source code in this repository is released under the MIT License
+unless otherwise noted.
+
