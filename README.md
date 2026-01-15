@@ -207,6 +207,33 @@ npm run android
 
 ---
 
+## ▶️ サーバー起動・開発コマンド
+
+開発時は2つのターミナル（WSL2とPowerShell）を使用します。
+
+**1. バックエンド (WSL2)**
+
+（...コマンド略...）
+# 管理画面: http://localhost:8000/admin
+
+**2. フロントエンド (PowerShell)**
+（...コマンド略...）
+
+### 🔐 管理画面へのログイン情報 (Default Credentials)
+
+データベースのシーディング (`migrate:fresh --seed`) により、以下のテスト用アカウントが作成されます。
+
+| Role | URL | Email | Password |
+| :--- | :--- | :--- | :--- |
+| **Admin** | [http://localhost:8000/admin](http://localhost:8000/admin) | `admin@nokku.com` | `password` |
+| **Artist** | [http://localhost:8000/admin](http://localhost:8000/admin) | `artist@nokku.com` | `password` |
+| **User** | (App Login) | `user@nokku.com` | `password` |
+
+---
+
+## 📱 実機テストの手順 (USB Debugging)
+...
+
 ## 📱 実機テストの手順 (USB Debugging)
 
 WSL2環境でのネットワーク接続を安定させるため、**USB接続 (adb reverse)** による実機テストを行っています。
