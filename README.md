@@ -148,10 +148,30 @@ Windows環境では、パフォーマンス最適化のため **BackendをWSL2**
 
 **1. Backend (WSL2)**
 
+初回のみ、依存パッケージのインストールと初期設定が必要です。
+
 ```bash
 # WSL2ターミナルで実行
 cd backend
+
+# 1. 環境変数の準備
+cp .env.example .env
+
+# 2. 依存パッケージのインストール (Docker経由で実行)
+# ※ローカルにPHP/Composerがない場合でも動作するように、Dockerコンテナを使用してインストールします
+docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$(pwd):/var/www/html" \
+    -w /var/www/html \
+    laravelsail/php84-composer:latest \
+    composer install --ignore-platform-reqs
+
+# 3. コンテナの起動
 ./vendor/bin/sail up -d
+
+# 4. アプリケーションキー生成 & マイグレーション & ストレージリンク
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan storage:link
 ./vendor/bin/sail artisan migrate:fresh --seed
 
 ```
@@ -218,6 +238,10 @@ Admin/Artistは、Web管理画面での設定に加え、アプリ側での**QR�
 | **Artist** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | `artist@nokku.com` | `password` |
 | **User** | App Login Only | `user@nokku.com` | `password` |
 
+> [!WARNING]
+> これらのアカウント情報は **ローカル開発環境専用** です。
+> 本番環境では使用されず、すべてダミーデータです。
+
 > [!TIP]
 > **Artist権限 (Data Scoping) について**
 > Admin権限はプラットフォーム全体の数値を管理しますが、Artist権限では**「自身が主催するイベント・売上データのみ」**に自動的にスコープ（絞り込み）されて表示されます。
@@ -269,6 +293,18 @@ cd backend
 ./vendor/bin/sail artisan config:clear
 
 ```
+
+## 🔌 External Services & Safety
+
+本プロジェクトは外部APIと連携していますが、安全な検証環境で動作するように設計されています。
+
+> [!NOTE]
+> **課金・決済の安全性について**
+> Stripeは **Test Mode** 環境で動作するため、実際のクレジットカード課金は発生しません。
+> (テスト用カード番号: `4242 4242 4242 4242` 等を使用してください)
+
+* **Stripe**: 決済インフラ（Payment Intents API）および Webhook 検証
+* **Firebase**: 認証 (Auth) および リアルタイムチャット (Firestore)
 
 ---
 
