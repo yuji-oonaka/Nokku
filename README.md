@@ -181,6 +181,11 @@ docker run --rm \
 ```powershell
 # PowerShellで実行
 cd frontend
+
+# 環境変数の準備
+cp .env.example .env
+
+# 依存パッケージのインストール
 npm install
 
 ```
@@ -211,7 +216,7 @@ cd backend
 
 ```
 
-**2. フロントエンド (PowerShell)**
+**2. Frontend (PowerShell)**
 `package.json` のスクリプトを経由して実行します。
 
 ```powershell
@@ -222,7 +227,6 @@ npm run start
 
 # Androidアプリのビルドと起動
 npm run android
-
 ```
 
 ---
@@ -279,20 +283,44 @@ npm run android
 
 ---
 
-## 💳 Stripe Webhook設定
+## 💳 Stripe Configuration
+
+決済機能をテストするには、StripeのAPIキー設定とWebhookの転送が必要です。
+
+### 1. APIキーの設定 (.env)
+Stripe Dashboard (Test Mode) からAPIキーを取得し、設定してください。
+
+**Backend (`backend/.env`):**
+```ini
+STRIPE_KEY=pk_test_xxxxxxxx...      # 公開可能キー (Backendでも使用する場合)
+STRIPE_SECRET=sk_test_xxxxxxxx...   # シークレットキー
+STRIPE_WEBHOOK_SECRET=whsec_xxxx... # Webhook Secret (手順2で取得)
+
+```
+
+**Frontend (`frontend/.env`):**
+
+```ini
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxx... # 公開可能キー
+
+```
+
+### 2. Webhookの転送 (Stripe CLI)
 
 ローカル環境で決済完了イベントを検知するために、Stripe CLIを使用してWebhookを転送します。
 
-1. **転送の開始 (PowerShell)**:
+**① 転送の開始 (PowerShell)**:
+
 ```powershell
 stripe listen --forward-to localhost:8000/api/stripe/webhook
 
 ```
 
+**② キーの設定**:
+出力された `whsec_...` キーを `backend/.env` の `STRIPE_WEBHOOK_SECRET` に設定してください。
 
-2. **キーの設定**:
-出力された `whsec_...` キーを `backend/.env` に設定してください。
-3. **設定の反映 (WSL2)**:
+**③ 設定の反映 (WSL2)**:
+
 ```bash
 cd backend
 ./vendor/bin/sail artisan config:clear
