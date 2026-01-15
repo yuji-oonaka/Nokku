@@ -225,9 +225,6 @@ Admin/Artistは、Web管理画面での設定に加え、アプリ側での**QR�
 ---
 
 ## 📱 実機テストの手順 (USB Debugging)
-...
-
-## 📱 実機テストの手順 (USB Debugging)
 
 WSL2環境でのネットワーク接続を安定させるため、**USB接続 (adb reverse)** による実機テストを行っています。
 
