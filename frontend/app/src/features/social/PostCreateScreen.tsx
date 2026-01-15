@@ -1,50 +1,22 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   TextInput,
   Button,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Image,
   TouchableOpacity,
   ScrollView,
   Platform,
-  KeyboardAvoidingView, // ★追加
+  KeyboardAvoidingView,
 } from 'react-native';
-import api from '../../services/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native'; // ★追加
-import {
-  launchImageLibrary,
-  ImagePickerResponse,
-  ImageLibraryOptions, // ★型定義追加
-} from 'react-native-image-picker';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { usePostCreate } from './hooks/usePostCreate'; // ★作成したHookをインポート
 
-interface SelectedImage {
-  uri: string;
-  type: string;
-  fileName: string;
-}
-
-// 日付フォーマッター (API用 YYYY-MM-DD HH:MM:SS)
-const formatApiDateTime = (date: Date | null): string | null => {
-  if (!date) return null;
-  const pad = (num: number) => num.toString().padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-};
-
-// 日付フォーマッター (表示用)
+// 表示用フォーマッターのみUI側に残す（あるいはutilsへ移動も可）
 const formatDisplayDateTime = (date: Date | null): string => {
   if (!date) return '設定しない';
   return date.toLocaleString('ja-JP', {
@@ -57,143 +29,29 @@ const formatDisplayDateTime = (date: Date | null): string => {
 };
 
 const PostCreateScreen = () => {
-  const navigation = useNavigation(); // ★ナビゲーションフック
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
-    null,
-  );
-
-  const [publishAt, setPublishAt] = useState<Date | null>(null);
-  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
-  const [showPublishPicker, setShowPublishPicker] = useState(false);
-  const [showExpirePicker, setShowExpirePicker] = useState(false);
-
-  // 画像選択処理
-  const handleChoosePhoto = () => {
-    // ★★★ 画像圧縮設定 ★★★
-    // これをしないと数MBの画像を送信することになり、アプリが激重になります
-    const options: ImageLibraryOptions = {
-      mediaType: 'photo',
-      quality: 0.8, // 画質を80%に落とす（見た目はほぼ変わらない）
-      maxWidth: 1024, // 幅を最大1024pxにリサイズ
-      maxHeight: 1024, // 高さも制限
-      includeBase64: false,
-      selectionLimit: 1, // 1枚だけ選択
-    };
-
-    launchImageLibrary(options, (response: ImagePickerResponse) => {
-      if (response.didCancel) {
-        console.log('User cancelled image picker');
-      } else if (response.errorCode) {
-        Alert.alert('エラー', '画像の読み込みに失敗しました。');
-      } else if (response.assets && response.assets.length > 0) {
-        const asset = response.assets[0];
-        if (asset.uri && asset.type && asset.fileName) {
-          setSelectedImage({
-            uri: asset.uri,
-            type: asset.type,
-            fileName: asset.fileName,
-          });
-        }
-      }
-    });
-  };
-
-  const onPublishChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowPublishPicker(false);
-      if (event.type !== 'set') return;
-    } else {
-      setShowPublishPicker(false);
-    }
-
-    if (selectedDate) {
-      setPublishAt(selectedDate);
-      if (expiresAt && expiresAt < selectedDate) {
-        setExpiresAt(null);
-      }
-    }
-  };
-
-  const onExpireChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowExpirePicker(false);
-      if (event.type !== 'set') return;
-    } else {
-      setShowExpirePicker(false);
-    }
-
-    if (selectedDate) {
-      if (publishAt && selectedDate < publishAt) {
-        Alert.alert(
-          'エラー',
-          '掲載終了日時は、公開日時より後に設定してください。',
-        );
-        setExpiresAt(null);
-      } else {
-        setExpiresAt(selectedDate);
-      }
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (title.trim().length === 0 || content.trim().length === 0) {
-      Alert.alert('エラー', 'タイトルと投稿内容を入力してください。');
-      return;
-    }
-
-    setLoading(true);
-    let uploadedImageUrl: string | null = null;
-
-    try {
-      // 1. 画像アップロード
-      if (selectedImage) {
-        const formData = new FormData();
-        formData.append('type', 'post');
-        formData.append('image', {
-          uri: selectedImage.uri,
-          type: selectedImage.type,
-          name: selectedImage.fileName,
-        });
-
-        // ヘッダーは api インスタンス側で自動制御される場合が多いが、明示的に指定
-        const uploadResponse = await api.post('/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        uploadedImageUrl = uploadResponse.data.url;
-      }
-
-      // 2. 投稿データ送信
-      await api.post('/posts', {
-        title: title,
-        content: content,
-        image_url: uploadedImageUrl,
-        publish_at: formatApiDateTime(publishAt),
-        expires_at: formatApiDateTime(expiresAt),
-      });
-
-      Alert.alert('成功', '投稿が完了しました。', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(), // ★成功したら前の画面に戻る
-        },
-      ]);
-    } catch (error: any) {
-      console.error('投稿エラー:', error.response?.data || error.message);
-      Alert.alert(
-        'エラー',
-        '投稿に失敗しました。時間をおいて再試行してください。',
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  // ★ たった1行で機能呼び出し
+  const {
+    title,
+    setTitle,
+    content,
+    setContent,
+    loading,
+    selectedImage,
+    publishAt,
+    expiresAt,
+    showPublishPicker,
+    showExpirePicker,
+    androidPickerMode,
+    handleChoosePhoto,
+    showPublishDatePicker,
+    onPublishChange,
+    showExpireDatePicker,
+    onExpireChange,
+    handleSubmit,
+  } = usePostCreate();
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* ★ KeyboardAvoidingView でラップして、入力中のキーボード被りを防ぐ */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -245,7 +103,7 @@ const PostCreateScreen = () => {
               <Text style={styles.datePickerLabel}>公開日時</Text>
               <TouchableOpacity
                 style={styles.datePickerButton}
-                onPress={() => setShowPublishPicker(true)}
+                onPress={showPublishDatePicker}
               >
                 <Text style={styles.datePickerValue}>
                   {formatDisplayDateTime(publishAt)}
@@ -258,7 +116,7 @@ const PostCreateScreen = () => {
               <Text style={styles.datePickerLabel}>掲載終了</Text>
               <TouchableOpacity
                 style={styles.datePickerButton}
-                onPress={() => setShowExpirePicker(true)}
+                onPress={showExpireDatePicker}
               >
                 <Text style={styles.datePickerValue}>
                   {formatDisplayDateTime(expiresAt)}
@@ -274,7 +132,7 @@ const PostCreateScreen = () => {
                 <Button
                   title="投稿する"
                   onPress={handleSubmit}
-                  disabled={loading} // 連打防止
+                  disabled={loading}
                 />
               )}
             </View>
@@ -286,7 +144,7 @@ const PostCreateScreen = () => {
       {showPublishPicker && (
         <DateTimePicker
           value={publishAt || new Date()}
-          mode="datetime"
+          mode={Platform.OS === 'ios' ? 'datetime' : androidPickerMode}
           display="default"
           onChange={onPublishChange}
           minimumDate={new Date()}
@@ -295,7 +153,7 @@ const PostCreateScreen = () => {
       {showExpirePicker && (
         <DateTimePicker
           value={expiresAt || publishAt || new Date()}
-          mode="datetime"
+          mode={Platform.OS === 'ios' ? 'datetime' : androidPickerMode}
           display="default"
           onChange={onExpireChange}
           minimumDate={publishAt || new Date()}
@@ -305,13 +163,14 @@ const PostCreateScreen = () => {
   );
 };
 
+// スタイル定義は変更なし（そのまま利用）
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
   },
   scrollContent: {
-    paddingBottom: 40, // 下部の余白確保
+    paddingBottom: 40,
   },
   form: {
     padding: 20,
@@ -352,7 +211,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     padding: 12,
     fontSize: 16,
-    textAlignVertical: 'top', // Androidで上寄せ
+    textAlignVertical: 'top',
     minHeight: 120,
     marginBottom: 20,
     backgroundColor: '#333333',
