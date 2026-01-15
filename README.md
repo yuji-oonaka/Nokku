@@ -263,14 +263,17 @@ adb reverse tcp:8081 tcp:8081
 ```
 
 
-3. **アプリ起動**:
+3. **アプリ起動 (初回ビルド)**:
 ```powershell
 cd frontend
 npm run android
 
 ```
 
-
+> [!TIP]
+> **💡 日々の開発フロー (Hot Reload)**
+> 一度アプリがインストールされた後は、毎回ビルド (`npm run android`) する必要はありません。
+> **`npm start`** (Metro Bundler) を起動しておけば、ファイルの変更が即座に実機に反映されます。
 
 ---
 
