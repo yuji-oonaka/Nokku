@@ -182,6 +182,14 @@ class DatabaseSeeder extends Seeder
 
         $this->command->info("15 Orders created.");
         $this->command->info('🎉 全てのシーディングが完了しました！');
+
+        // =========================================================
+        // 7. 問い合わせデータの生成 (New!)
+        // =========================================================
+        $this->call(InquirySeeder::class);
+        $this->command->info("Inquiries created.");
+
+        $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 
     private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null, $bio = null)
