@@ -107,8 +107,8 @@ const useMenuConfig = (
           },
           {
             id: 'inquiry',
-            title: '運営へのお問い合わせ',
-            action: () => navigation.navigate('Inquiry'),
+            title: 'お問い合わせ / サポート',
+            action: () => navigation.navigate('InquiryList'),
           },
         ],
       });
