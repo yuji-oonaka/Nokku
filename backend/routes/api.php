@@ -80,4 +80,10 @@ Route::middleware('firebase.auth')->group(function () {
     // お気に入り機能
     Route::post('/products/{product}/favorite', [FavoriteController::class, 'toggle']); // いいね切替
     Route::get('/my-favorites', [FavoriteController::class, 'index']); // 一覧取得
+
+    // 問い合わせ関連
+    Route::get('/inquiries', [InquiryController::class, 'index']);      // 一覧取得
+    Route::post('/inquiries', [InquiryController::class, 'store']);     // 新規作成
+    Route::get('/inquiries/{id}', [InquiryController::class, 'show']);  // 詳細取得
+    Route::patch('/inquiries/{id}/close', [InquiryController::class, 'close']); // 解決済みにする
 });

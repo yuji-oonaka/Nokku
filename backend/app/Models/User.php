@@ -129,6 +129,11 @@ class User extends Authenticatable implements FilamentUser, HasName
         return $this->belongsToMany(Product::class, 'favorites', 'user_id', 'product_id')->withTimestamps();
     }
 
+    public function inquiries(): HasMany
+    {
+        return $this->hasMany(Inquiry::class);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | アクセサ
