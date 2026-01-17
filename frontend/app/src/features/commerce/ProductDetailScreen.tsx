@@ -290,6 +290,37 @@ const ProductDetailScreen: React.FC = () => {
           </>
         )}
 
+        {/* ▼▼▼ 追加: お問い合わせボタン (購入ボタンの下) ▼▼▼ */}
+        <View style={styles.inquiryContainer}>
+          <TouchableOpacity
+            style={styles.inquiryButton}
+            onPress={() => {
+              // MyPageStackを経由して問い合わせ作成へ遷移
+              navigation.navigate('MyPageStack', {
+                screen: 'InquiryCreate',
+                params: {
+                  // ※本来は 'merch' などの種別を作るべきですが、
+                  // 今回の設計では 'order' (グッズ関連) に寄せるか、
+                  // または 'user' (主催者指名) として送るのが現実的です。
+                  // ここでは「販売者への質問」として 'user' を使い、target_id に artist_id を入れます。
+
+                  target_type: 'user', // ★販売者(ユーザー)宛にする
+                  target_id: product.artist?.id,
+                  target_name: `${product.artist?.nickname} (出品者)`,
+                  default_subject: `グッズ「${product.name}」について`,
+
+                  // 件名に商品名を入れてあげると親切です
+                  // ただし InquiryCreate 側で受け取るロジックが必要になるため、
+                  // シンプルに宛先指定だけに留めます。
+                },
+              });
+            }}
+          >
+            <Text style={styles.inquiryButtonText}>📩 出品者に質問する</Text>
+          </TouchableOpacity>
+        </View>
+        {/* ▲▲▲ 追加ここまで ▲▲▲ */}
+
         {/* --- ★修正: コンポーネント化した管理者メニュー --- */}
         <ProductAdminControls
           visible={canEdit}
@@ -381,6 +412,23 @@ const styles = StyleSheet.create({
   },
   disabledButton: { backgroundColor: '#555' },
   buyButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+  inquiryContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  inquiryButton: {
+    marginTop: 15,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#555',
+    alignItems: 'center',
+  },
+  inquiryButtonText: {
+    color: '#AAAAAA',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
 });
 
 export default ProductDetailScreen;

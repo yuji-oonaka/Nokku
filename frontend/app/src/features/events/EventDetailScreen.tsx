@@ -254,6 +254,23 @@ const EventDetailScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
+        {/* ▼▼▼ 追加: お問い合わせボタン ▼▼▼ */}
+        <TouchableOpacity
+          style={styles.inquiryButton} // スタイルは後述
+          onPress={() => {
+            navigation.navigate('MyPageStack', {
+              screen: 'InquiryCreate',
+              params: {
+                target_type: 'event',
+                target_id: event.id,
+                target_name: event.title,
+              },
+            });
+          }}
+        >
+          <Text style={styles.inquiryButtonText}>📩 主催者に問い合わせる</Text>
+        </TouchableOpacity>
+
         {!isFinished && (
           <>
             <View style={styles.ticketHeaderContainer}>
@@ -388,6 +405,22 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   chatButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  // チャットボタンの下に追加するためのスタイル
+  inquiryButton: {
+    backgroundColor: '#333333', // 少し控えめなグレー
+    padding: 15,
+    marginHorizontal: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20, // 下のマージン
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  inquiryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
 });
 
 export default EventDetailScreen;

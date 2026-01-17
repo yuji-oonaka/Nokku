@@ -12,14 +12,21 @@ import ProductCreateScreen from '../features/commerce/ProductCreateScreen';
 import PostCreateScreen from '../features/social/PostCreateScreen';
 import ScannerScreen from '../features/tickets/ScannerScreen';
 import GateScannerScreen from '../features/tickets/GateScannerScreen';
-import InquiryScreen from '../features/auth/InquiryScreen';
+
+// 🗑️ 削除: 旧 InquiryScreen
+// import InquiryScreen from '../features/auth/InquiryScreen';
+
+// 🆕 追加: 新しい問い合わせ機能
+import InquiryListScreen from '../features/inquiry/InquiryListScreen';
+import InquiryDetailScreen from '../features/inquiry/InquiryDetailScreen';
+import InquiryCreateScreen from '../features/inquiry/InquiryCreateScreen';
+
 import OrderHistoryScreen from '../features/commerce/OrderHistoryScreen';
 import FavoriteProductsScreen from '../features/commerce/FavoriteProductsScreen';
 import OrderDetailScreen from '../features/commerce/OrderDetailScreen';
 import ProductDetailScreen from '../features/commerce/ProductDetailScreen';
 import TicketDetailScreen from '../features/tickets/TicketDetailScreen';
 
-// 2. ★ 型定義を修正
 export type MyPageStackParamList = {
   MyPageTop: undefined;
   ProfileEdit: undefined;
@@ -29,23 +36,33 @@ export type MyPageStackParamList = {
   PostCreate: undefined;
   Scan: { scanMode: 'ticket' | 'order' };
   GateScanner: undefined;
-  Inquiry: undefined;
+
+  // 🗑️ 削除
+  // Inquiry: undefined;
+
+  // 🆕 追加
+  InquiryList: undefined;
+  InquiryDetail: { inquiryId: number };
+  InquiryCreate: {
+    target_type?: 'event' | 'user' | 'app' | 'order';
+    target_id?: number;
+    target_name?: string;
+    default_subject?: string; // ★追加: 件名の初期値
+  };
+
   OrderHistory: undefined;
-  // ↓↓↓ ここを orderId (数値) から order (オブジェクト) に変更
   OrderDetail: { order: Order };
   FavoriteProducts: undefined;
   ProductDetail: { productId: number };
   TicketDetail: { ticket: UserTicket };
 };
 
-// 3. ★ Props (変更なし)
 interface Props {
   onLogout: () => void;
 }
 
 const Stack = createStackNavigator<MyPageStackParamList>();
 
-// [・・・(LogoutButton は変更なし)・・・]
 const LogoutButton = ({ onLogout }: { onLogout: () => void }) => (
   <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
     <Text style={styles.logoutButtonText}>ログアウト</Text>
@@ -53,7 +70,6 @@ const LogoutButton = ({ onLogout }: { onLogout: () => void }) => (
 );
 
 const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
-  // [・・・(screenOptions は変更なし)・・・]
   const screenOptions = {
     headerStyle: {
       backgroundColor: '#1C1C1E',
@@ -67,10 +83,11 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      {/* [・・・(MyPageTop, ProfileEdit, MyTickets, ... Inquiry までは変更なし)・・・] */}
       <Stack.Screen name="MyPageTop" options={{ headerShown: false }}>
         {() => <MyPageScreen onLogout={onLogout} />}
       </Stack.Screen>
+
+      {/* ... (中略: ProfileEdit, MyTickets, EventCreate など変更なし) ... */}
       <Stack.Screen
         name="ProfileEdit"
         component={ProfileEditScreen}
@@ -98,38 +115,44 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         component={GateScannerScreen}
         options={{ title: '自動入場ゲート', headerShown: false }}
       />
+
+      {/* 🆕 問い合わせ関連スクリーン */}
       <Stack.Screen
-        name="Inquiry"
-        component={InquiryScreen}
-        options={{ title: 'お問い合わせ' }}
+        name="InquiryList"
+        component={InquiryListScreen}
+        options={{ title: 'お問い合わせ履歴' }}
+      />
+      <Stack.Screen
+        name="InquiryDetail"
+        component={InquiryDetailScreen}
+        options={{ title: 'お問い合わせ詳細' }}
+      />
+      <Stack.Screen
+        name="InquiryCreate"
+        component={InquiryCreateScreen}
+        options={{ title: 'お問い合わせ作成' }}
       />
 
-      {/* 10. ★ OrderHistory (変更なし) */}
       <Stack.Screen
         name="OrderHistory"
         component={OrderHistoryScreen}
         options={{ title: 'グッズ購入履歴' }}
       />
-
-      {/* 4. ★ OrderDetail のコメントを解除し、コンポーネントを登録 */}
       <Stack.Screen
         name="OrderDetail"
         component={OrderDetailScreen}
         options={{ title: '注文詳細' }}
       />
-
       <Stack.Screen
         name="FavoriteProducts"
         component={FavoriteProductsScreen}
         options={{ title: 'お気に入りグッズ' }}
       />
-
       <Stack.Screen
         name="ProductDetail"
         component={ProductDetailScreen}
         options={{ title: 'グッズ詳細' }}
       />
-
       <Stack.Screen
         name="TicketDetail"
         component={TicketDetailScreen}
@@ -139,7 +162,6 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
   );
 };
 
-// [・・・(styles は変更なし)・・・]
 const styles = StyleSheet.create({
   logoutButton: {
     marginRight: 15,

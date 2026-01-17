@@ -249,3 +249,61 @@ export const fetchOrderById = async (orderId: number): Promise<Order> => {
   const response = await api.get<Order>(`/orders/${orderId}`);
   return response.data;
 };
+
+// --- (Inquiry) ---
+export interface Inquiry {
+  id: number;
+  user_id: number;
+  subject: string;
+  message: string;
+  status: 'open' | 'in_review' | 'closed';
+  target_type: 'event' | 'user' | 'app' | 'order' | null;
+  target_id: number | null;
+  organizer_id: number | null;
+  is_escalated: boolean;
+  escalation_reason: string | null;
+  handled_at: string | null;
+  created_at: string;
+  // Relations
+  target?: any; // ポリモーフィック (Event | User | null)
+  organizer?: User; // 担当者 (User interface はファイル上部で定義済み)
+}
+
+export interface InquiryInput {
+  subject: string;
+  message: string;
+  // フォームから送る際はシンプルな文字列 ('event', 'user', 'app')
+  target_type?: 'event' | 'user' | 'app' | 'order' | null;
+  target_id?: number | null;
+}
+
+/**
+ * 自分の問い合わせ履歴を取得 (ページネーション対応)
+ */
+export const fetchMyInquiries = async (): Promise<Inquiry[]> => {
+  // Backend: paginate(10) -> response.data.data に配列が入る
+  const response = await api.get('/inquiries');
+  return response.data.data; 
+};
+
+/**
+ * 問い合わせ詳細を取得
+ */
+export const fetchInquiryById = async (id: number): Promise<Inquiry> => {
+  const response = await api.get<Inquiry>(`/inquiries/${id}`);
+  return response.data;
+};
+
+/**
+ * 新規問い合わせ作成
+ */
+export const createInquiry = async (data: InquiryInput): Promise<Inquiry> => {
+  // Backend: { message: string, inquiry: Inquiry }
+  const response = await api.post('/inquiries', data);
+  return response.data.inquiry;
+};
+
+export const closeInquiry = async (id: number): Promise<Inquiry> => {
+  const response = await api.patch(`/inquiries/${id}/close`);
+  return response.data.inquiry;
+};
