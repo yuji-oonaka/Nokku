@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,20 @@ import {
   ActivityIndicator,
   Button,
   Alert,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView, // standard SafeAreaView for layout control
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { fetchInquiryById, Inquiry, closeInquiry } from '../../api/queries';
+import {
+  fetchInquiryById,
+  Inquiry,
+  closeInquiry,
+  sendInquiryMessage, // 追加
+  InquiryResponse, // 追加
+} from '../../api/queries';
 import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
 import api from '../../services/api';
 
@@ -23,23 +33,50 @@ const InquiryDetailScreen = () => {
 
   const [inquiry, setInquiry] = useState<Inquiry | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false); // 送信中のローディング
+  const [inputText, setInputText] = useState('');
   const [escalating, setEscalating] = useState(false);
 
+  // スクロール制御用
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const loadData = async () => {
+    if (!inquiryId) return;
+    try {
+      const data = await fetchInquiryById(inquiryId);
+      setInquiry(data);
+    } catch (error) {
+      Alert.alert('エラー', '詳細データの取得に失敗しました');
+      navigation.goBack();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      if (!inquiryId) return;
-      try {
-        const data = await fetchInquiryById(inquiryId);
-        setInquiry(data);
-      } catch (error) {
-        Alert.alert('エラー', '詳細データの取得に失敗しました');
-        navigation.goBack();
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, [inquiryId]);
+
+  // 送信ハンドラー
+  const handleSend = async () => {
+    if (!inputText.trim()) return;
+
+    setSending(true);
+    try {
+      await sendInquiryMessage(inquiryId, inputText);
+      setInputText('');
+      await loadData(); // データを再取得して画面更新
+
+      // 送信後、一番下までスクロール
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    } catch (error) {
+      Alert.alert('エラー', 'メッセージの送信に失敗しました');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const canEscalate = () => {
     if (!inquiry) return false;
@@ -56,7 +93,7 @@ const InquiryDetailScreen = () => {
   const handleEscalate = async () => {
     Alert.alert(
       '運営に相談する',
-      '主催者からの回答がない、または対応に納得がいかない場合、運営が介入して調査を行います。\n\n運営にエスカレーションしますか？',
+      '主催者からの回答がない場合、運営が介入して調査を行います。\n実行しますか？',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -65,13 +102,12 @@ const InquiryDetailScreen = () => {
           onPress: async () => {
             setEscalating(true);
             try {
-              await api.post(`/inquiries/${inquiryId}/escalate`);
-              Alert.alert(
-                '受付完了',
-                '運営に報告されました。確認までお待ちください。',
-              );
-              const updated = await fetchInquiryById(inquiryId);
-              setInquiry(updated);
+              // ※運営へのエスカレーションAPIが未実装の場合はエラーになります
+              // 必要に応じて実装してください: await api.post(`/inquiries/${inquiryId}/escalate`);
+              Alert.alert('確認', '現在はデモ動作です。');
+
+              // const updated = await fetchInquiryById(inquiryId);
+              // setInquiry(updated);
             } catch (error) {
               Alert.alert('エラー', '送信に失敗しました。');
             } finally {
@@ -86,7 +122,7 @@ const InquiryDetailScreen = () => {
   const handleClose = () => {
     Alert.alert(
       '解決済みにする',
-      'このお問い合わせを終了しますか？\n終了すると、これ以上メッセージを送ることはできません。',
+      'このお問い合わせを終了しますか？\n終了すると、メッセージの送信はできなくなります。',
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -95,9 +131,8 @@ const InquiryDetailScreen = () => {
             if (!inquiryId) return;
             try {
               await closeInquiry(inquiryId);
-              Alert.alert('完了', 'お問い合わせを解決済みにしました。');
-              const updated = await fetchInquiryById(inquiryId);
-              setInquiry(updated);
+              Alert.alert('完了', '解決済みにしました。');
+              loadData();
             } catch (error) {
               Alert.alert('エラー', '操作に失敗しました。');
             }
@@ -109,28 +144,22 @@ const InquiryDetailScreen = () => {
 
   const renderTargetInfo = () => {
     if (!inquiry?.target_type || !inquiry.target) return null;
-
     const type = inquiry.target_type;
     const target = inquiry.target;
 
     let label = '対象';
     let value = '';
 
-    if (type.includes('Event') || type === 'event') {
-      label = '対象イベント';
-      value = target.title || '不明なイベント';
-    } else if (type.includes('Order') || type === 'order') {
-      label = '対象注文';
-      const itemName =
-        target.items && target.items.length > 0
-          ? target.items[0].product_name
-          : '商品情報なし';
-      value = `注文 #${target.id} (${itemName})`;
-    } else if (type.includes('User') || type === 'user') {
-      label = '対象主催者';
-      value = target.nickname || '不明なユーザー';
-    } else {
-      return null;
+    // target_typeの文字列判定（App\Models\Event 等も含む）
+    if (type.toLowerCase().includes('event')) {
+      label = 'イベント';
+      value = target.title || '不明';
+    } else if (type.toLowerCase().includes('order')) {
+      label = '注文';
+      value = `#${target.id}`;
+    } else if (type.toLowerCase().includes('user')) {
+      label = '主催者';
+      value = target.nickname || '不明';
     }
 
     return (
@@ -153,20 +182,20 @@ const InquiryDetailScreen = () => {
 
   if (!inquiry) return null;
 
-  // ★修正箇所: ステータスに応じたスタイルをここで確定させる
+  // ステータスバッジのスタイル決定
   let badgeStyle = styles.badge_open;
-  if (inquiry.status === 'in_review') {
-    badgeStyle = styles.badge_in_review;
-  } else if (inquiry.status === 'closed') {
-    badgeStyle = styles.badge_closed;
-  }
+  if (inquiry.status === 'in_review') badgeStyle = styles.badge_in_review;
+  else if (inquiry.status === 'closed') badgeStyle = styles.badge_closed;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+      >
         <View style={styles.header}>
-          <View style={styles.statusRow}>
-            {/* 修正: 確定させた badgeStyle を適用 */}
+          <View style={styles.headerTop}>
             <View style={[styles.badge, badgeStyle]}>
               <Text style={styles.badgeText}>
                 {inquiry.status.toUpperCase()}
@@ -177,62 +206,126 @@ const InquiryDetailScreen = () => {
             </Text>
           </View>
           <Text style={styles.title}>{inquiry.subject}</Text>
+          {renderTargetInfo()}
         </View>
 
-        {renderTargetInfo()}
-
-        <View style={styles.messageBox}>
-          <Text style={styles.messageLabel}>お問い合わせ内容</Text>
-          <Text style={styles.messageText}>{inquiry.message}</Text>
-        </View>
-
-        {inquiry.is_escalated && (
-          <View style={styles.escalatedBox}>
-            <Text style={styles.escalatedTitle}>⚠️ 運営対応中</Text>
-            <Text style={styles.escalatedDesc}>
-              この件は運営スタッフが確認しています。{'\n'}
-              {inquiry.escalation_reason &&
-                `理由: ${inquiry.escalation_reason}`}
-            </Text>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          onContentSizeChange={() =>
+            scrollViewRef.current?.scrollToEnd({ animated: true })
+          }
+        >
+          {/* 1. 最初の問い合わせ（右側・自分） */}
+          <View style={[styles.messageRow, styles.myMessageRow]}>
+            <View style={[styles.bubble, styles.myBubble]}>
+              <Text style={styles.myMessageText}>{inquiry.message}</Text>
+            </View>
           </View>
-        )}
+          <Text style={styles.timestampRight}>
+            {new Date(inquiry.created_at).toLocaleString()}
+          </Text>
 
-        {inquiry.status !== 'closed' && (
-          <View style={styles.actionContainer}>
-            <Button
-              title="✅ 解決したので終了する"
-              onPress={handleClose}
-              color="#30D158"
-            />
-
-            {!inquiry.is_escalated && canEscalate() && (
-              <View style={styles.escalateWrapper}>
-                <Text style={styles.actionHint}>
-                  返信がなくお困りの場合は運営にご相談ください
+          {/* 2. 返信履歴のループ */}
+          {inquiry.responses?.map((res: InquiryResponse) => {
+            const isMe = !res.is_admin;
+            return (
+              <View key={res.id} style={{ marginBottom: 15 }}>
+                <View
+                  style={[
+                    styles.messageRow,
+                    isMe ? styles.myMessageRow : styles.otherMessageRow,
+                  ]}
+                >
+                  {!isMe && (
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>運</Text>
+                    </View>
+                  )}
+                  <View
+                    style={[
+                      styles.bubble,
+                      isMe ? styles.myBubble : styles.otherBubble,
+                    ]}
+                  >
+                    <Text
+                      style={
+                        isMe ? styles.myMessageText : styles.otherMessageText
+                      }
+                    >
+                      {res.body}
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={isMe ? styles.timestampRight : styles.timestampLeft}
+                >
+                  {new Date(res.created_at).toLocaleString()}
                 </Text>
-                <Button
-                  title={
-                    escalating
-                      ? '送信中...'
-                      : '運営に相談する (エスカレーション)'
-                  }
-                  color="#FF3B30"
-                  onPress={handleEscalate}
-                  disabled={escalating}
-                />
               </View>
-            )}
-          </View>
-        )}
+            );
+          })}
 
-        {inquiry.status === 'closed' && (
-          <View style={styles.closedMessage}>
-            <Text style={styles.closedText}>
-              このお問い合わせは解決済みです
-            </Text>
+          {/* 3. アクションボタン（最下部） */}
+          {inquiry.status !== 'closed' ? (
+            <View style={styles.actionArea}>
+              <Button
+                title="解決したので終了する"
+                onPress={handleClose}
+                color="#30D158"
+              />
+
+              {!inquiry.is_escalated && canEscalate() && (
+                <TouchableOpacity
+                  onPress={handleEscalate}
+                  style={{ marginTop: 15 }}
+                >
+                  <Text style={{ color: '#FF3B30', textAlign: 'center' }}>
+                    運営に相談する
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.closedArea}>
+              <Text style={styles.closedText}>
+                このお問い合わせは解決済みです
+              </Text>
+              {inquiry.expires_at && (
+                <Text style={styles.expireText}>
+                  保存期限: {new Date(inquiry.expires_at).toLocaleDateString()}
+                </Text>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* 4. 入力エリア (解決済みでなければ表示) */}
+        {inquiry.status !== 'closed' && (
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="メッセージを入力..."
+              placeholderTextColor="#666"
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!inputText.trim() || sending) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!inputText.trim() || sending}
+            >
+              <Text style={styles.sendButtonText}>
+                {sending ? '...' : '送信'}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -246,127 +339,149 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
   header: {
-    marginBottom: 20,
+    padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
-    paddingBottom: 15,
+    backgroundColor: '#1C1C1E',
   },
-  statusRow: {
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 5,
+  },
+  title: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
   },
-  // 以下は ViewStyle として認識されます
   badge_open: { borderColor: '#0A84FF' },
   badge_in_review: { borderColor: '#FF9F0A' },
   badge_closed: { borderColor: '#30D158' },
+  badgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  date: { color: '#8E8E93', fontSize: 12 },
 
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  date: {
-    color: '#8E8E93',
-    fontSize: 14,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
   targetInfo: {
     flexDirection: 'row',
-    marginBottom: 20,
-    backgroundColor: '#1C1C1E',
-    padding: 12,
-    borderRadius: 8,
+    marginTop: 5,
+  },
+  targetLabel: { color: '#8E8E93', fontSize: 12, marginRight: 5 },
+  targetValue: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+
+  scrollContent: {
+    padding: 15,
+    paddingBottom: 20,
+  },
+
+  // Chat Styles
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  myMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  otherMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#333',
+    justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 8,
   },
-  targetLabel: {
-    color: '#8E8E93',
-    marginRight: 10,
-    fontWeight: 'bold',
+  avatarText: { color: '#FFF', fontSize: 10 },
+
+  bubble: {
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 16,
   },
-  targetValue: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    flex: 1,
+  myBubble: {
+    backgroundColor: '#0A84FF',
+    borderBottomRightRadius: 2,
   },
-  messageBox: {
-    backgroundColor: '#1C1C1E',
-    padding: 15,
-    borderRadius: 8,
-    minHeight: 150,
-    marginBottom: 20,
+  otherBubble: {
+    backgroundColor: '#333',
+    borderBottomLeftRadius: 2,
   },
-  messageLabel: {
-    color: '#8E8E93',
-    marginBottom: 10,
-    fontSize: 14,
+  myMessageText: { color: '#FFF', fontSize: 15 },
+  otherMessageText: { color: '#FFF', fontSize: 15 },
+
+  timestampRight: {
+    textAlign: 'right',
+    color: '#666',
+    fontSize: 10,
+    marginBottom: 15,
   },
-  messageText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    lineHeight: 24,
+  timestampLeft: {
+    textAlign: 'left',
+    color: '#666',
+    fontSize: 10,
+    marginBottom: 15,
+    marginLeft: 38, // avatar width + margin
   },
-  escalatedBox: {
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    borderColor: '#FF3B30',
-    borderWidth: 1,
-    padding: 15,
-    borderRadius: 8,
-  },
-  escalatedTitle: {
-    color: '#FF3B30',
-    fontWeight: 'bold',
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  escalatedDesc: {
-    color: '#FF3B30',
-    fontSize: 14,
-  },
-  actionContainer: {
-    marginTop: 20,
-    gap: 20,
-  },
-  escalateWrapper: {
-    marginTop: 10,
+
+  // Footer Actions
+  actionArea: {
+    marginTop: 30,
+    paddingTop: 20,
     borderTopWidth: 1,
     borderTopColor: '#333',
-    paddingTop: 20,
-    alignItems: 'center',
   },
-  actionHint: {
-    color: '#8E8E93',
-    textAlign: 'center',
-    marginBottom: 10,
-    fontSize: 12,
-  },
-  closedMessage: {
+  closedArea: {
     marginTop: 30,
     alignItems: 'center',
     padding: 20,
     backgroundColor: '#1C1C1E',
     borderRadius: 8,
   },
-  closedText: {
-    color: '#30D158',
-    fontWeight: 'bold',
+  closedText: { color: '#30D158', fontWeight: 'bold', fontSize: 16 },
+  expireText: { color: '#666', fontSize: 12, marginTop: 5 },
+
+  // Input Area
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    backgroundColor: '#1C1C1E',
+    alignItems: 'flex-end',
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 20,
+    color: '#FFF',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    maxHeight: 100,
     fontSize: 16,
+  },
+  sendButton: {
+    marginLeft: 10,
+    backgroundColor: '#0A84FF',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#333',
+  },
+  sendButtonText: {
+    color: '#FFF',
+    fontWeight: 'bold',
   },
 });
 

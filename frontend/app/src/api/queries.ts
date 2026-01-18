@@ -269,6 +269,51 @@ export interface Inquiry {
   organizer?: User; // 担当者 (User interface はファイル上部で定義済み)
 }
 
+export interface InquiryResponse {
+  id: number;
+  inquiry_id: number;
+  user_id: number | null;
+  is_admin: boolean;
+  body: string;
+  created_at: string;
+  user?: User; // 送信者情報
+}
+
+export interface InquiryResponse {
+  id: number;
+  inquiry_id: number;
+  user_id: number | null;
+  is_admin: boolean;
+  body: string;
+  created_at: string;
+  user?: User; // 送信者情報
+}
+
+export interface Inquiry {
+  id: number;
+  user_id: number;
+  subject: string;
+  message: string;
+  status: 'open' | 'in_review' | 'closed';
+  target_type: 'event' | 'user' | 'app' | 'order' | null;
+  target_id: number | null;
+  organizer_id: number | null;
+  is_escalated: boolean;
+  escalation_reason: string | null;
+  handled_at: string | null;
+  
+  // ライフサイクル管理用
+  closed_at: string | null;
+  expires_at: string | null;
+
+  created_at: string;
+  target?: any;
+  organizer?: User; // ここをUser型に統一
+  
+  // 返信履歴
+  responses?: InquiryResponse[];
+}
+
 export interface InquiryInput {
   subject: string;
   message: string;
@@ -306,4 +351,10 @@ export const createInquiry = async (data: InquiryInput): Promise<Inquiry> => {
 export const closeInquiry = async (id: number): Promise<Inquiry> => {
   const response = await api.patch(`/inquiries/${id}/close`);
   return response.data.inquiry;
+};
+
+// ★追加: メッセージ送信関数
+export const sendInquiryMessage = async (inquiryId: number, body: string): Promise<InquiryResponse> => {
+  const response = await api.post(`/inquiries/${inquiryId}/messages`, { body });
+  return response.data.data;
 };
