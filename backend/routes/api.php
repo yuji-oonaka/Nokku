@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\OrderScanController; // ★ 追加: 軽量コントローラー
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\StripeWebhookController;
+use App\Http\Controllers\Api\EventChatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -87,4 +88,13 @@ Route::middleware('firebase.auth')->group(function () {
     Route::get('/inquiries/{id}', [InquiryController::class, 'show']);  // 詳細取得
     Route::post('/inquiries/{id}/messages', [InquiryController::class, 'sendMessage']); // メッセージ送信
     Route::patch('/inquiries/{id}/close', [InquiryController::class, 'close']); // 解決済みにする
+
+    // --- イベントチャット機能（ポイント消費） ---
+    Route::prefix('event-chat')->group(function () {
+        // 発言時のポイント消費
+        Route::post('/consume-message', [EventChatController::class, 'consumeMessage']);
+
+        // ルーム作成時のポイント消費
+        Route::post('/consume-room', [EventChatController::class, 'consumeRoomCreate']);
+    });
 });

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('real_name');
             $table->string('nickname');
 
-            // プロフィール画像と自己紹介 (★統合: bio)
+            // プロフィール画像と自己紹介
             $table->string('image_url')->nullable();
             $table->text('bio')->nullable();
 
@@ -29,13 +29,16 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
 
-            // ★統合: 2要素認証 (Two Factor)
+            // 2要素認証
             $table->string('two_factor_secret')->nullable();
             $table->string('two_factor_recovery_codes')->nullable();
             $table->timestamp('two_factor_confirmed_at')->nullable();
 
-            // 権限管理
-            $table->enum('role', ['user', 'artist', 'admin'])->default('user');
+            // 権限管理 (★修正: 'staff' を追加)
+            $table->enum('role', ['user', 'artist', 'admin', 'staff'])->default('user');
+
+            // ポイント残高 (★新規: 'points' を追加)
+            $table->integer('points')->default(0);
 
             // 住所情報
             $table->string('phone_number', 20)->nullable();
