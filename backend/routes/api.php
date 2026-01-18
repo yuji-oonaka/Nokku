@@ -85,5 +85,6 @@ Route::middleware('firebase.auth')->group(function () {
     Route::get('/inquiries', [InquiryController::class, 'index']);      // 一覧取得
     Route::post('/inquiries', [InquiryController::class, 'store']);     // 新規作成
     Route::get('/inquiries/{id}', [InquiryController::class, 'show']);  // 詳細取得
+    Route::post('/inquiries/{id}/messages', [InquiryController::class, 'sendMessage']); // メッセージ送信
     Route::patch('/inquiries/{id}/close', [InquiryController::class, 'close']); // 解決済みにする
 });
