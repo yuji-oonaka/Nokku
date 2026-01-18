@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Inquiry extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',          // 通報者
@@ -23,11 +24,15 @@ class Inquiry extends Model
         'is_escalated',
         'escalation_reason',
         'handled_at',
+        'closed_at',
+        'expires_at',
     ];
 
     protected $casts = [
         'is_escalated' => 'boolean',
         'handled_at' => 'datetime',
+        'closed_at' => 'datetime',
+        'expires_at' => 'datetime',
     ];
 
     /**
@@ -51,7 +56,13 @@ class Inquiry extends Model
      */
     public function target(): MorphTo
     {
-        return $this->morphTo();
+        return $this->morphTo(__FUNCTION__, 'target_type', 'target_id');
+    }
+
+    // ★追加: 返信履歴
+    public function responses()
+    {
+        return $this->hasMany(InquiryResponse::class);
     }
 
     // --- Scopes ---
