@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import auth from '@react-native-firebase/auth'; // ★ 追加: これが必要です
+import auth from '@react-native-firebase/auth';
 import { useAuth, DbUser } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,25 @@ type MenuSection = {
 };
 
 // --- Components ---
+
+// ★ 追加: ポイントカードコンポーネント
+const PointCard: React.FC<{ points: number }> = ({ points }) => (
+  <View style={styles.pointCard}>
+    <View>
+      <Text style={styles.pointLabel}>所持ポイント</Text>
+      <Text style={styles.pointValue}>
+        {/* toLocaleString() でカンマ区切り表示 */}
+        💎 {points.toLocaleString()} <Text style={styles.unit}>pt</Text>
+      </Text>
+    </View>
+    <TouchableOpacity
+      style={styles.buyButton}
+      onPress={() => Alert.alert('チャージ機能', 'まだ準備中だよ！')}
+    >
+      <Text style={styles.buyButtonText}>+</Text>
+    </TouchableOpacity>
+  </View>
+);
 
 const MenuRow: React.FC<{ item: MenuItem }> = ({ item }) => (
   <TouchableOpacity
@@ -193,23 +212,20 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
 
   // ログアウト処理
   const handleLogout = useCallback(() => {
-    // Propsで渡された場合はそれを使う（Storybookや特殊な親コンポーネント用）
     if (onLogout) {
       onLogout();
     } else {
-      // 通常時は直接Firebaseを呼ぶ
       Alert.alert('ログアウト', 'ログアウトしますか？', [
         { text: 'キャンセル', style: 'cancel' },
         {
           text: 'ログアウト',
           style: 'destructive',
-          onPress: () => auth().signOut(), // ★ 修正: useAuth().logout ではなく直接 SDK を呼ぶ
+          onPress: () => auth().signOut(),
         },
       ]);
     }
   }, [onLogout]);
 
-  // メニュー構成を取得
   const menuSections = useMenuConfig(user, navigation, handleLogout);
 
   const onRefresh = useCallback(async () => {
@@ -289,6 +305,10 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           {user.bio ? <Text style={styles.profileBio}>{user.bio}</Text> : null}
         </View>
 
+        {/* ★ 追加: ポイントカードをここに配置 */}
+        {/* user.points がまだ型定義されていない場合エラーになるので、一旦 0 でフォールバック */}
+        <PointCard points={user.points || 0} />
+
         {/* === メニューレンダリング === */}
         {menuSections.map(section => (
           <View key={section.id} style={styles.menuGroup}>
@@ -366,6 +386,43 @@ const styles = StyleSheet.create({
     marginTop: 10,
     lineHeight: 20,
     paddingHorizontal: 10,
+  },
+
+  /* ★ 追加: Point Card Styles */
+  pointCard: {
+    backgroundColor: '#1C1C1E',
+    marginHorizontal: 20,
+    marginTop: 20,
+    padding: 20,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+    // 影
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  pointLabel: { color: '#888', fontSize: 12, marginBottom: 4 },
+  pointValue: { color: '#FFF', fontSize: 28, fontWeight: 'bold' },
+  unit: { fontSize: 16, color: '#AAA', fontWeight: 'normal' },
+  buyButton: {
+    backgroundColor: '#333',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buyButtonText: {
+    color: '#0A84FF',
+    fontSize: 26,
+    lineHeight: 28,
+    marginTop: -2,
   },
 
   /* Menu Items */

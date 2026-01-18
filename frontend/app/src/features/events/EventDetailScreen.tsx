@@ -23,6 +23,7 @@ import { Event, TicketType, fetchEventDetailData } from '../../api/queries';
 // 分離したコンポーネントをインポート
 import TicketPurchaseList from './components/TicketPurchaseList';
 import EventAdminMenu from './components/EventAdminMenu';
+import { useEventChatApi } from './hooks/useEventChatApi';
 
 type EventDetailScreenRouteProp = RouteProp<EventStackParamList, 'EventDetail'>;
 
@@ -243,14 +244,16 @@ const EventDetailScreen: React.FC = () => {
           style={styles.chatButton}
           onPress={() => {
             SoundService.triggerHaptic('impactLight');
-            navigation.navigate('ChatLobby', {
-              eventId: event.id,
+
+            navigation.navigate('EventChatLobby', {
+              eventId: String(event.id),
               eventTitle: event.title,
             });
           }}
         >
           <Text style={styles.chatButtonText}>
-            💬 このイベントのチャットに参加する
+            {/* テキストも変更して、新機能であることを明示 */}
+            💬 イベントチャットに参加 (BETA)
           </Text>
         </TouchableOpacity>
 

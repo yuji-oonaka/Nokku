@@ -21,6 +21,8 @@ export interface DbUser {
   role: 'user' | 'artist' | 'admin';
   image_url?: string | null;
   bio?: string | null;
+  points: number;
+  firebase_uid: string;
 }
 
 // 2. Contextが提供する値の型
