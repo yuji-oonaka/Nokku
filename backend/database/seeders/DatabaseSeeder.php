@@ -66,7 +66,9 @@ class DatabaseSeeder extends Seeder
             'NOKKU Admin',
             'admin',
             null,
-            'https://i.pravatar.cc/150?u=admin@nokku.com'
+            'https://i.pravatar.cc/150?u=admin@nokku.com',
+            null,
+            100000 // ★ 初期ポイント
         );
 
         $this->createAccount(
@@ -75,7 +77,21 @@ class DatabaseSeeder extends Seeder
             '一般 太郎',
             'user',
             '一般ユーザー',
-            'https://i.pravatar.cc/150?u=user@nokku.com'
+            'https://i.pravatar.cc/150?u=user@nokku.com',
+            null,    // bio
+            5000     // ★ points
+        );
+
+        // ★追加: ポイント不足テスト用ユーザー (0pt)
+        $this->createAccount(
+            'zero@nokku.com',
+            $password,
+            '無課金 太郎',
+            'user',
+            '無課金ユーザー',
+            'https://i.pravatar.cc/150?u=zero@nokku.com',
+            null,
+            0        // ★ 0pt
         );
 
         // ★ テスト用メインアーティスト
@@ -86,7 +102,8 @@ class DatabaseSeeder extends Seeder
             'artist',
             'テストアーティスト',
             'https://i.pravatar.cc/150?u=artist@nokku.com',
-            "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error"
+            "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error", // bio
+            0 // points (アーティストは基本0でもOK)
         );
 
         // =========================================================
@@ -192,15 +209,12 @@ class DatabaseSeeder extends Seeder
         $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 
-    private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null, $bio = null)
+    private function createAccount($email, $password, $realName, $role, $nickname = null, $imageUrl = null, $bio = null, $points = 0)
     {
         $nickname = $nickname ?? $realName;
 
-        // Firebaseユーザー作成 (クリーンアップ済みなので、必ず新規作成される)
-        // もし残っていたとしても ensureFirebaseUser ロジックで既存IDを取得する安全策をとります
         $uid = $this->ensureFirebaseUser($email, $password, $nickname);
 
-        // DB保存
         $user = User::updateOrCreate(
             ['email' => $email],
             [
@@ -217,10 +231,14 @@ class DatabaseSeeder extends Seeder
                 'address_line1' => fake()->streetAddress(),
                 'address_line2' => fake()->secondaryAddress(),
                 'phone_number' => fake()->phoneNumber(),
+
+                // ★追加: ポイントを保存
+                'points' => $points,
             ]
         );
 
-        $this->command->info("User prepared: {$email} ({$role})");
+        // 分かりやすくログにポイントも表示
+        $this->command->info("User prepared: {$email} ({$role}) - {$points}pt");
         return $user;
     }
 
