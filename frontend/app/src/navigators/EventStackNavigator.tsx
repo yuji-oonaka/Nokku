@@ -10,6 +10,9 @@ import TicketTypeCreateScreen from '../features/tickets/TicketTypeCreateScreen';
 import EventEditScreen from '../features/events/EventEditScreen';
 import ChatScreen from '../features/social/ChatScreen';
 import ChatLobbyScreen from '../features/social/ChatLobbyScreen';
+// ★ 追加: 新しく作成したイベントチャット画面
+import { EventChatScreen } from '../features/events/EventChatScreen';
+import { EventChatLobbyScreen } from '../features/events/EventChatLobbyScreen';
 
 // 2. ★ EventStackParamList の型定義を修正
 export type EventStackParamList = {
@@ -25,6 +28,16 @@ export type EventStackParamList = {
     eventTitle: string;
     threadId: string;
     threadTitle: string;
+  };
+  EventChatLobby: {
+    eventId: string;
+    eventTitle: string;
+  };
+  // ★ 追加: 新しいチャット機能用のパラメータ
+  EventChat: {
+    eventId: string; // Hookの仕様に合わせてstring
+    roomId: string; // Firestore ID
+    roomName?: string; // ヘッダー表示用
   };
 };
 
@@ -103,6 +116,11 @@ const EventStackNavigator: React.FC<Props> = ({ onLogout }) => {
           title: `${route.params.eventTitle} ロビー`,
         })}
       />
+      <Stack.Screen
+        name="EventChatLobby"
+        component={EventChatLobbyScreen}
+        options={{ title: 'チャットロビー', headerShown: false }} // HeaderはScreen内で描画
+      />
       {/* 2. ChatScreen は ChatLobby から遷移するようにする */}
       <Stack.Screen
         name="Chat"
@@ -110,6 +128,15 @@ const EventStackNavigator: React.FC<Props> = ({ onLogout }) => {
         options={({ route }) => ({
           title: `${route.params.threadTitle}`, // ヘッダーはスレッド名を表示
         })}
+      />
+
+      {/* ★ 追加: 新機能のイベントチャット画面 */}
+      <Stack.Screen
+        name="EventChat"
+        component={EventChatScreen}
+        options={{
+          headerShown: false, // EventChatScreen側で自前のヘッダーを持っているため非表示
+        }}
       />
     </Stack.Navigator>
   );
