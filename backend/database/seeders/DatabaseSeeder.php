@@ -31,15 +31,15 @@ class DatabaseSeeder extends Seeder
         // =========================================================
         // 🧹 0. Firebase 大掃除 (Mass Extinction)
         // =========================================================
-        // 今回作成する予定のメールアドレスを全てリストアップ
         $emailsToClean = [
             'admin@nokku.com',
             'user@nokku.com',
-            'zero@nokku.com',   // ★ 追加: 漏れていたので追加
+            'zero@nokku.com',
             'artist@nokku.com',
-            'staff@nokku.com',  // ★ 追加: スタッフ用
+            'staff@nokku.com',
+            'operator@nokku.com', // ★ 追加: オペレーター
         ];
-        // ランダムアーティストの分も追加
+
         for ($i = 1; $i <= 10; $i++) {
             $emailsToClean[] = "artist{$i}@test.com";
         }
@@ -50,7 +50,7 @@ class DatabaseSeeder extends Seeder
                 $user = $this->auth->getUserByEmail($email);
                 $this->auth->deleteUser($user->uid);
             } catch (UserNotFound $e) {
-                // いなければ何もしない（正常）
+                // いなければ何もしない
             } catch (\Throwable $e) {
                 $this->command->warn("Failed to delete {$email}: " . $e->getMessage());
             }
@@ -94,19 +94,19 @@ class DatabaseSeeder extends Seeder
             0
         );
 
-        // ★ 追加: スタッフユーザー
+        // ★ 追加: オペレーター作成
         $this->createAccount(
-            'staff@nokku.com',
+            'operator@nokku.com',
             $password,
-            'Staff Taro',
-            'staff',
-            'Staff', // nickname
-            'https://i.pravatar.cc/150?u=staff@nokku.com',
-            'NOKKU Official Staff', // bio
-            0 // Staffはポイント不要
+            'Nokku Operator',
+            'operator',
+            'Operator',
+            'https://i.pravatar.cc/150?u=operator@nokku.com',
+            'カスタマーサポート担当',
+            0
         );
 
-        // ★ テスト用メインアーティスト
+        // ★ 先にアーティストを作成 (スタッフを紐付けるため)
         $mainArtist = $this->createAccount(
             'artist@nokku.com',
             $password,
@@ -117,6 +117,24 @@ class DatabaseSeeder extends Seeder
             "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error",
             0
         );
+
+        // ★ スタッフ作成 & アーティストへの紐付け
+        // (createAccountはUserモデルを返すので、後からemployer_idを入れて保存)
+        $staff = $this->createAccount(
+            'staff@nokku.com',
+            $password,
+            'Staff Taro',
+            'staff',
+            'Staff',
+            'https://i.pravatar.cc/150?u=staff@nokku.com',
+            'NOKKU Official Staff',
+            0
+        );
+        // ここで雇用関係を結ぶ！
+        if ($mainArtist && $staff) {
+            $staff->employer_id = $mainArtist->id;
+            $staff->save();
+        }
 
         // =========================================================
         // 4. メインアーティストのイベント (固定データ)
@@ -260,7 +278,6 @@ class DatabaseSeeder extends Seeder
             ]);
             return $user->uid;
         } catch (EmailExists $e) {
-            // 万が一削除漏れがあっても、既存のUIDを使うのでエラーにはならない
             $user = $this->auth->getUserByEmail($email);
             return $user->uid;
         }
