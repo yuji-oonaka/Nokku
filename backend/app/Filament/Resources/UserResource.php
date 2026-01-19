@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
-use App\Filament\Resources\UserResource\RelationManagers;
 use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -11,8 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth; // Facadeを使用
 
 class UserResource extends Resource
 {
@@ -20,35 +18,42 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    // ナビゲーションの表示名を変更
     protected static ?string $navigationLabel = 'ユーザー・アーティスト管理';
 
-    // ★重要: 表示データの制限ロジック
+    // ★重要: 表示データの制限ロジック (ArtistもStaffを見れるように緩和)
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
+        $user = Auth::user();
 
-        // 管理者(admin)はそのまま全件表示
-        if (auth()->user()->role === 'admin') {
+        // 1. 管理者(admin)は全員表示
+        if ($user->role === 'admin') {
             return $query;
         }
 
-        // アーティスト(artist)等は「自分自身のデータ」のみ表示
-        // これで他人の個人情報や他のアーティスト一覧は見えなくなります
-        return $query->where('id', auth()->id());
+        // 2. アーティスト(artist)は「自分」と「自分が雇ったスタッフ」のみ表示
+        if ($user->role === 'artist') {
+            return $query->where(function ($q) use ($user) {
+                $q->where('id', $user->id)                 // 自分自身
+                    ->orWhere('employer_id', $user->id);     // ★修正: 自分のスタッフ
+            });
+        }
+
+        // 3. その他は自分のみ
+        return $query->where('id', $user->id);
     }
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                // ▼▼▼ 既存の基本情報セクション ▼▼▼
+                // ▼▼▼ 基本情報セクション ▼▼▼
                 Forms\Components\Section::make('基本情報')
                     ->schema([
                         Forms\Components\TextInput::make('real_name')
                             ->label('本名')
                             ->maxLength(255),
-                            
+
                         Forms\Components\TextInput::make('nickname')
                             ->label('アーティスト名 / ニックネーム')
                             ->maxLength(255),
@@ -58,27 +63,61 @@ class UserResource extends Resource
                             ->required()
                             ->maxLength(255),
 
+                        // ★重要: ロール選択肢の動的制御
                         Forms\Components\Select::make('role')
                             ->label('権限')
-                            ->options([
-                                'artist' => 'アーティスト (Artist)',
-                                'admin'  => '管理者 (Admin)',
-                                'user'   => '一般ユーザー (User)',
-                            ])
+                            ->options(function () {
+                                // Adminは全権限を選択可能
+                                if (Auth::user()->role === 'admin') {
+                                    return [
+                                        'artist' => 'アーティスト (Artist)',
+                                        'admin'  => '管理者 (Admin)',
+                                        'staff'  => '運営スタッフ (Staff)',
+                                        'user'   => '一般ユーザー (User)',
+                                    ];
+                                }
+                                // ArtistはStaffのみ作成可能
+                                if (Auth::user()->role === 'artist') {
+                                    return [
+                                        'staff'  => '運営スタッフ (Staff)',
+                                    ];
+                                }
+                                return [];
+                            })
                             ->required()
-                            ->default('artist')
-                            // ★追加: 管理者以外は変更不可（ロック）
-                            ->disabled(fn () => auth()->user()->role !== 'admin')
-                            // disabledでもデータ送信するために必須
-                            ->dehydrated(),
+                            // 初期値も権限に合わせて変更
+                            ->default(fn() => Auth::user()->role === 'artist' ? 'staff' : 'artist')
+                            // AdminとArtist以外は変更不可
+                            ->disabled(fn() => !in_array(Auth::user()->role, ['admin', 'artist']))
+                            ->dehydrated()
+                            ->selectablePlaceholder(false), // 空選択を防止
 
                         Forms\Components\TextInput::make('password')
                             ->password()
-                            ->dehydrated(fn ($state) => filled($state))
-                            ->required(fn (string $context): bool => $context === 'create'),
+                            ->dehydrated(fn($state) => filled($state))
+                            ->required(fn(string $context): bool => $context === 'create'),
                     ])->columns(2),
 
-                // ▼▼▼ 追加: 住所・連絡先セクション ▼▼▼
+                // ▼▼▼ プロフィール設定 (画像・自己紹介) ▼▼▼
+                Forms\Components\Section::make('プロフィール設定')
+                    ->description('アプリ内で表示される情報です。スタッフの場合は本人の顔写真を登録してください。')
+                    ->schema([
+                        Forms\Components\FileUpload::make('image_url')
+                            ->label('プロフィール画像 / 顔写真')
+                            ->disk('public')
+                            ->directory('users/avatars')
+                            ->image()
+                            ->avatar()
+                            ->imageEditor()
+                            ->maxSize(5120),
+
+                        Forms\Components\Textarea::make('bio')
+                            ->label('自己紹介')
+                            ->rows(3)
+                            ->maxLength(500),
+                    ]),
+
+                // ▼▼▼ 住所・連絡先セクション ▼▼▼
                 Forms\Components\Section::make('住所・連絡先')
                     ->schema([
                         Forms\Components\TextInput::make('phone_number')
@@ -102,13 +141,13 @@ class UserResource extends Resource
                         Forms\Components\TextInput::make('address_line1')
                             ->label('番地など')
                             ->maxLength(255)
-                            ->columnSpanFull(), // 横幅いっぱいに
+                            ->columnSpanFull(),
 
                         Forms\Components\TextInput::make('address_line2')
                             ->label('建物名・部屋番号')
                             ->maxLength(255)
                             ->columnSpanFull(),
-                    ])->columns(3), // 3列で表示
+                    ])->columns(3),
             ]);
     }
 
@@ -116,6 +155,11 @@ class UserResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\ImageColumn::make('image_url')
+                    ->label('アイコン')
+                    ->disk('public')
+                    ->circular(),
+
                 Tables\Columns\TextColumn::make('real_name')
                     ->label('本名')
                     ->searchable(),
@@ -127,24 +171,24 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('email')
                     ->searchable(),
 
-                // 権限を色分けして表示
                 Tables\Columns\TextColumn::make('role')
                     ->label('権限')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'admin' => 'danger',   // 赤
-                        'artist' => 'success', // 緑
-                        'user' => 'gray',      // グレー
-                        default => 'gray',
+                    ->color(fn(string $state): string => match ($state) {
+                        'admin'  => 'danger',
+                        'artist' => 'success',
+                        'staff'  => 'info',
+                        'user'   => 'gray',
+                        default  => 'gray',
                     }),
             ])
             ->filters([
-                // 権限で絞り込みできるようにする
                 Tables\Filters\SelectFilter::make('role')
                     ->options([
                         'artist' => 'アーティスト',
-                        'admin' => '管理者',
-                        'user' => '一般ユーザー',
+                        'admin'  => '管理者',
+                        'staff'  => '運営スタッフ',
+                        'user'   => '一般ユーザー',
                     ]),
             ])
             ->actions([
@@ -159,9 +203,7 @@ class UserResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array

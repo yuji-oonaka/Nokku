@@ -10,6 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class PostResource extends Resource
 {
@@ -30,8 +31,8 @@ class PostResource extends Resource
                     ->searchable()
                     ->required()
                     // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
-                    ->disabled(fn () => auth()->user()->role !== 'admin')
-                    ->default(fn () => auth()->user()->role !== 'admin' ? auth()->id() : null)
+                    ->disabled(fn () => Auth::user()->role !== 'admin')
+                    ->default(fn () => Auth::user()->role !== 'admin' ? Auth::id() : null)
                     // データとして送信されるように設定（disabledだと送信されないため）
                     ->dehydrated(),
 
@@ -135,8 +136,8 @@ class PostResource extends Resource
         $query = parent::getEloquentQuery();
 
         // もしログインユーザーが「管理者(admin)」じゃなければ
-        if (auth()->user()->role !== 'admin') {
-            $query->where('user_id', auth()->id());
+        if (Auth::user()->role !== 'admin') {
+            $query->where('user_id', Auth::id());
         }
 
         return $query;

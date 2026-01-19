@@ -34,10 +34,17 @@ return new class extends Migration
             $table->string('two_factor_recovery_codes')->nullable();
             $table->timestamp('two_factor_confirmed_at')->nullable();
 
-            // 権限管理 (★修正: 'staff' を追加)
+            // 権限管理
             $table->enum('role', ['user', 'artist', 'admin', 'staff'])->default('user');
 
-            // ポイント残高 (★新規: 'points' を追加)
+            // ★追加: 雇用主ID (Staffの場合、どのArtistに雇われているか)
+            // constrained('users') で自分自身(usersテーブル)を参照します
+            $table->foreignId('employer_id')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+
+            // ポイント残高
             $table->integer('points')->default(0);
 
             // 住所情報

@@ -5,9 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Requests\UserTicket\ScanTicketRequest; // 追加
-use App\Http\Requests\UserTicket\ManualEnterRequest; // 追加
-use App\Services\TicketAdmissionService; // 追加
+use App\Http\Requests\UserTicket\ScanTicketRequest;
+use App\Http\Requests\UserTicket\ManualEnterRequest;
+use App\Services\TicketAdmissionService;
+use App\Models\UserTicket; // ★追加: 権限チェックのためにモデルが必要
 
 class UserTicketController extends Controller
 {
@@ -36,20 +37,20 @@ class UserTicketController extends Controller
             /** @var \App\Models\User $user */
             $user = Auth::user();
 
+            // ★ Scope Security: 権限チェック
+            // Serviceを呼ぶ前に、このチケットが操作可能なものか確認する
+            $qrCodeId = $request->validated('qr_code_id');
+            $this->checkScanPermission($user, $qrCodeId, 'qr');
+
             $result = $service->processAdmission(
                 $user,
-                $request->validated('qr_code_id'),
+                $qrCodeId,
                 'qr'
             );
 
             return response()->json($result);
         } catch (\Exception $e) {
-            // Serviceから投げられた例外コードを使用。なければ500
             $status = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
-
-            // 使用済み(409)の場合など、フロントエンドに必要な情報を返すための分岐が必要ならここで行う
-            // 例: チケット情報を返すなど（今回はシンプルにメッセージのみ）
-
             return response()->json(['message' => $e->getMessage()], $status);
         }
     }
@@ -63,9 +64,13 @@ class UserTicketController extends Controller
             /** @var \App\Models\User $user */
             $user = Auth::user();
 
+            // ★ Scope Security: 権限チェック
+            $ticketId = $request->validated('ticket_id');
+            $this->checkScanPermission($user, $ticketId, 'manual');
+
             $result = $service->processAdmission(
                 $user,
-                $request->validated('ticket_id'),
+                $ticketId,
                 'manual'
             );
 
@@ -73,6 +78,52 @@ class UserTicketController extends Controller
         } catch (\Exception $e) {
             $status = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
             return response()->json(['message' => $e->getMessage()], $status);
+        }
+    }
+
+    /**
+     * ★ 追加: スキャン権限の検証ロジック
+     * スタッフの場合、雇用主のイベントかどうかを厳密にチェックする
+     */
+    private function checkScanPermission($user, $identifier, $mode)
+    {
+        // Adminは無条件で許可
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        // ArtistでもStaffでもないユーザーはスキャン不可
+        if (!in_array($user->role, ['artist', 'staff'])) {
+            throw new \Exception('スキャン権限がありません。', 403);
+        }
+
+        // チケットを検索してイベントを特定する
+        $query = UserTicket::with('event');
+
+        if ($mode === 'qr') {
+            $query->where('qr_code_id', $identifier);
+        } else {
+            $query->where('id', $identifier); // manualの場合はID
+        }
+
+        $ticket = $query->first();
+
+        // チケットが見つからない場合は、ここではスルーしてServiceに404を出させるか、
+        // あるいはここで404にしても良い。ここではServiceと挙動を合わせるためスルーしても良いが、
+        // セキュリティ的には「存在しない」か「権限がない」か分からない方が安全な場合もある。
+        // 今回は「存在すればチェック」を行う。
+        if (!$ticket) {
+            return; // 存在しないならServiceが404を返すので任せる
+        }
+
+        // --- 核心部分: 雇用主チェック ---
+        $eventOwnerId = $ticket->event->artist_id;
+
+        // スタッフなら「雇用主ID」、アーティストなら「自分ID」と比較
+        $scanOperatorId = ($user->role === 'staff') ? $user->employer_id : $user->id;
+
+        if ($eventOwnerId !== $scanOperatorId) {
+            throw new \Exception('担当外のイベントチケットです。スキャン権限がありません。', 403);
         }
     }
 }
