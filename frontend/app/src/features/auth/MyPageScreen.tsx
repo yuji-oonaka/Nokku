@@ -33,13 +33,11 @@ type MenuSection = {
 
 // --- Components ---
 
-// ★ 追加: ポイントカードコンポーネント
 const PointCard: React.FC<{ points: number }> = ({ points }) => (
   <View style={styles.pointCard}>
     <View>
       <Text style={styles.pointLabel}>所持ポイント</Text>
       <Text style={styles.pointValue}>
-        {/* toLocaleString() でカンマ区切り表示 */}
         💎 {points.toLocaleString()} <Text style={styles.unit}>pt</Text>
       </Text>
     </View>
@@ -88,9 +86,12 @@ const useMenuConfig = (
     if (!user) return [];
 
     const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
+    // ★ 追加: Staff判定
+    const isStaff = user.role === 'staff';
+
     const sections: MenuSection[] = [];
 
-    // 1. アカウント設定
+    // 1. アカウント設定 (全ロール共通)
     sections.push({
       id: 'account',
       title: 'アカウント',
@@ -104,7 +105,8 @@ const useMenuConfig = (
     });
 
     // 2. 一般ユーザー向け
-    if (!isArtistOrAdmin) {
+    // ★ 修正: Staffが含まれないように厳密に除外
+    if (!isArtistOrAdmin && !isStaff) {
       sections.push({
         id: 'user_general',
         title: 'チケット・購入履歴',
@@ -156,7 +158,7 @@ const useMenuConfig = (
           },
         ],
       });
-
+      // アーティストもスキャン機能は使える
       sections.push({
         id: 'artist_scan',
         title: 'スキャン・会場管理',
@@ -174,6 +176,32 @@ const useMenuConfig = (
           {
             id: 'gate_scanner',
             title: '(会場用) 自動入場ゲート起動',
+            action: () => navigation.navigate('GateScanner'),
+            isSpecial: true,
+          },
+        ],
+      });
+    }
+
+    // ★ 追加: スタッフ専用メニュー
+    if (isStaff) {
+      sections.push({
+        id: 'staff_tools',
+        title: 'スタッフ業務メニュー',
+        items: [
+          {
+            id: 'scan_ticket',
+            title: 'チケット入場スキャン',
+            action: () => navigation.navigate('Scan', { scanMode: 'ticket' }),
+          },
+          {
+            id: 'scan_order',
+            title: 'グッズ引換スキャン',
+            action: () => navigation.navigate('Scan', { scanMode: 'order' }),
+          },
+          {
+            id: 'gate_scanner',
+            title: '自動入場ゲート起動',
             action: () => navigation.navigate('GateScanner'),
             isSpecial: true,
           },
@@ -265,6 +293,8 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   }
 
   const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
+  // ★ 追加
+  const isStaff = user.role === 'staff';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -293,9 +323,17 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
                 </Text>
               </View>
             )}
+            {/* バッジ表示ロジック修正 */}
             {isArtistOrAdmin && (
               <View style={styles.badgeContainer}>
                 <Text style={styles.badgeText}>ARTIST</Text>
+              </View>
+            )}
+            {isStaff && (
+              <View
+                style={[styles.badgeContainer, { backgroundColor: '#34C759' }]}
+              >
+                <Text style={styles.badgeText}>STAFF</Text>
               </View>
             )}
           </View>
@@ -305,9 +343,8 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           {user.bio ? <Text style={styles.profileBio}>{user.bio}</Text> : null}
         </View>
 
-        {/* ★ 追加: ポイントカードをここに配置 */}
-        {/* user.points がまだ型定義されていない場合エラーになるので、一旦 0 でフォールバック */}
-        <PointCard points={user.points || 0} />
+        {/* ★ 修正: Staff以外のみポイントカードを表示 */}
+        {!isStaff && <PointCard points={user.points || 0} />}
 
         {/* === メニューレンダリング === */}
         {menuSections.map(section => (
@@ -388,7 +425,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
 
-  /* ★ 追加: Point Card Styles */
+  /* Point Card Styles */
   pointCard: {
     backgroundColor: '#1C1C1E',
     marginHorizontal: 20,
@@ -400,7 +437,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#333',
-    // 影
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
