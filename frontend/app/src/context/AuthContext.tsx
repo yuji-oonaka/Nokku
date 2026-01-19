@@ -18,7 +18,7 @@ export interface DbUser {
   id: number;
   email: string;
   nickname: string;
-  role: 'user' | 'artist' | 'admin';
+  role: 'user' | 'artist' | 'admin' | 'staff';
   image_url?: string | null;
   bio?: string | null;
   points: number;
