@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // --- イベントチャット (Event Chat) ---
+    match /event_chat_rooms/{roomId} {
+      // 読み込み: OK
+      allow read: if isAuthenticated();
+      
+      // 作成(create)のみ許可
+      allow create: if isAuthenticated()
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 30
+                    && request.resource.data.eventId is string
+                    && request.resource.data.createdBy == request.auth.uid;
+      
+      allow update, delete: if false;
+
+      // メッセージ
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 200
+                      && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // ▼▼▼ ★ 追加: 注文ステータス監視用 (Order Status) ▼▼▼
+    match /order_status/{orderId} {
+      // 認証済みユーザーなら読み取り(監視)を許可
+      allow read: if isAuthenticated();
+      
+      // 書き込みはバックエンド(Admin SDK)からのみ行うため、クライアントからは禁止
+      allow write: if false;
+    }
+  }
+}
