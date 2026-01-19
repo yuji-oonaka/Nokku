@@ -73,6 +73,7 @@ class UserResource extends Resource
                                         'artist' => 'アーティスト (Artist)',
                                         'admin'  => '管理者 (Admin)',
                                         'staff'  => '運営スタッフ (Staff)',
+                                        'operator' => 'Operator (オペレーター)',
                                         'user'   => '一般ユーザー (User)',
                                     ];
                                 }

@@ -5,17 +5,31 @@ namespace App\Filament\Widgets;
 use App\Models\Order;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Number; // Laravel 10/11のヘルパー
+use Illuminate\Support\Number;
+use Illuminate\Support\Facades\Auth; // ★追加: 権限チェック用
 
 class SalesOverview extends BaseWidget
 {
-    // 表示更新頻度 (オプション: 自動更新したくない場合は削除)
+    // 表示更新頻度
     protected static ?string $pollingInterval = '15s';
+
+    // ★追加: ウィジェットの表示権限設定
+    // これでOperatorには売上が見えなくなります
+    public static function canView(): bool
+    {
+        $user = Auth::user();
+
+        // ログインしていない場合は非表示
+        if (!$user) {
+            return false;
+        }
+
+        // AdminとArtistのみ表示許可 (Operatorは除外)
+        return in_array($user->role, ['admin', 'artist']);
+    }
 
     protected function getStats(): array
     {
-        // 決済完了(completed)の注文のみを集計対象とする
-        // ※ステータス値は実際のプロジェクトに合わせて調整してください（例: 'paid', 'captured' 等）
         $query = Order::query()->where('status', 'completed');
 
         return [
@@ -23,7 +37,7 @@ class SalesOverview extends BaseWidget
                 ->description('決済完了済み注文総額')
                 ->descriptionIcon('heroicon-m-chart-bar')
                 ->color('success')
-                ->chart([7, 2, 10, 3, 15, 4, 17]), // ダミーのチャート装飾
+                ->chart([7, 2, 10, 3, 15, 4, 17]),
 
             Stat::make('プラットフォーム収益', Number::currency($query->sum('platform_fee'), 'JPY'))
                 ->description('手数料収入 (10%)')

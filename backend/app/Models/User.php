@@ -67,7 +67,7 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function canAccessPanel(Panel $panel): bool
     {
         // 修正: staff も管理画面に入れるならここに追加が必要ですが、現状維持
-        return in_array($this->role, ['admin', 'artist']);
+        return in_array($this->role, ['admin', 'artist', 'operator']);
     }
 
     public function getFilamentName(): string
