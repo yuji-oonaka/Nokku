@@ -91,9 +91,11 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 </div>
 
 ### 運用フローの設計
-単なる機能実装に留まらず、現場でのオペレーションを考慮した設計を行っています。
-* **User Flow:** 準備 → 購入 → 当日入場までのUXを最適化
-* **Admin Flow:** 入場スキャン・物販消込のスタッフ動線を確立
+単なる機能実装に留まらず、現場でのオペレーションとセキュリティを考慮した役割分担を行っています。
+
+* **User Flow:** チケット購入 → QR表示 → 当日入場までのスムーズなUX
+* **Staff Flow:** 専用アプリによる「入場スキャン・物販消込」のみに特化した現場動線（管理画面へのアクセス遮断）
+* **Operator Flow:** 顧客個人情報や売上データには触れず、「お問い合わせ対応」のみに集中できる安全な運用フロー
 
 ---
 
@@ -247,24 +249,27 @@ npm run android
 ### 🔐 管理画面・テスト用アカウント (Default Credentials)
 
 データベースのシーディング (`migrate:fresh --seed`) により、以下のテスト用アカウントが作成されます。
-Admin/Artistは、Web管理画面での設定に加え、アプリ側での**QRスキャン機能**等のテストにも使用します。
+Admin/Artist/OperatorはWeb管理画面を使用し、Staff/Userはアプリ側での操作確認に使用します。
 
 サーバー起動 (`./vendor/bin/sail up -d`) 後、以下のURLからアクセス可能です。
 
-| Role | Access (Web & App) | Local URL | Email | Password |
+| Role | Access Scope | Local URL | Email | Password |
 | :--- | :--- | :--- | :--- | :--- |
-| **Admin** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | http://localhost:8000/admin | `admin@nokku.com` | `password` |
-| **Artist** | [Web Dashboard](http://localhost:8000/admin)<br>+ App Login | http://localhost:8000/admin | `artist@nokku.com` | `password` |
-| **User** | App Login Only | - | `user@nokku.com` | `password` |
+| **Admin** | **Web (Full)** + App | http://localhost:8000/admin | `admin@nokku.com` | `password` |
+| **Artist** | **Web (Owner)** + App | http://localhost:8000/admin | `artist@nokku.com` | `password` |
+| **Operator** | **Web (Inquiry Only)** | http://localhost:8000/admin | `operator@nokku.com` | `password` |
+| **Staff** | **App (Scanner)** Only | - | `staff@nokku.com` | `password` |
+| **User** | **App (Customer)** Only | - | `user@nokku.com` | `password` |
 
 > [!WARNING]
 > これらのアカウント情報は **ローカル開発環境専用** です。
 > 本番環境では使用されず、すべてダミーデータです。
 
 > [!TIP]
-> **Artist権限 (Data Scoping) について**
-> Admin権限はプラットフォーム全体の数値を管理しますが、Artist権限では**「自身が主催するイベント・売上データのみ」**に自動的にスコープ（絞り込み）されて表示されます。
-> ※本来はメール招待制ですが、開発確認用にデモアカウント (`artist@nokku.com`) を用意しています。
+> **役割ごとのアクセス制限について**
+> * **Artist:** 自身が主催するイベント・売上データのみにスコープ（絞り込み）されます。
+> * **Operator:** 「お問い合わせ対応」のみ可能です。売上情報やイベント編集にはアクセスできません。また、アプリへのログインは制限されています。
+> * **Staff:** アプリでのチケットスキャン専用です。管理画面（Web）にはログインできません。
 ---
 
 ## 📱 実機テストの手順 (USB Debugging)
