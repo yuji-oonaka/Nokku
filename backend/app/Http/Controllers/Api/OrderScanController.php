@@ -10,7 +10,6 @@ use Illuminate\Support\Str;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\UserTicket;
-// ★ 成功しているチケット機能と同じ Facade を使う
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class OrderScanController extends Controller
@@ -23,10 +22,11 @@ class OrderScanController extends Controller
             return response()->json(['message' => 'IDが必要です'], 422);
         }
 
-        /** @var \App\Models\User $artist */
-        $artist = Auth::user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user(); // 変数名を $artist から $user に変更 (Staffもあり得るため)
 
-        if ($artist->role !== 'artist' && $artist->role !== 'admin') {
+        // ★ 修正: Staffも許可する
+        if (!in_array($user->role, ['artist', 'admin', 'staff'])) {
             return response()->json(['message' => 'この操作を行う権限がありません'], 403);
         }
 
@@ -54,10 +54,14 @@ class OrderScanController extends Controller
         $orderItem->load('product');
         $product = $orderItem->product;
 
-        if ($artist->role !== 'admin') {
-            if (!$product || $product->artist_id !== $artist->id) {
+        // ★ 修正: Scope Security (所有権チェック)
+        if ($user->role !== 'admin') {
+            // スタッフなら雇用主ID、アーティストなら自分のID
+            $requiredOwnerId = ($user->role === 'staff') ? $user->employer_id : $user->id;
+
+            if (!$product || $product->artist_id !== $requiredOwnerId) {
                 return response()->json([
-                    'message' => '権限がありません。他者のイベントのグッズは引き換えできません。'
+                    'message' => '権限がありません。担当外のイベントグッズは引き換えできません。'
                 ], 403);
             }
         }
@@ -77,8 +81,6 @@ class OrderScanController extends Controller
             // ★ Firestore 更新
             if ($orderItem->order->qr_code_id) {
                 try {
-                    // ★ 変更: app() ではなく、チケットと同じ Facade を使う
-                    // これでインスタンスがキャッシュされ、初期化ループを回避できるはずです
                     $firestore = Firebase::firestore();
                     $database = $firestore->database();
 
@@ -86,12 +88,11 @@ class OrderScanController extends Controller
                         ->document($orderItem->order->qr_code_id)
                         ->set([
                             'status' => 'redeemed',
-                            'updatedAt' => date('c'), // 安全のため文字列化は維持
-                            'scanner_id' => (int)$artist->id
+                            'updatedAt' => date('c'),
+                            'scanner_id' => (int)$user->id // 実行者のIDを記録
                         ]);
                 } catch (\Exception $e) {
                     Log::error('Firestore update failed: ' . $e->getMessage());
-                    // 失敗してもスキャン自体は成功させる
                 }
             }
         }

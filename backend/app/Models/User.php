@@ -31,7 +31,8 @@ class User extends Authenticatable implements FilamentUser, HasName
         'email',
         'firebase_uid',
         'role',
-        'points', // ★追加
+        'employer_id',
+        'points',
         'password',
         'phone_number',
         'postal_code',
@@ -124,6 +125,18 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function inquiries(): HasMany
     {
         return $this->hasMany(Inquiry::class);
+    }
+
+    //追加: 自分が雇っているスタッフたち
+    public function staff()
+    {
+        return $this->hasMany(User::class, 'employer_id');
+    }
+
+    //自分の雇用主（アーティスト）
+    public function employer()
+    {
+        return $this->belongsTo(User::class, 'employer_id');
     }
 
     /*

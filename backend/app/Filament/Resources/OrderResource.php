@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction;
 use pxlrbt\FilamentExcel\Exports\ExcelExport;
 use pxlrbt\FilamentExcel\Columns\Column;
+use Illuminate\Support\Facades\Auth;
 
 class OrderResource extends Resource
 {
@@ -30,13 +31,13 @@ class OrderResource extends Resource
         $query = parent::getEloquentQuery();
 
         // 管理者(admin)はそのまま全件表示
-        if (auth()->user()->role === 'admin') {
+        if (Auth::user()->role === 'admin') {
             return $query;
         }
 
         // アーティストは「自分の商品が含まれている注文」のみ表示
         return $query->whereHas('items.product', function ($q) {
-            $q->where('artist_id', auth()->id());
+            $q->where('artist_id', Auth::id());
         });
     }
 
