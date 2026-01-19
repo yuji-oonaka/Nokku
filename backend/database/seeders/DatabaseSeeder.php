@@ -35,7 +35,9 @@ class DatabaseSeeder extends Seeder
         $emailsToClean = [
             'admin@nokku.com',
             'user@nokku.com',
+            'zero@nokku.com',   // ★ 追加: 漏れていたので追加
             'artist@nokku.com',
+            'staff@nokku.com',  // ★ 追加: スタッフ用
         ];
         // ランダムアーティストの分も追加
         for ($i = 1; $i <= 10; $i++) {
@@ -47,7 +49,6 @@ class DatabaseSeeder extends Seeder
             try {
                 $user = $this->auth->getUserByEmail($email);
                 $this->auth->deleteUser($user->uid);
-                // $this->command->info("Deleted: {$email}");
             } catch (UserNotFound $e) {
                 // いなければ何もしない（正常）
             } catch (\Throwable $e) {
@@ -68,7 +69,7 @@ class DatabaseSeeder extends Seeder
             null,
             'https://i.pravatar.cc/150?u=admin@nokku.com',
             null,
-            100000 // ★ 初期ポイント
+            100000
         );
 
         $this->createAccount(
@@ -78,11 +79,10 @@ class DatabaseSeeder extends Seeder
             'user',
             '一般ユーザー',
             'https://i.pravatar.cc/150?u=user@nokku.com',
-            null,    // bio
-            5000     // ★ points
+            null,
+            5000
         );
 
-        // ★追加: ポイント不足テスト用ユーザー (0pt)
         $this->createAccount(
             'zero@nokku.com',
             $password,
@@ -91,7 +91,19 @@ class DatabaseSeeder extends Seeder
             '無課金ユーザー',
             'https://i.pravatar.cc/150?u=zero@nokku.com',
             null,
-            0        // ★ 0pt
+            0
+        );
+
+        // ★ 追加: スタッフユーザー
+        $this->createAccount(
+            'staff@nokku.com',
+            $password,
+            'Staff Taro',
+            'staff',
+            'Staff', // nickname
+            'https://i.pravatar.cc/150?u=staff@nokku.com',
+            'NOKKU Official Staff', // bio
+            0 // Staffはポイント不要
         );
 
         // ★ テスト用メインアーティスト
@@ -102,8 +114,8 @@ class DatabaseSeeder extends Seeder
             'artist',
             'テストアーティスト',
             'https://i.pravatar.cc/150?u=artist@nokku.com',
-            "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error", // bio
-            0 // points (アーティストは基本0でもOK)
+            "福岡を拠点に活動する4ピースバンド「balconny」のボーカルです。\n全ての開発者の心に届く歌を歌います。\n\n【代表曲】\n・Null Pointer Exception\n・500 Internal Server Error",
+            0
         );
 
         // =========================================================
@@ -189,7 +201,6 @@ class DatabaseSeeder extends Seeder
             ->has(OrderItem::factory()->count(rand(1, 4)), 'items')
             ->create();
 
-        // 合計金額の再計算と上書き
         foreach ($orders as $order) {
             $realTotal = $order->items->sum(function ($item) {
                 return $item->price_at_purchase * $item->quantity;
@@ -198,10 +209,9 @@ class DatabaseSeeder extends Seeder
         }
 
         $this->command->info("15 Orders created.");
-        $this->command->info('🎉 全てのシーディングが完了しました！');
 
         // =========================================================
-        // 7. 問い合わせデータの生成 (New!)
+        // 7. 問い合わせデータの生成
         // =========================================================
         $this->call(InquirySeeder::class);
         $this->command->info("Inquiries created.");
@@ -231,13 +241,10 @@ class DatabaseSeeder extends Seeder
                 'address_line1' => fake()->streetAddress(),
                 'address_line2' => fake()->secondaryAddress(),
                 'phone_number' => fake()->phoneNumber(),
-
-                // ★追加: ポイントを保存
                 'points' => $points,
             ]
         );
 
-        // 分かりやすくログにポイントも表示
         $this->command->info("User prepared: {$email} ({$role}) - {$points}pt");
         return $user;
     }
