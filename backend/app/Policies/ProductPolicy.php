@@ -11,9 +11,9 @@ class ProductPolicy
      * Determine whether the user can view any models.
      * 一覧は誰でも見れる (Controller側で公開範囲制御していないためtrue)
      */
-    public function viewAny(?User $user): bool
+    public function viewAny(User $user): bool
     {
-        return true;
+        return in_array($user->role, ['admin', 'artist']);
     }
 
     /**

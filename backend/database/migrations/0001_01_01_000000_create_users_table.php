@@ -35,7 +35,7 @@ return new class extends Migration
             $table->timestamp('two_factor_confirmed_at')->nullable();
 
             // 権限管理
-            $table->enum('role', ['user', 'artist', 'admin', 'staff'])->default('user');
+            $table->enum('role', ['user', 'artist', 'admin', 'staff', 'operator'])->default('user');
 
             // ★追加: 雇用主ID (Staffの場合、どのArtistに雇われているか)
             // constrained('users') で自分自身(usersテーブル)を参照します

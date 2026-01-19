@@ -11,9 +11,9 @@ class EventPolicy
     /**
      * 閲覧は誰でも可能
      */
-    public function viewAny(?User $user): bool
+    public function viewAny(User $user): bool
     {
-        return true;
+        return in_array($user->role, ['admin', 'artist']);
     }
 
     /**

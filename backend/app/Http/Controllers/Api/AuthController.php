@@ -76,10 +76,21 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
-        // シンプルに、ミドルウェアがセットしたユーザー情報を返すだけ
+        // ミドルウェアによってセットされたユーザー情報を取得
+        $user = $request->user();
+
+        // ★追加: Operatorのログインをブロック
+        // アプリは現場・一般向けなので、管理専用のOperatorは弾きます
+        if ($user->role === 'operator') {
+            return response()->json([
+                'message' => 'オペレーターアカウントではアプリをご利用いただけません。PC等の管理画面からアクセスしてください。'
+            ], 403); // 403 Forbidden
+        }
+
+        // ログイン成功レスポンス
         return response()->json([
             'message' => 'ログインに成功しました',
-            'user' => $request->user()
+            'user' => $user
         ], 200);
     }
 }
