@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\OrderScanController; // ★ 追加: 軽量コント
 use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\EventChatController;
+use App\Http\Controllers\Api\LoginBonusController;
 
 /*
 |--------------------------------------------------------------------------
@@ -97,4 +98,7 @@ Route::middleware('firebase.auth')->group(function () {
         // ルーム作成時のポイント消費
         Route::post('/consume-room', [EventChatController::class, 'consumeRoomCreate']);
     });
+
+    // ★ログインボーナス
+    Route::post('/login-bonus', [LoginBonusController::class, 'claim']);
 });
