@@ -15,6 +15,7 @@ import auth from '@react-native-firebase/auth';
 import { useAuth, DbUser } from '../../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
+import { useLoginBonus } from '../../hooks/useLoginBonus';
 
 // --- Types ---
 type MenuItem = {
@@ -233,6 +234,9 @@ interface MyPageScreenProps {
 }
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
+  
+  // マイページが開かれるたびにチェックが走り、未取得なら付与＆アラート表示されます
+  useLoginBonus();
   const navigation = useNavigation<any>();
   const { user, loading, firebaseUser } = useAuth();
   const queryClient = useQueryClient();
