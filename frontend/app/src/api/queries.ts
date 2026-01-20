@@ -353,8 +353,17 @@ export const closeInquiry = async (id: number): Promise<Inquiry> => {
   return response.data.inquiry;
 };
 
-// ★追加: メッセージ送信関数
+// メッセージ送信関数
 export const sendInquiryMessage = async (inquiryId: number, body: string): Promise<InquiryResponse> => {
   const response = await api.post(`/inquiries/${inquiryId}/messages`, { body });
   return response.data.data;
+};
+
+/**
+ * ログインボーナス獲得API
+ * POST /login-bonus
+ */
+export const claimLoginBonus = async () => {
+  const { data } = await api.post('/login-bonus');
+  return data;
 };
