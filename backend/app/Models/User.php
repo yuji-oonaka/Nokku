@@ -17,12 +17,14 @@ use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasName;
 use Filament\Panel;
-// ▼ 追加インポート
 use App\Models\PointTransaction;
+use Laravel\Cashier\Billable;
 
 class User extends Authenticatable implements FilamentUser, HasName
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    // Billableを追加することで、Stripeのサブスクリプション機能が有効化されます
+    // 例: $user->newSubscription(...) が使えるようになる
+    use HasApiTokens, HasFactory, Notifiable, Billable;
     use TwoFactorAuthenticatable;
 
     protected $fillable = [

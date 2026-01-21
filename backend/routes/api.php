@@ -33,6 +33,12 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware([FirebaseApiAuth::class, 'throttle:5,1']);
 
+// ★ 追加: 決済完了・キャンセル画面（認証不要のWebルートとして扱うが、APIグループに書いて簡易対応）
+// 本来は routes/web.php が適切ですが、APIサーバーとして完結させるためここでも可
+// ただし、Cashierのcheckoutが返すリダイレクト先としてアクセス可能であること。
+Route::get('/subscription/success', [App\Http\Controllers\Api\SubscriptionController::class, 'success'])->name('subscription.success');
+Route::get('/subscription/cancel', [App\Http\Controllers\Api\SubscriptionController::class, 'cancel'])->name('subscription.cancel');
+
 // --- 認証済みユーザーのみアクセス可能 ---
 Route::middleware('firebase.auth')->group(function () {
 
@@ -99,6 +105,16 @@ Route::middleware('firebase.auth')->group(function () {
         Route::post('/consume-room', [EventChatController::class, 'consumeRoomCreate']);
     });
 
-    // ★ログインボーナス
+    // ログインボーナス
     Route::post('/login-bonus', [LoginBonusController::class, 'claim']);
+
+    // サブスクリプション関連
+    Route::prefix('subscription')->group(function () {
+        Route::get('/status', [App\Http\Controllers\Api\SubscriptionController::class, 'status']);
+
+        Route::post('/checkout', [App\Http\Controllers\Api\SubscriptionController::class, 'checkout']); // 新規
+        Route::post('/renew', [App\Http\Controllers\Api\SubscriptionController::class, 'renew']);       // 更新(おかわり)
+        Route::post('/upgrade', [App\Http\Controllers\Api\SubscriptionController::class, 'upgrade']);   // 上位変更
+        Route::post('/portal', [App\Http\Controllers\Api\SubscriptionController::class, 'portal']);     // 管理(解約/下位)
+    });
 });
