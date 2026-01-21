@@ -29,6 +29,7 @@ class PointTransaction extends Model
     public const TYPE_DONATION = 'donation'; // 将来用
     public const TYPE_BONUS = 'bonus';
     public const TYPE_LOGIN_BONUS = 'login_bonus';
+    public const TYPE_SUBSCRIPTION = 'subscription';
 
     public function user(): BelongsTo
     {
