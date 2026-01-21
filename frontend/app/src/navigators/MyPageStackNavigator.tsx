@@ -26,6 +26,7 @@ import FavoriteProductsScreen from '../features/commerce/FavoriteProductsScreen'
 import OrderDetailScreen from '../features/commerce/OrderDetailScreen';
 import ProductDetailScreen from '../features/commerce/ProductDetailScreen';
 import TicketDetailScreen from '../features/tickets/TicketDetailScreen';
+import SubscriptionScreen from '../features/subscription/SubscriptionScreen';
 
 export type MyPageStackParamList = {
   MyPageTop: undefined;
@@ -36,6 +37,7 @@ export type MyPageStackParamList = {
   PostCreate: undefined;
   Scan: { scanMode: 'ticket' | 'order' };
   GateScanner: undefined;
+  Subscription: undefined;
 
   // 🗑️ 削除
   // Inquiry: undefined;
@@ -157,6 +159,12 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         name="TicketDetail"
         component={TicketDetailScreen}
         options={{ title: 'チケット詳細' }}
+      />
+      {/* ★ 追加: ここにプラン契約画面を登録 */}
+      <Stack.Screen
+        name="Subscription"
+        component={SubscriptionScreen}
+        options={{ title: 'プラン契約' }}
       />
     </Stack.Navigator>
   );

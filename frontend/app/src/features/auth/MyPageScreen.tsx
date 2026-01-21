@@ -132,6 +132,11 @@ const useMenuConfig = (
             title: 'お問い合わせ / サポート',
             action: () => navigation.navigate('InquiryList'),
           },
+          {
+            id: 'subscription',
+            title: 'プラン契約・変更',
+            action: () => navigation.navigate('Subscription'),
+          },
         ],
       });
     }
