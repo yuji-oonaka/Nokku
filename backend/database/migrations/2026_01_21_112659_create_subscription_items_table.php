@@ -17,7 +17,15 @@ return new class extends Migration
             $table->string('stripe_id')->unique();
             $table->string('stripe_product');
             $table->string('stripe_price');
+
+            // ★統合: meter_id を stripe_price の後ろに追加
+            $table->string('meter_id')->nullable();
+
             $table->integer('quantity')->nullable();
+
+            // ★統合: meter_event_name を quantity の後ろに追加
+            $table->string('meter_event_name')->nullable();
+
             $table->timestamps();
 
             $table->index(['subscription_id', 'stripe_price']);

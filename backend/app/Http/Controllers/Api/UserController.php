@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Http\Requests\User\UpdateUserRequest; // 作成したFormRequestをインポート
+use App\Http\Requests\User\UpdateUserRequest;
 
 class UserController extends Controller
 {
@@ -13,7 +13,14 @@ class UserController extends Controller
      */
     public function show(Request $request)
     {
-        return response()->json($request->user());
+        // ★ここを元の形に戻します。
+        // リレーションの load はあっても邪魔にならないので、念のため残しておきます。
+        // (これを消しても動きますが、残しておくと後でガチャ対応するときに役立ちます)
+        $user = $request->user()->load(['currentIcon', 'currentFrame', 'currentBackground']);
+
+        // Resourceを使わず、Laravelの標準機能でJSONにします。
+        // これなら Bio も Image も、DBにあるものは全て確実に表示されます。
+        return response()->json($user);
     }
 
     /**
@@ -21,22 +28,37 @@ class UserController extends Controller
      */
     public function update(UpdateUserRequest $request)
     {
-        /** @var \App\Models\User $user */
         $user = $request->user();
-
-        // 1. バリデーション済みのデータを取得
-        // (UpdateUserRequestですでにチェック済み)
         $validatedData = $request->validated();
 
-        // 2. 【ビジネスロジック】アーティスト以外は画像URLを除外する
-        // クライアント側で誤って送ってきた場合や、不正なリクエストへの対策
-        if ($user->role !== 'artist') {
+        // ★「Userは画像アップロード禁止」のロジックも、とりあえず復活させておきます
+        // これで既存の挙動は保証されます。
+        if ($user->role !== 'artist' && $user->role !== 'admin') {
             unset($validatedData['image_url']);
         }
 
-        // 3. 更新実行
         $user->update($validatedData);
 
+        // 更新後も、Resourceを使わずそのまま返します
+        $user->load(['currentIcon', 'currentFrame', 'currentBackground']);
         return response()->json($user);
+    }
+
+    /**
+     * ユーザーの所持アイテム一覧を取得
+     */
+    public function items(Request $request)
+    {
+        // 中間テーブル(user_profile_items)の取得日(obtained_at)も一緒に取得
+        // 新しく手に入れた順（降順）で返します
+        $items = $request->user()
+            ->profileItems()
+            ->withPivot('obtained_at')
+            ->orderBy('pivot_obtained_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'items' => $items
+        ]);
     }
 }

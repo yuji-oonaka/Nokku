@@ -14,40 +14,30 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
 
-            // Firebase UID (必須)
-            $table->string('firebase_uid')->unique();
-
-            // 名前関連
+            // --- Identity ---
+            $table->string('firebase_uid')->unique(); // 修正: unique制約を明示
             $table->string('real_name');
             $table->string('nickname');
-
-            // プロフィール画像と自己紹介
             $table->string('image_url')->nullable();
             $table->text('bio')->nullable();
 
+            // --- Auth & Security ---
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
-
-            // 2要素認証
-            $table->string('two_factor_secret')->nullable();
-            $table->string('two_factor_recovery_codes')->nullable();
+            // Jetstream/Fortify Two Factor
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
             $table->timestamp('two_factor_confirmed_at')->nullable();
 
-            // 権限管理
+            // --- Roles ---
             $table->enum('role', ['user', 'artist', 'admin', 'staff', 'operator'])->default('user');
+            $table->unsignedBigInteger('employer_id')->nullable();
 
-            // ★追加: 雇用主ID (Staffの場合、どのArtistに雇われているか)
-            // constrained('users') で自分自身(usersテーブル)を参照します
-            $table->foreignId('employer_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
-
-            // ポイント残高
+            // --- Economy ---
             $table->integer('points')->default(0);
 
-            // 住所情報
+            // --- Contact & Address ---
             $table->string('phone_number', 20)->nullable();
             $table->string('postal_code', 8)->nullable();
             $table->string('prefecture', 10)->nullable();
@@ -55,15 +45,37 @@ return new class extends Migration
             $table->string('address_line1')->nullable();
             $table->string('address_line2')->nullable();
 
+            // --- ★ NOKKU Gacha System (Profile Items) ---
+            // ※ここで定義。timestampsはここには書かない。
+            $table->foreignId('current_icon_id')
+                ->nullable()
+                ->constrained('profile_items')
+                ->nullOnDelete();
+
+            $table->foreignId('current_frame_id')
+                ->nullable()
+                ->constrained('profile_items')
+                ->nullOnDelete();
+
+            $table->foreignId('current_bg_id')
+                ->nullable()
+                ->constrained('profile_items')
+                ->nullOnDelete();
+
+            $table->rememberToken();
+
+            // --- Timestamps (ここだけに記述する) ---
             $table->timestamps();
         });
 
+        // パスワードリセットトークン (既存のまま)
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('token');
             $table->timestamp('created_at')->nullable();
         });
 
+        // セッション (既存のまま)
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();

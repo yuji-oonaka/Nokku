@@ -13,20 +13,24 @@ class PointTransaction extends Model
     protected $fillable = [
         'user_id',
         'amount',
-        'type',        // ★復活
+        'type',
         'description',
-        'metadata',    // ★追加
+        'metadata',
     ];
 
     protected $casts = [
-        'metadata' => 'array', // JSONを配列として扱う
+        'metadata' => 'array',
     ];
 
-    // 定数管理（将来増えるガチャや寄付もここに追記）
+    // 定数管理
     public const TYPE_CHAT_MESSAGE = 'chat_message';
     public const TYPE_ROOM_CREATE = 'room_create';
-    public const TYPE_GACHA = 'gacha';       // 将来用
-    public const TYPE_DONATION = 'donation'; // 将来用
+
+    // ★ 修正・追加部分
+    public const TYPE_GACHA = 'gacha';           // ガチャを回す（消費）
+    public const TYPE_GACHA_REFUND = 'gacha_refund'; // ★追加: ダブり時のポイント還元
+
+    public const TYPE_DONATION = 'donation';
     public const TYPE_BONUS = 'bonus';
     public const TYPE_LOGIN_BONUS = 'login_bonus';
     public const TYPE_SUBSCRIPTION = 'subscription';

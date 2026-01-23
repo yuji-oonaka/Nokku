@@ -234,6 +234,13 @@ class DatabaseSeeder extends Seeder
         $this->call(InquirySeeder::class);
         $this->command->info("Inquiries created.");
 
+        $this->call([
+            ProfileItemSeeder::class, // 必ず先に実行
+            GachaSeeder::class,
+        ]);
+        $this->command->info("ProfileItems created.");
+
+
         $this->command->info('🎉 全てのシーディングが完了しました！');
     }
 

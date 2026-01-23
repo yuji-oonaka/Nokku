@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\EventChatController;
 use App\Http\Controllers\Api\LoginBonusController;
+use App\Http\Controllers\Api\GachaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -117,4 +118,11 @@ Route::middleware('firebase.auth')->group(function () {
         Route::post('/upgrade', [App\Http\Controllers\Api\SubscriptionController::class, 'upgrade']);   // 上位変更
         Route::post('/portal', [App\Http\Controllers\Api\SubscriptionController::class, 'portal']);     // 管理(解約/下位)
     });
+
+    // --- ガチャ機能 ---
+    Route::get('/gachas', [GachaController::class, 'index']);
+    Route::get('/gachas/{id}', [GachaController::class, 'show']);
+    Route::post('/gachas/{id}/spin', [GachaController::class, 'spin']);
+
+    Route::get('/user/items', [UserController::class, 'items']);
 });

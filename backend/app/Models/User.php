@@ -45,6 +45,9 @@ class User extends Authenticatable implements FilamentUser, HasName
         'image_url',
         'avatar',
         'bio',
+        'current_icon_id',
+        'current_frame_id',
+        'current_bg_id',
     ];
 
     protected $hidden = [
@@ -139,6 +142,29 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function employer()
     {
         return $this->belongsTo(User::class, 'employer_id');
+    }
+
+    // 現在装備中のアイテム
+    public function currentIcon()
+    {
+        return $this->belongsTo(ProfileItem::class, 'current_icon_id');
+    }
+
+    public function currentFrame()
+    {
+        return $this->belongsTo(ProfileItem::class, 'current_frame_id');
+    }
+
+    public function currentBackground()
+    {
+        return $this->belongsTo(ProfileItem::class, 'current_bg_id');
+    }
+
+    // 所持しているアイテム一覧
+    public function profileItems()
+    {
+        return $this->belongsToMany(ProfileItem::class, 'user_profile_items', 'user_id', 'profile_item_id')
+            ->withPivot('obtained_at');
     }
 
     /*
