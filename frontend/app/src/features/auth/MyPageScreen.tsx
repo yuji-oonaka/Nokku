@@ -87,26 +87,35 @@ const useMenuConfig = (
     if (!user) return [];
 
     const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
-    // ★ 追加: Staff判定
     const isStaff = user.role === 'staff';
 
     const sections: MenuSection[] = [];
 
     // 1. アカウント設定 (全ロール共通)
+    const accountItems: MenuItem[] = [
+      {
+        id: 'profile_edit',
+        title: 'プロフィールを編集',
+        action: () => navigation.navigate('ProfileEdit'),
+      },
+    ];
+
+    // ★追加: スタッフ以外はガチャを回せる
+    if (!isStaff) {
+      accountItems.push({
+        id: 'gacha',
+        title: 'プロフィールガチャ 🎰', // 目立つように絵文字を追加
+        action: () => navigation.navigate('Gacha'),
+      });
+    }
+
     sections.push({
       id: 'account',
-      title: 'アカウント',
-      items: [
-        {
-          id: 'profile_edit',
-          title: 'プロフィールを編集',
-          action: () => navigation.navigate('ProfileEdit'),
-        },
-      ],
+      title: 'アカウント・カスタマイズ',
+      items: accountItems,
     });
 
     // 2. 一般ユーザー向け
-    // ★ 修正: Staffが含まれないように厳密に除外
     if (!isArtistOrAdmin && !isStaff) {
       sections.push({
         id: 'user_general',
@@ -189,7 +198,7 @@ const useMenuConfig = (
       });
     }
 
-    // ★ 追加: スタッフ専用メニュー
+    // ★ スタッフ専用メニュー
     if (isStaff) {
       sections.push({
         id: 'staff_tools',
@@ -239,7 +248,6 @@ interface MyPageScreenProps {
 }
 
 const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
-  
   // マイページが開かれるたびにチェックが走り、未取得なら付与＆アラート表示されます
   useLoginBonus();
   const navigation = useNavigation<any>();
@@ -302,7 +310,6 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
   }
 
   const isArtistOrAdmin = user.role === 'artist' || user.role === 'admin';
-  // ★ 追加
   const isStaff = user.role === 'staff';
 
   return (
@@ -352,7 +359,7 @@ const MyPageScreen: React.FC<MyPageScreenProps> = ({ onLogout }) => {
           {user.bio ? <Text style={styles.profileBio}>{user.bio}</Text> : null}
         </View>
 
-        {/* ★ 修正: Staff以外のみポイントカードを表示 */}
+        {/* Staff以外のみポイントカードを表示 */}
         {!isStaff && <PointCard points={user.points || 0} />}
 
         {/* === メニューレンダリング === */}
