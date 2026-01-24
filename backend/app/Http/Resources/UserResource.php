@@ -12,10 +12,11 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'nickname' => $this->nickname,
+            // モデルのアクセサ(imageUrl)が効くので、そのまま渡せばOK
             'image_url' => $this->image_url,
-            // ★追加: せっかく実装したBioもここで返します
             'bio' => $this->bio,
             'role' => $this->role,
+            // 必要な情報があればここに追加
         ];
     }
 }
