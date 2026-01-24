@@ -10,6 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
@@ -21,6 +22,24 @@ class GachaResource extends Resource
     protected static ?string $navigationGroup = 'ガチャ管理';
     protected static ?string $navigationLabel = 'ガチャ筐体管理';
     protected static ?string $modelLabel = 'ガチャ';
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->role === 'admin';
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+    public static function canEdit($record): bool
+    {
+        return static::canViewAny();
+    }
+    public static function canDelete($record): bool
+    {
+        return static::canViewAny();
+    }
 
     public static function form(Form $form): Form
     {
