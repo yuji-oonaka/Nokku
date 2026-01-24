@@ -13,10 +13,7 @@ import PostCreateScreen from '../features/social/PostCreateScreen';
 import ScannerScreen from '../features/tickets/ScannerScreen';
 import GateScannerScreen from '../features/tickets/GateScannerScreen';
 
-// 🗑️ 削除: 旧 InquiryScreen
-// import InquiryScreen from '../features/auth/InquiryScreen';
-
-// 🆕 追加: 新しい問い合わせ機能
+// 問い合わせ関連
 import InquiryListScreen from '../features/inquiry/InquiryListScreen';
 import InquiryDetailScreen from '../features/inquiry/InquiryDetailScreen';
 import InquiryCreateScreen from '../features/inquiry/InquiryCreateScreen';
@@ -27,6 +24,9 @@ import OrderDetailScreen from '../features/commerce/OrderDetailScreen';
 import ProductDetailScreen from '../features/commerce/ProductDetailScreen';
 import TicketDetailScreen from '../features/tickets/TicketDetailScreen';
 import SubscriptionScreen from '../features/subscription/SubscriptionScreen';
+
+// ★追加1: ガチャ画面のインポート
+import GachaScreen from '../features/gacha/screens/GachaScreen';
 
 export type MyPageStackParamList = {
   MyPageTop: undefined;
@@ -39,17 +39,14 @@ export type MyPageStackParamList = {
   GateScanner: undefined;
   Subscription: undefined;
 
-  // 🗑️ 削除
-  // Inquiry: undefined;
-
-  // 🆕 追加
+  // 問い合わせ
   InquiryList: undefined;
   InquiryDetail: { inquiryId: number };
   InquiryCreate: {
     target_type?: 'event' | 'user' | 'app' | 'order';
     target_id?: number;
     target_name?: string;
-    default_subject?: string; // ★追加: 件名の初期値
+    default_subject?: string;
   };
 
   OrderHistory: undefined;
@@ -57,6 +54,9 @@ export type MyPageStackParamList = {
   FavoriteProducts: undefined;
   ProductDetail: { productId: number };
   TicketDetail: { ticket: UserTicket };
+
+  // ★追加2: ガチャ画面の定義
+  Gacha: undefined;
 };
 
 interface Props {
@@ -64,12 +64,6 @@ interface Props {
 }
 
 const Stack = createStackNavigator<MyPageStackParamList>();
-
-const LogoutButton = ({ onLogout }: { onLogout: () => void }) => (
-  <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-    <Text style={styles.logoutButtonText}>ログアウト</Text>
-  </TouchableOpacity>
-);
 
 const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
   const screenOptions = {
@@ -89,7 +83,6 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         {() => <MyPageScreen onLogout={onLogout} />}
       </Stack.Screen>
 
-      {/* ... (中略: ProfileEdit, MyTickets, EventCreate など変更なし) ... */}
       <Stack.Screen
         name="ProfileEdit"
         component={ProfileEditScreen}
@@ -118,7 +111,6 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         options={{ title: '自動入場ゲート', headerShown: false }}
       />
 
-      {/* 🆕 問い合わせ関連スクリーン */}
       <Stack.Screen
         name="InquiryList"
         component={InquiryListScreen}
@@ -160,11 +152,17 @@ const MyPageStackNavigator: React.FC<Props> = ({ onLogout }) => {
         component={TicketDetailScreen}
         options={{ title: 'チケット詳細' }}
       />
-      {/* ★ 追加: ここにプラン契約画面を登録 */}
       <Stack.Screen
         name="Subscription"
         component={SubscriptionScreen}
         options={{ title: 'プラン契約' }}
+      />
+
+      {/* ★追加3: ガチャ画面の登録 */}
+      <Stack.Screen
+        name="Gacha"
+        component={GachaScreen}
+        options={{ title: 'プロフィールガチャ' }}
       />
     </Stack.Navigator>
   );

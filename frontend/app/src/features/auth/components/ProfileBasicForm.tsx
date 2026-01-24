@@ -46,7 +46,6 @@ export const ProfileBasicForm: React.FC<Props> = ({
       <Text style={styles.groupTitle}>基本情報</Text>
 
       {/* --- アーティスト用: 画像変更エリア --- */}
-      {isArtist && (
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={selectImage} disabled={isUploading}>
             {imageUri ? (
@@ -67,13 +66,13 @@ export const ProfileBasicForm: React.FC<Props> = ({
             {/* 編集アイコン */}
             {!isUploading && (
               <View style={styles.editIconContainer}>
+                {/* 一般ユーザーの場合はカメラというより「選ぶ」感じなのでアイコンを変えてもいいですが、一旦そのままでOK */}
                 <Text style={styles.editIconText}>📷</Text>
               </View>
             )}
           </TouchableOpacity>
           <Text style={styles.avatarHint}>タップしてアイコンを変更</Text>
         </View>
-      )}
 
       {/* --- 基本入力フィールド --- */}
       <Text style={styles.label}>メールアドレス (変更不可)</Text>
