@@ -24,7 +24,7 @@ class GachaController extends Controller
      */
     public function index()
     {
-        // scopeActive() を使って有効なものだけ取得
+        // 憲法遵守: 管理画面の「期間・公開設定」を反映
         $gachas = Gacha::active()
             ->select('id', 'name', 'description', 'consumption_point', 'end_at')
             ->get();
@@ -37,11 +37,11 @@ class GachaController extends Controller
      */
     public function show($id)
     {
-        // ★修正: 'items.profileItem' ではなく 'items' だけを取得
+        // ★修正: active() を追加し、期間外のガチャは詳細も見せない
         $gacha = Gacha::active()->with('items')->find($id);
 
         if (!$gacha) {
-            return response()->json(['message' => 'ガチャが見つかりません。'], 404);
+            return response()->json(['message' => '現在、このガチャは開催されていないか見つかりません。'], 404);
         }
 
         return response()->json([
@@ -49,15 +49,15 @@ class GachaController extends Controller
             'name' => $gacha->name,
             'description' => $gacha->description,
             'consumption_point' => $gacha->consumption_point,
-            // ★修正: 多対多リレーションなので、$item がそのまま ProfileItem です
             'items' => $gacha->items->map(function ($item) {
                 return [
-                    'id' => $item->id,                  // $item->profileItem->id ではありません
-                    'name' => $item->name,              // $item->profileItem->name ではありません
+                    'id' => $item->id,
+                    'name' => $item->name,
                     'image_url' => $item->image_url,
                     'rarity' => $item->rarity,
-                    'is_pickup' => false,               // 中間テーブルにカラムがない場合は固定値またはpivotから取得
-                    'probability_weight' => $item->pivot->weight, // pivotから重みを取得
+                    // 中間テーブルにカラムがある場合は $item->pivot->is_pickup 等で取得
+                    'is_pickup' => $item->pivot->is_pickup ?? false,
+                    'probability_weight' => $item->pivot->weight,
                 ];
             }),
         ]);
@@ -70,87 +70,77 @@ class GachaController extends Controller
     {
         $request->validate([
             'gacha_id' => 'required|exists:gachas,id',
-            // 'required' を 'nullable' に変更し、送られてこなくてもOKにします
             'count' => 'nullable|integer|min:1',
         ]);
-
-        // count が送られてこない場合は '1' をデフォルト値として使います
-        $count = $request->input('count', 1);
 
         $user = $request->user();
         $gachaId = $request->input('gacha_id');
 
-        // ★修正1: ガチャと、中身のアイテム(重み付き)を取得
-        $gacha = Gacha::with('items')->findOrFail($gachaId);
+        // ★重要修正: 実行時も active() であることを厳守（不正防止）
+        $gacha = Gacha::active()->with('items')->find($gachaId);
+
+        if (!$gacha) {
+            return response()->json(['message' => 'このガチャは現在終了しているか、無効になっています。'], 403);
+        }
 
         // ポイント不足チェック
         if ($user->points < $gacha->consumption_point) {
             return response()->json(['message' => 'ポイントが足りません'], 400);
         }
 
-        // トランザクション開始（ポイント消費とアイテム付与を同時に行うため）
         return DB::transaction(function () use ($user, $gacha) {
-            // 1. ポイント消費
+            // 1. ポイント消費 (再取得してロックをかけるのが理想だが、まずはデクリメント)
             $user->decrement('points', $gacha->consumption_point);
 
-            // ▼▼▼ 重み付き抽選ロジック ▼▼▼
-
-            // A. 中身が空ならエラー
+            // 2. 抽選ロジック
             if ($gacha->items->isEmpty()) {
-                throw new \Exception('ガチャの中身が設定されていません。運営に報告してください。');
+                throw new \Exception('ガチャの中身が設定されていません。');
             }
 
-            // B. 重みの合計値を計算 (例: 50 + 50 = 100)
             $totalWeight = $gacha->items->sum('pivot.weight');
-
-            // C. 1〜合計値の間でランダムな数値を引く
             $random = mt_rand(1, $totalWeight);
 
-            // D. 抽選ループ
             $currentWeight = 0;
             $selectedItem = null;
 
             foreach ($gacha->items as $item) {
                 $currentWeight += $item->pivot->weight;
-
-                // 現在の重み範囲内なら、このアイテムに決定
                 if ($random <= $currentWeight) {
                     $selectedItem = $item;
                     break;
                 }
             }
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
             if (!$selectedItem) {
                 throw new \Exception('抽選システムエラー');
             }
 
             // 3. 所持チェック & 付与
-            // 既に持っているか確認
             $hasItem = $user->profileItems()->where('profile_item_id', $selectedItem->id)->exists();
             $isDuplicate = false;
             $refundAmount = 0;
 
             if ($hasItem) {
-                // ★ダブりの場合：今回は「ポイント返却（半額）」などの救済措置を入れる例
                 $isDuplicate = true;
-                $refundAmount = floor($gacha->consumption_point / 2); // 半額還元
+                $refundAmount = floor($gacha->consumption_point / 2);
                 $user->increment('points', $refundAmount);
             } else {
-                // ★新規獲得の場合：所持品に追加
-                // attach時に obtained_at (取得日) も入れると良いです
                 $user->profileItems()->attach($selectedItem->id, ['obtained_at' => now()]);
             }
 
             // 4. 結果を返す
             return response()->json([
                 'result' => [
-                    'item' => $selectedItem,
+                    'item' => [
+                        'id' => $selectedItem->id,
+                        'name' => $selectedItem->name,
+                        'image_url' => $selectedItem->image_url,
+                        'rarity' => $selectedItem->rarity,
+                    ],
                     'is_duplicate' => $isDuplicate,
                     'refund_amount' => $refundAmount,
                 ],
-                // クライアント側でポイント表示を即更新するために残高も返すのが親切
-                'user_points' => $user->points,
+                'user_points' => $user->fresh()->points, // 最新のポイントを返す
             ]);
         });
     }
