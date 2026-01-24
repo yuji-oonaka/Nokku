@@ -28,7 +28,9 @@ class Gacha extends Model
     // 排出アイテム設定
     public function items()
     {
-        return $this->hasMany(GachaItem::class);
+        return $this->belongsToMany(ProfileItem::class, 'gacha_profile_item')
+            ->withPivot('weight')
+            ->withTimestamps();
     }
 
     // 有効なガチャのみ取得するスコープ

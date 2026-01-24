@@ -122,7 +122,8 @@ Route::middleware('firebase.auth')->group(function () {
     // --- ガチャ機能 ---
     Route::get('/gachas', [GachaController::class, 'index']);
     Route::get('/gachas/{id}', [GachaController::class, 'show']);
-    Route::post('/gachas/{id}/spin', [GachaController::class, 'spin']);
+    Route::post('/gacha/spin', [GachaController::class, 'spin']);
 
     Route::get('/user/items', [UserController::class, 'items']);
+    Route::patch('/user/icon', [UserController::class, 'updateIcon']);
 });

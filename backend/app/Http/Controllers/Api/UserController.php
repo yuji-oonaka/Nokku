@@ -61,4 +61,36 @@ class UserController extends Controller
             'items' => $items
         ]);
     }
+
+    /**
+     * ★追加: アイコンのみを即座に変更するAPI
+     */
+    public function updateIcon(Request $request)
+    {
+        // 1. バリデーション: IDが送られてきているか、数字か、DBに存在するか
+        $request->validate([
+            'current_icon_id' => 'required|integer|exists:profile_items,id',
+        ]);
+
+        $user = $request->user();
+        $iconId = $request->input('current_icon_id');
+
+        // 2. 所持チェック: 本当にそのアイテムを持っているか？（不正防止）
+        // user_profile_items テーブルを確認
+        if (!$user->profileItems()->where('profile_item_id', $iconId)->exists()) {
+            return response()->json(['message' => '所持していないアイテムです。'], 403);
+        }
+
+        // 3. 更新実行: ユーザーのアイコンIDを書き換え
+        $user->current_icon_id = $iconId;
+        $user->save();
+
+        $user->refresh();
+
+        // 4. 最新のユーザー情報を返す（これでアプリ側の表示も更新されます）
+        // リレーションをロードして、最新の画像URLなどが取れるようにする
+        $user->load(['currentIcon', 'currentFrame', 'currentBackground']);
+
+        return response()->json($user);
+    }
 }

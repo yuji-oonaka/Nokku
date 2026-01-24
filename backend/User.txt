@@ -189,26 +189,14 @@ class User extends Authenticatable implements FilamentUser, HasName
         return $this->role === 'artist';
     }
 
-    public function getImageUrlAttribute($value)
+    protected function imageUrl(): Attribute
     {
-        // 1. 装備中のアイコンIDがある場合
-        if (!empty($this->current_icon_id)) {
-            // すでにロード済みのリレーションがあればそれを使う
-            if ($this->relationLoaded('currentIcon') && $this->currentIcon) {
-                return $this->currentIcon->image_url;
+        return Attribute::make(
+            get: function ($value) {
+                if (!$value) return null;
+                if (str_starts_with($value, 'http')) return $value;
+                return asset(Storage::url($value));
             }
-
-            // なければDBから取得
-            $item = \App\Models\ProfileItem::find($this->current_icon_id);
-            if ($item) {
-                return $item->image_url;
-            }
-        }
-
-        // 2. 装備がない、または取得できない場合は、元の画像(アップロード画像)を使う
-        if (!$value) return null;
-
-        if (str_starts_with($value, 'http')) return $value;
-        return asset(Storage::url($value));
+        );
     }
 }

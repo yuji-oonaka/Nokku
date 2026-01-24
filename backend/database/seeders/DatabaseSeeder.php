@@ -237,6 +237,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             ProfileItemSeeder::class, // 必ず先に実行
             GachaSeeder::class,
+            AnimalGachaSeeder::class,
         ]);
         $this->command->info("ProfileItems created.");
 
