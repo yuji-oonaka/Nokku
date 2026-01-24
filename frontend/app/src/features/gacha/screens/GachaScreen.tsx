@@ -133,7 +133,7 @@ const GachaScreen = () => {
             </TouchableOpacity>
           </View>
           {/* ここであなたの作った InventoryScreen を表示します */}
-          <InventoryScreen />
+          <InventoryScreen mode="equip" />
         </View>
       </Modal>
       {/* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */}

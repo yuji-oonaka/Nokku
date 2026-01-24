@@ -8,6 +8,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Modal, // ★追加
+  Text, // ★追加
+  TouchableOpacity, // ★追加
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,13 +23,20 @@ import {
   ProfileFormData,
 } from './components/ProfileBasicForm';
 import { ProfileAddressForm } from './components/ProfileAddressForm';
+import { UserItem } from '../../api/user';
+import InventoryScreen from '../gacha/screens/InventoryScreen';
 
 const ProfileEditScreen = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // ★ State集約: 10個の変数を1つのオブジェクトへ
-  const [formData, setFormData] = useState<ProfileFormData>({
+  // ★追加: 図鑑モーダルの開閉スイッチ
+  const [showInventory, setShowInventory] = useState(false);
+
+  // State集約
+  const [formData, setFormData] = useState<
+    ProfileFormData & { currentIconId: number | null }
+  >({
     realName: '',
     nickname: '',
     email: '',
@@ -37,12 +47,12 @@ const ProfileEditScreen = () => {
     city: '',
     address1: '',
     address2: '',
+    currentIconId: null, // ★追加: アイコンIDを管理
   });
 
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  // 画像アップロードフック
   const { imageUri, uploadedPath, isUploading, selectImage, setImageFromUrl } =
     useImageUpload('avatar');
 
@@ -51,12 +61,29 @@ const ProfileEditScreen = () => {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
+  // ★追加: 図鑑でアイコンが選ばれたときの処理
+  const handleSelectIcon = (item: UserItem) => {
+    // 1. フォームデータにはIDをセット（保存用）
+    setFormData(prev => ({ ...prev, currentIconId: item.id }));
+
+    // 2. ★追加: 画面のプレビュー画像を、選んだアイコンの画像に差し替える！
+    // これで「装備した感」が出ます
+    setImageFromUrl(item.image_url);
+
+    // 3. モーダルを閉じる
+    setShowInventory(false);
+    Alert.alert(
+      'アイコンを選択しました',
+      '変更を確定するには「プロフィールを更新」ボタンを押してください。',
+    );
+  };
+
   // APIからプロフィール詳細を取得
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/profile');
+        const response = await api.get('/profile'); // バックエンドが現在の情報を返す前提
         const data = response.data;
 
         setFormData({
@@ -70,6 +97,7 @@ const ProfileEditScreen = () => {
           city: data.city || '',
           address1: data.address_line1 || '',
           address2: data.address_line2 || '',
+          currentIconId: data.current_icon_id || null, // ★追加: 現在の装備IDを取得
         });
 
         setImageFromUrl(data.image_url || null);
@@ -84,7 +112,6 @@ const ProfileEditScreen = () => {
     fetchProfileData();
   }, [setImageFromUrl]);
 
-  // 更新処理
   const handleUpdate = async () => {
     if (
       formData.realName.trim().length === 0 ||
@@ -105,24 +132,27 @@ const ProfileEditScreen = () => {
         city: formData.city,
         address_line1: formData.address1,
         address_line2: formData.address2,
+
+        // ★追加: 全ユーザー共通でBioとアイコンIDを送るように変更
+        bio: formData.bio,
+        current_icon_id: formData.currentIconId,
       };
 
-      // アーティストのみ Bio と画像を更新可能
-      if (user?.role === 'artist') {
-        payload.bio = formData.bio;
-        if (uploadedPath) {
-          payload.image_url = uploadedPath;
-        }
+      // 画像アップロードがあった場合のみURLを上書き (アーティスト用)
+      if (user?.role === 'artist' && uploadedPath) {
+        payload.image_url = uploadedPath;
       }
 
       const response = await api.put('/profile', payload);
       const updatedUser = response.data;
 
-      // 画像の更新をローカルフックにも反映
+      // 更新後の画像を反映
       setImageFromUrl(updatedUser.image_url);
 
       // キャッシュ無効化
       await queryClient.invalidateQueries({ queryKey: ['profile'] });
+      // ヘッダーなどのユーザー情報も更新したい場合は 'user' も無効化
+      await queryClient.invalidateQueries({ queryKey: ['user'] });
 
       Alert.alert('成功', 'プロフィールを更新しました。');
     } catch (error: any) {
@@ -152,6 +182,16 @@ const ProfileEditScreen = () => {
 
   const isArtist = user?.role === 'artist';
 
+  // ★追加: 画像タップ時のハンドラ
+  // アーティストなら画像アップロード、一般ユーザーなら図鑑を開く
+  const handleImagePress = () => {
+    if (isArtist) {
+      selectImage();
+    } else {
+      setShowInventory(true);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -166,7 +206,8 @@ const ProfileEditScreen = () => {
               onChange={handleChange}
               isArtist={isArtist}
               imageUri={imageUri}
-              selectImage={selectImage}
+              // ★変更: ここで渡す関数を差し替えました
+              selectImage={handleImagePress}
               isUploading={isUploading}
             />
 
@@ -184,6 +225,34 @@ const ProfileEditScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ★追加: アイコン選択モーダル */}
+      <Modal
+        visible={showInventory}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={{ color: 'white', fontWeight: 'bold' }}>
+              装備するアイコンを選択
+            </Text>
+            <TouchableOpacity onPress={() => setShowInventory(false)}>
+              <Text
+                style={{ color: '#0A84FF', fontSize: 16, fontWeight: 'bold' }}
+              >
+                閉じる
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 図鑑コンポーネント (選択モード) */}
+          <InventoryScreen
+            mode="select" // ★追加: 選択モードであることを明示
+            onSelect={handleSelectIcon}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -201,6 +270,20 @@ const styles = StyleSheet.create({
   buttonSpacing: {
     marginTop: 30,
     marginBottom: 10,
+  },
+  // ★追加スタイル
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#1C1C1E',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#2C2C2E',
+    borderBottomWidth: 1,
+    borderBottomColor: '#3A3A3C',
   },
 });
 
