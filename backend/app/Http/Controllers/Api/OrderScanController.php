@@ -6,101 +6,76 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\UserTicket;
+use App\Services\AdmissionService; // ★ 追加
 use Kreait\Laravel\Firebase\Facades\Firebase;
 
 class OrderScanController extends Controller
 {
-    public function redeem(Request $request)
+    public function redeem(Request $request, AdmissionService $service)
     {
-        $targetId = $request->input('order_item_id') ?? $request->input('qr_code_id');
+        $qrCodeId = $request->input('qr_code_id');
 
-        if (!$targetId) {
-            return response()->json(['message' => 'IDが必要です'], 422);
+        if (!$qrCodeId) {
+            return response()->json(['message' => 'QRコードIDが必要です'], 422);
         }
 
         /** @var \App\Models\User $user */
-        $user = Auth::user(); // 変数名を $artist から $user に変更 (Staffもあり得るため)
+        $user = Auth::user();
 
-        // ★ 修正: Staffも許可する
+        // 1. 基本権限チェック [cite: 182-183]
         if (!in_array($user->role, ['artist', 'admin', 'staff'])) {
             return response()->json(['message' => 'この操作を行う権限がありません'], 403);
         }
 
-        $orderItem = null;
-
-        if (Str::isUuid($targetId)) {
-            $order = Order::where('qr_code_id', $targetId)->first();
-            if ($order) {
-                $orderItem = $order->items->first();
+        try {
+            // 2. 誤スキャン防止チェック (チケット用QRをスキャンしていないか) [cite: 187-188]
+            if (UserTicket::where('qr_code_id', $qrCodeId)->exists()) {
+                throw new \Exception('これは入場チケット用のQRコードです。入場モードに切り替えてください。', 400);
             }
-        } else {
-            $orderItem = OrderItem::find($targetId);
-        }
 
-        if (!$orderItem) {
-            $isTicket = UserTicket::where('qr_code_id', $targetId)->exists();
-            if ($isTicket) {
-                return response()->json([
-                    'message' => 'これは入場チケット用のQRコードです。「チケット入場」モードに切り替えてください。'
-                ], 400);
-            }
-            return response()->json(['message' => '該当する注文が見つかりません'], 404);
-        }
+            // 3. Serviceによる引換処理 (悲観ロック & ステータスを 'completed' へ更新)
+            $order = $service->redeemOrder($qrCodeId);
 
-        $orderItem->load('product');
-        $product = $orderItem->product;
+            // 4. Scope Security: 担当アーティストのチェック (引換後に実行) [cite: 191-193]
+            if ($user->role !== 'admin') {
+                $requiredOwnerId = ($user->role === 'staff') ? $user->employer_id : $user->id;
+                $hasUnauthorizedItem = $order->items()->whereHas('product', function ($q) use ($requiredOwnerId) {
+                    $q->where('artist_id', '!=', $requiredOwnerId);
+                })->exists();
 
-        // ★ 修正: Scope Security (所有権チェック)
-        if ($user->role !== 'admin') {
-            // スタッフなら雇用主ID、アーティストなら自分のID
-            $requiredOwnerId = ($user->role === 'staff') ? $user->employer_id : $user->id;
-
-            if (!$product || $product->artist_id !== $requiredOwnerId) {
-                return response()->json([
-                    'message' => '権限がありません。担当外のイベントグッズは引き換えできません。'
-                ], 403);
-            }
-        }
-
-        if ($orderItem->order && $orderItem->order->status === 'redeemed') {
-            return response()->json(['message' => '既に引き換え済みの注文です'], 409);
-        }
-
-        if ($orderItem->order && $orderItem->order->delivery_method !== 'venue') {
-            return response()->json(['message' => 'この注文は会場受取りではありません'], 422);
-        }
-
-        // DB更新
-        if ($orderItem->order) {
-            $orderItem->order->update(['status' => 'redeemed']);
-
-            // ★ Firestore 更新
-            if ($orderItem->order->qr_code_id) {
-                try {
-                    $firestore = Firebase::firestore();
-                    $database = $firestore->database();
-
-                    $database->collection('order_status')
-                        ->document($orderItem->order->qr_code_id)
-                        ->set([
-                            'status' => 'redeemed',
-                            'updatedAt' => date('c'),
-                            'scanner_id' => (int)$user->id // 実行者のIDを記録
-                        ]);
-                } catch (\Exception $e) {
-                    Log::error('Firestore update failed: ' . $e->getMessage());
+                if ($hasUnauthorizedItem) {
+                    throw new \Exception('権限がありません。担当外のグッズです。', 403);
                 }
             }
-        }
 
-        return response()->json([
-            'message' => '引き換えが完了しました',
-            'order' => $orderItem->order ? $orderItem->order->load('items', 'user') : null,
-            'data' => $orderItem
-        ]);
+            // 5. Firestore 更新 (リアルタイム反映) 
+            $this->syncToFirestore($order, $user->id);
+
+            return response()->json([
+                'message' => '引き換えが完了しました',
+                'order' => $order->load('items', 'user')
+            ]);
+        } catch (\Exception $e) {
+            $status = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
+            return response()->json(['message' => $e->getMessage()], $status);
+        }
+    }
+
+    private function syncToFirestore(Order $order, $scannerId)
+    {
+        try {
+            Firebase::firestore()->database()
+                ->collection('order_status')
+                ->document($order->qr_code_id)
+                ->set([
+                    'status' => 'completed',
+                    'updatedAt' => date('c'),
+                    'scanner_id' => (int)$scannerId
+                ]);
+        } catch (\Exception $e) {
+            Log::error('Firestore update failed: ' . $e->getMessage());
+        }
     }
 }

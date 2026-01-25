@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Requests\UserTicket\ScanTicketRequest;
 use App\Http\Requests\UserTicket\ManualEnterRequest;
-use App\Services\TicketAdmissionService;
+use App\Services\AdmissionService;
 use App\Models\UserTicket; // ★追加: 権限チェックのためにモデルが必要
 
 class UserTicketController extends Controller
@@ -31,24 +31,23 @@ class UserTicketController extends Controller
     /**
      * QRコードによるスキャン入場
      */
-    public function scanTicket(ScanTicketRequest $request, TicketAdmissionService $service)
+    public function scanTicket(ScanTicketRequest $request, AdmissionService $service)
     {
         try {
             /** @var \App\Models\User $user */
             $user = Auth::user();
-
-            // ★ Scope Security: 権限チェック
-            // Serviceを呼ぶ前に、このチケットが操作可能なものか確認する
             $qrCodeId = $request->validated('qr_code_id');
+
+            // 1. 権限チェック (既存ロジックを流用)
             $this->checkScanPermission($user, $qrCodeId, 'qr');
 
-            $result = $service->processAdmission(
-                $user,
-                $qrCodeId,
-                'qr'
-            );
+            // 2. Serviceによる入場処理 (悲観ロック & ステータス更新)
+            $ticket = $service->admitTicket($qrCodeId);
 
-            return response()->json($result);
+            return response()->json([
+                'message' => '入場処理が完了しました',
+                'ticket' => $ticket->load(['event', 'user'])
+            ]);
         } catch (\Exception $e) {
             $status = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
             return response()->json(['message' => $e->getMessage()], $status);
@@ -58,7 +57,7 @@ class UserTicketController extends Controller
     /**
      * ID手入力による入場
      */
-    public function enterManually(ManualEnterRequest $request, TicketAdmissionService $service)
+    public function enterManually(ManualEnterRequest $request, AdmissionService $service)
     {
         try {
             /** @var \App\Models\User $user */
@@ -68,7 +67,7 @@ class UserTicketController extends Controller
             $ticketId = $request->validated('ticket_id');
             $this->checkScanPermission($user, $ticketId, 'manual');
 
-            $result = $service->processAdmission(
+            $result = $service->admitTicket(
                 $user,
                 $ticketId,
                 'manual'

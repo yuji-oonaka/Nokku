@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\TicketType;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -80,18 +81,19 @@ class OrderController extends Controller
      */
     public function store(StoreOrderRequest $request)
     {
-        // バリデーション済みのデータを取得
-        // ※ ここに来る時点でルールは通過しているので安心
         $validated = $request->validated();
-
         /** @var \App\Models\User $user */
         $user = Auth::user();
+        
         $quantity = $validated['quantity'];
         $paymentMethod = $validated['payment_method'];
         $deliveryMethod = $validated['delivery_method'];
-        $productId = $validated['product_id'];
+        
+        // ★修正: 商品かチケットか、いずれか一方を取得
+        $productId = $validated['product_id'] ?? null;
+        $ticketTypeId = $validated['ticket_type_id'] ?? null;
 
-        // 配送先情報の構築
+        // 1. 配送先情報の構築 (グッズ配送時のみ使用)
         $shippingAddress = null;
         if ($deliveryMethod === 'mail') {
             if (empty($user->postal_code) || empty($user->prefecture) || empty($user->city) || empty($user->address_line1)) {
@@ -108,67 +110,73 @@ class OrderController extends Controller
             ];
         }
 
-        // ★★★ トランザクション開始 ★★★
         try {
-            return DB::transaction(function () use ($user, $productId, $quantity, $paymentMethod, $deliveryMethod, $shippingAddress) {
+            return DB::transaction(function () use ($user, $productId, $ticketTypeId, $quantity, $paymentMethod, $deliveryMethod, $shippingAddress) {
 
-                // 1. 商品行をロックして取得 (悲観ロック: lockForUpdate)
-                $product = Product::where('id', $productId)->lockForUpdate()->first();
+                $targetItem = null;
+                $totalPrice = 0;
+                $itemName = '';
 
-                // 2. 厳密な在庫チェック
-                if ($product->stock < $quantity) {
-                    throw new \Exception('在庫が不足しています', 422);
-                }
-
-                // 3. 購入制限チェック
-                if ($product->limit_per_user) {
-                    $pastQuantity = OrderItem::where('product_id', $product->id)
-                        ->whereHas('order', function ($query) use ($user) {
-                            $query->where('user_id', $user->id)
-                                ->where('status', '!=', 'cancelled');
-                        })
-                        ->sum('quantity');
-
-                    if (($pastQuantity + $quantity) > $product->limit_per_user) {
-                        throw new \Exception("お一人様 {$product->limit_per_user} 点までです。(過去の購入数: {$pastQuantity})", 409);
+                // 2. 在庫の悲観ロック取得 (lockForUpdate)
+                if ($productId) {
+                    $targetItem = Product::where('id', $productId)->lockForUpdate()->first();
+                    if ($targetItem->stock < $quantity) {
+                        throw new \Exception('在庫が不足しています', 422);
                     }
+                    // グッズ特有の購入制限チェック
+                    if ($targetItem->limit_per_user) {
+                        $pastQuantity = OrderItem::where('product_id', $targetItem->id)
+                            ->whereHas('order', function ($query) use ($user) {
+                                $query->where('user_id', $user->id)->where('status', '!=', 'cancelled');
+                            })->sum('quantity');
+                        if (($pastQuantity + $quantity) > $targetItem->limit_per_user) {
+                            throw new \Exception("お一人様 {$targetItem->limit_per_user} 点までです。", 409);
+                        }
+                    }
+                    $itemName = $targetItem->name;
+                } elseif ($ticketTypeId) {
+                    // ★チケット在庫の悲観ロック
+                    $targetItem = TicketType::where('id', $ticketTypeId)->lockForUpdate()->first();
+                    if ($targetItem->remaining_count < $quantity) {
+                        throw new \Exception('チケットが売り切れました。', 422);
+                    }
+                    $itemName = $targetItem->name;
                 }
 
-                $totalPrice = $product->price * $quantity;
+                $totalPrice = $targetItem->price * $quantity;
 
-                // 4. Stripe決済等の外部API呼び出し
+                // 3. Stripe決済インテントの作成
                 $clientSecret = null;
                 $stripePaymentIntentId = null;
 
                 if ($paymentMethod === 'stripe') {
                     Stripe::setApiKey(config('services.stripe.secret'));
-                    try {
-                        // NOTE: トランザクション内の外部APIコールはロック時間が長くなるリスクがあるが、
-                        // データの不整合（在庫確保後の決済金額齟齬など）を防ぐため現在はここで実行する。
-                        $paymentIntent = PaymentIntent::create([
-                            'amount' => $totalPrice, // JPY
-                            'currency' => 'jpy',
-                            'automatic_payment_methods' => ['enabled' => true],
-                            'description' => 'NOKKU グッズ購入',
-                            'metadata' => [
-                                'type' => 'order',
-                                'user_id' => $user->id,
-                                'product_id' => $product->id,
-                            ],
-                        ]);
-                        $clientSecret = $paymentIntent->client_secret;
-                        $stripePaymentIntentId = $paymentIntent->id;
-                    } catch (\Exception $e) {
-                        // 決済システムエラー時は500としてスローし、ロールバックさせる
-                        throw new \Exception('決済システムの接続に失敗しました: ' . $e->getMessage(), 500);
-                    }
+                    $paymentIntent = PaymentIntent::create([
+                        'amount' => $totalPrice,
+                        'currency' => 'jpy',
+                        'automatic_payment_methods' => ['enabled' => true],
+                        'description' => $productId ? 'NOKKU グッズ購入' : 'NOKKU チケット購入',
+                        'metadata' => [
+                            'type' => $productId ? 'product' : 'ticket', // ★ Webhookでの判別用
+                            'user_id' => $user->id,
+                            'item_id' => $productId ?? $ticketTypeId,
+                        ],
+                    ]);
+                    $clientSecret = $paymentIntent->client_secret;
+                    $stripePaymentIntentId = $paymentIntent->id;
                 }
 
+                // 4. 会場受取/入場用の注文QR生成 (既存ロジック維持)
                 $qrCodeId = ($deliveryMethod === 'venue') ? (string) Str::uuid() : null;
 
-                // 5. 在庫減算と注文作成
-                $product->decrement('stock', $quantity);
+                // 5. 在庫減算
+                if ($productId) {
+                    $targetItem->decrement('stock', $quantity);
+                } else {
+                    $targetItem->decrement('remaining_count', $quantity); // ★追加: チケット在庫減算
+                }
 
+                // 6. 注文(Order)と明細(OrderItem)の作成
                 $order = Order::create([
                     'user_id' => $user->id,
                     'total_price' => $totalPrice,
@@ -181,13 +189,13 @@ class OrderController extends Controller
                 ]);
 
                 $order->items()->create([
-                    'product_id' => $product->id,
+                    'product_id' => $productId,
+                    'ticket_type_id' => $ticketTypeId, // ★ Step 1-3で追加したカラム
                     'quantity' => $quantity,
-                    'price_at_purchase' => $product->price,
-                    'product_name' => $product->name,
+                    'price_at_purchase' => $targetItem->price,
+                    'product_name' => $itemName,
                 ]);
 
-                // Stripeメタデータ更新 (Order ID紐付け)
                 if ($paymentMethod === 'stripe' && $stripePaymentIntentId) {
                     PaymentIntent::update($stripePaymentIntentId, [
                         'metadata' => ['order_id' => $order->id]
@@ -201,14 +209,9 @@ class OrderController extends Controller
                 ], 201);
             });
         } catch (\Exception $e) {
-            // エラーコードの処理 (数値以外や範囲外の場合は500に倒す)
             $code = $e->getCode();
             $status = (is_int($code) && $code >= 400 && $code < 600) ? $code : 500;
-
-            return response()->json([
-                'message' => $e->getMessage(),
-                // デバッグ時は $e->getTrace() をログに出すと良い
-            ], $status);
+            return response()->json(['message' => $e->getMessage()], $status);
         }
     }
 }
