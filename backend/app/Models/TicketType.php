@@ -15,6 +15,7 @@ class TicketType extends Model
         'name',
         'price',
         'capacity',
+        'remaining_count',
         'seating_type',
     ];
 

@@ -13,21 +13,16 @@ return new class extends Migration
     {
         Schema::create('ticket_types', function (Blueprint $table) {
             $table->id();
-
-            // ↓↓↓ ここから追記 ↓↓↓
-
             // どのイベントの券種か (eventsテーブルと連携)
             $table->foreignId('event_id')->constrained('events')->onDelete('cascade');
 
             $table->string('name'); // 券種名 (例: "S席", "A席", "自由席")
             $table->unsignedInteger('price'); // 価格 (例: 8000)
             $table->unsignedInteger('capacity'); // 販売枚数 (例: 100)
+            $table->unsignedInteger('remaining_count')->comment('販売可能残り在庫');
 
             // 座席タイプ（ランダム割り当て or 自由席）
             $table->enum('seating_type', ['random', 'free'])->default('free');
-
-            // ↑↑↑ ここまで追記 ↑↑↑
-
             $table->timestamps();
         });
     }

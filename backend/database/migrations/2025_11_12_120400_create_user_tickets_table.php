@@ -14,28 +14,22 @@ return new class extends Migration
         Schema::create('user_tickets', function (Blueprint $table) {
             $table->id();
 
-            // 1. 誰が買ったか
+            // 1. 誰のチケットか、どの注文から生まれたか
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('order_id')->nullable()->constrained('orders')->onDelete('cascade'); // ★追加: 注文基盤との統合
 
-            // 2. どの券種か
+            // 2. どのイベントの、どの券種か
             $table->foreignId('ticket_type_id')->constrained('ticket_types')->onDelete('cascade');
-
-            // 3. どのイベントか
             $table->foreignId('event_id')->constrained('events')->onDelete('cascade');
 
-            // 4. Stripe決済ID
-            $table->string('stripe_payment_id')->nullable()->index();
-
-            // 5. 座席番号
+            // 3. 決済・管理情報
+            $table->string('stripe_payment_id')->nullable()->index(); // 予備として維持
             $table->string('seat_number')->nullable();
-
-            // 6. QRコードID (UUIDを使用)
             $table->uuid('qr_code_id')->unique()->nullable();
 
-            // 7. 使用済みフラグ
-            $table->boolean('is_used')->default(false);
-
-            // 8. ★ 使用日時 (これが抜けていたので追加！)
+            // 4. ステータス管理 (NOKKU憲法に基づき詳細化)
+            // default: valid (有効), used (使用済), cancelled (無効)
+            $table->string('status')->default('valid')->index(); // ★追加: booleanから拡張
             $table->timestamp('used_at')->nullable();
 
             $table->timestamps();

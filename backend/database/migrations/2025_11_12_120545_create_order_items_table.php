@@ -21,6 +21,7 @@ return new class extends Migration
             // 2. どの商品か (products テーブルと紐付け)
             // (onDelete('null') = もし商品が削除されても、注文履歴からは消さない)
             $table->foreignId('product_id')->nullable()->constrained('products')->onDelete('set null');
+            $table->foreignId('ticket_type_id')->nullable()->constrained('ticket_types')->onDelete('set null');
 
             // 3. いくつ買ったか
             $table->unsignedInteger('quantity');
