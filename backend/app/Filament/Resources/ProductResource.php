@@ -25,15 +25,19 @@ class ProductResource extends Resource
         return $form
             ->schema([
                 // 出品アーティスト
+                /** @var \App\Models\User|null $user */
                 Forms\Components\Select::make('artist_id')
                     ->relationship('artist', 'nickname')
                     ->label('販売アーティスト')
                     ->searchable()
                     ->required()
-                    // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
-                    ->disabled(fn () => Auth::user()->role !== 'admin')
-                    ->default(fn () => Auth::user()->role !== 'admin' ? Auth::id() : null)
-                    // データとして送信されるように設定（disabledだと送信されないため）
+                    // ★修正: 型安全なメソッドを使用し、管理者以外は編集不可
+                    ->disabled(function () {
+                        /** @var \App\Models\User|null $user */
+                        $user = Auth::user();
+                        return !($user instanceof \App\Models\User && $user->isAdmin());
+                    })
+                    ->default(fn () => Auth::id())
                     ->dehydrated(),
 
                 Forms\Components\TextInput::make('name')
@@ -70,22 +74,14 @@ class ProductResource extends Resource
                     ->directory('products')
                     ->disk('public')
                     ->visibility('public')
-                    // ▼▼▼ 修正: 戻り値を「配列」にする！ ▼▼▼
                     ->formatStateUsing(function ($record) {
-                        // 1. レコードがない、または画像URLがない場合は「空の配列」を返す
                         if (!$record || !$record->getRawOriginal('image_url')) {
                             return [];
                         }
-
-                        // 2. DBの生のデータを取得
                         $url = $record->getRawOriginal('image_url');
-
-                        // 3. もし外部URL(http)なら、表示できないので「空の配列」を返す
                         if (str_starts_with($url, 'http')) {
                             return [];
                         }
-
-                        // 4. それ以外なら「配列に入れて」返す
                         return [$url];
                     }),
 
@@ -159,15 +155,26 @@ class ProductResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // 親のクエリを取得
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
         $query = parent::getEloquentQuery();
 
-        // もしログインユーザーが「管理者(admin)」じゃなければ
-        if (Auth::user()->role !== 'admin') {
-            // 「自分のID (artist_id)」のデータだけに絞り込む
-            $query->where('artist_id', Auth::id());
+        // ログインしていない、または正しいユーザーモデルでない場合は空を返す
+        if (!$user instanceof \App\Models\User) {
+            return $query->whereRaw('1 = 0');
         }
 
-        return $query;
+        // 管理者は全件表示
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        // アーティストは「自分の商品」のみ表示
+        if ($user->isArtist()) {
+            return $query->where('artist_id', $user->id);
+        }
+
+        // それ以外（Staff/Operatorなど）は、物理的にUIを遮断するため0件にする
+        return $query->whereRaw('1 = 0');
     }
 }

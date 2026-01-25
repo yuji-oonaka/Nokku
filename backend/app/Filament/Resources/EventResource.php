@@ -24,16 +24,19 @@ class EventResource extends Resource
     {
         return $form
             ->schema([
-                // アーティスト選択 (運営が付け替えることは稀ですが、一応可能に)
+                // 開催アーティスト
                 Forms\Components\Select::make('artist_id')
                     ->relationship('artist', 'nickname')
                     ->label('開催アーティスト')
                     ->searchable()
                     ->required()
-                    // 管理者じゃなければ「無効化（グレーアウト）」して自動選択させる
-                    ->disabled(fn () => Auth::user()->role !== 'admin')
-                    ->default(fn () => Auth::user()->role !== 'admin' ? Auth::id() : null)
-                    // データとして送信されるように設定（disabledだと送信されないため）
+                    // ★修正: 型安全なチェックを行い、管理者以外は編集不可
+                    ->disabled(function () {
+                        /** @var \App\Models\User|null $user */
+                        $user = Auth::user();
+                        return !($user instanceof \App\Models\User && $user->isAdmin());
+                    })
+                    ->default(fn() => Auth::id())
                     ->dehydrated(),
 
                 Forms\Components\TextInput::make('title')
@@ -49,32 +52,24 @@ class EventResource extends Resource
                     ->label('会場')
                     ->maxLength(255),
 
-                // 画像URL
+                // 画像URL (既存のロジックを完全に維持)
                 Forms\Components\FileUpload::make('image_url')
-                    ->label('グッズ画像')
+                    ->label('イベント画像')
                     ->image()
-                    ->directory('products')
+                    ->directory('events') // 念のためディレクトリ名をイベントに合わせることも検討
                     ->disk('public')
                     ->visibility('public')
-                    // ▼▼▼ 修正: 戻り値を「配列」にする！ ▼▼▼
                     ->formatStateUsing(function ($record) {
-                        // 1. レコードがない、または画像URLがない場合は「空の配列」を返す
                         if (!$record || !$record->getRawOriginal('image_url')) {
                             return [];
                         }
-
-                        // 2. DBの生のデータを取得
                         $url = $record->getRawOriginal('image_url');
-
-                        // 3. もし外部URL(http)なら、表示できないので「空の配列」を返す
                         if (str_starts_with($url, 'http')) {
                             return [];
                         }
-
-                        // 4. それ以外なら「配列に入れて」返す
                         return [$url];
                     }),
-                
+
                 Forms\Components\Textarea::make('description')
                     ->label('詳細・説明')
                     ->columnSpanFull(),
@@ -139,17 +134,32 @@ class EventResource extends Resource
         ];
     }
 
+    /**
+     * ★重要: 表示データの制限ロジック
+     * 他人のイベントへのアクセスをデータベースレベルで遮断します。
+     */
     public static function getEloquentQuery(): Builder
     {
-        // 親のクエリを取得
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
         $query = parent::getEloquentQuery();
 
-        // もしログインユーザーが「管理者(admin)」じゃなければ
-        if (Auth::user()->role !== 'admin') {
-            // 「自分のID (artist_id)」のデータだけに絞り込む
-            $query->where('artist_id', Auth::id());
+        // ログインユーザーがApp\Models\Userでない場合はアクセス不可
+        if (!$user instanceof \App\Models\User) {
+            return $query->whereRaw('1 = 0');
         }
 
-        return $query;
+        // 管理者は全件表示
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        // アーティストは「自分のイベント」のみ表示
+        if ($user->isArtist()) {
+            return $query->where('artist_id', $user->id);
+        }
+
+        // それ以外は物理的に遮断
+        return $query->whereRaw('1 = 0');
     }
 }
