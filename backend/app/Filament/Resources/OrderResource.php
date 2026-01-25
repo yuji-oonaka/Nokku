@@ -28,17 +28,28 @@ class OrderResource extends Resource
     // ★重要: 表示データの制限ロジック
     public static function getEloquentQuery(): Builder
     {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
         $query = parent::getEloquentQuery();
 
-        // 管理者(admin)はそのまま全件表示
-        if (Auth::user()->role === 'admin') {
+        // ログインしていない、または User モデルのインスタンスでない場合は空を返す（鉄壁の守り）
+        if (!$user instanceof \App\Models\User) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        // 管理者(admin)はそのまま全件表示 [cite: 95]
+        if ($user->isAdmin()) {
             return $query;
         }
 
-        // アーティストは「自分の商品が含まれている注文」のみ表示
-        return $query->whereHas('items.product', function ($q) {
-            $q->where('artist_id', Auth::id());
-        });
+        // アーティスト(artist)は「自分の商品が含まれている注文」のみ表示 [cite: 96]
+        if ($user->isArtist()) {
+            // 先ほど Order.php に追加した scopeForArtist を使用
+            return $query->forArtist($user->id);
+        }
+
+        // それ以外の権限はアクセス不可
+        return $query->whereRaw('1 = 0');
     }
 
     public static function form(Form $form): Form

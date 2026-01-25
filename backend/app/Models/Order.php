@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo; // 1. ★ BelongsTo を use
 use Illuminate\Database\Eloquent\Relations\HasMany; // 2. ★ HasMany を use
+use Illuminate\Database\Eloquent\Builder; // 3. ★ Builder を use
 
 class Order extends Model
 {
@@ -27,6 +28,17 @@ class Order extends Model
     protected $casts = [
         'shipping_address' => 'array',
     ];
+
+    /**
+     * アーティストに紐づく注文のみに絞り込むスコープ
+     * 商品(Product)の所有者が指定されたアーティストIDである注文を抽出
+     */
+    public function scopeForArtist(Builder $query, int $artistId): Builder
+    {
+        return $query->whereHas('items.product', function ($q) use ($artistId) {
+            $q->where('artist_id', $artistId);
+        });
+    }
 
     /**
      * この注文を行ったユーザー (Userモデルとのリレーション)
