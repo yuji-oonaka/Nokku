@@ -16,26 +16,30 @@ class EventController extends Controller
     use AuthorizesRequests;
 
     /**
-     * イベント一覧を取得 (index)
+     * イベント一覧を取得
      */
     public function index(Request $request)
     {
         $filter = $request->input('filter', 'upcoming');
-        $now = Carbon::now();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
 
         $query = Event::with('artist:id,nickname,image_url');
 
+        // ★追加: アーティストが「自分のイベントだけ管理したい」場合のフィルタリング
+        // (例: モバイルアプリの管理画面用)
+        if ($request->has('mine') && $user->isArtist()) {
+            $query->where('artist_id', $user->id);
+        }
+
+        $now = Carbon::now();
         if ($filter === 'past') {
-            $query->where('event_date', '<', $now)
-                ->orderBy('event_date', 'desc');
+            $query->where('event_date', '<', $now)->orderBy('event_date', 'desc');
         } else {
-            $query->where('event_date', '>=', $now)
-                ->orderBy('event_date', 'asc');
+            $query->where('event_date', '>=', $now)->orderBy('event_date', 'asc');
         }
 
         $events = $query->paginate(20);
-
-        // ※ 元の仕様通り items() のみを返す (メタデータなし)
         return response()->json($events->items());
     }
 

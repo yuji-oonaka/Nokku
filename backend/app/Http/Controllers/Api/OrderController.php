@@ -17,27 +17,62 @@ use Illuminate\Support\Str;
 
 class OrderController extends Controller
 {
+    /**
+     * 注文一覧を取得 (Roleに応じてスコープを切り替え)
+     */
     public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        $orders = Order::where('user_id', $user->id)
-            ->with('items.product.artist')
+
+        $query = Order::query();
+
+        if ($user->isArtist()) {
+            // ★販売者として：自分の商品が含まれる注文をすべて取得
+            $query->forArtist($user->id);
+        } else {
+            // ★購入者として：自分が注文したもののみ取得
+            $query->where('user_id', $user->id);
+        }
+
+        $orders = $query->with('items.product.artist')
             ->orderBy('created_at', 'desc')
             ->get();
+
         return response()->json($orders);
     }
 
+    /**
+     * 注文詳細を取得 (厳格な認可チェック)
+     */
     public function show(Order $order)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        if ($order->user_id !== $user->id) {
-            return response()->json(['message' => '権限がありません'], 403);
+        // 1. 管理者は無条件パス
+        if ($user->isAdmin()) {
+            return response()->json($order->load('items.product.artist'));
         }
 
-        return response()->json($order->load('items.product.artist'));
+        // 2. アーティストの場合：その注文に自分の商品が含まれているか確認
+        if ($user->isArtist()) {
+            $hasMyProduct = $order->items()->whereHas('product', function ($q) use ($user) {
+                $q->where('artist_id', $user->id);
+            })->exists();
+
+            if ($hasMyProduct) {
+                return response()->json($order->load('items.product.artist'));
+            }
+        }
+
+        // 3. 一般ユーザーの場合：自分が注文したか確認
+        if ($order->user_id === $user->id) {
+            return response()->json($order->load('items.product.artist'));
+        }
+
+        // いずれにも該当しない場合は 403
+        return response()->json(['message' => '指定された注文にアクセスする権限がありません。'], 403);
     }
 
     /**
