@@ -11,7 +11,8 @@ const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
   // デバッグ用: コンソールにデータが出ているか確認してください
   console.log('Ticket Item:', item);
 
-  const isUsed = item.is_used;
+  const isUsed = item.status === 'used';
+  const isCancelled = item.status === 'cancelled';
   const dateObj = new Date(item.event.event_date);
   const day = dateObj.getDate();
   const month = dateObj
@@ -20,11 +21,18 @@ const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
 
   return (
     <TouchableOpacity
-      style={[styles.card, isUsed ? styles.cardUsed : null]}
+      // キャンセル済みの場合もグレーアウトさせるなどの考慮が可能
+      style={[styles.card, isUsed || isCancelled ? styles.cardUsed : null]}
       onPress={() => onPress(item)}
       activeOpacity={0.8}
+      disabled={isCancelled} // キャンセル済みの場合は詳細不可にする等のガード
     >
-      <View style={[styles.dateBox, isUsed ? styles.dateBoxUsed : null]}>
+      <View
+        style={[
+          styles.dateBox,
+          isUsed || isCancelled ? styles.dateBoxUsed : null,
+        ]}
+      >
         <Text style={styles.dateText}>{day}</Text>
         <Text style={styles.monthText}>{month}</Text>
       </View>
@@ -45,11 +53,18 @@ const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
           <Text style={styles.idValue}>#{item.id}</Text>
         </View>
 
-        {isUsed ? (
+        {isUsed && (
           <View style={styles.usedBadge}>
             <Text style={styles.usedText}>USED</Text>
           </View>
-        ) : null}
+        )}
+        {isCancelled && (
+          <View style={[styles.usedBadge, { borderColor: '#FF3B30' }]}>
+            <Text style={[styles.usedText, { color: '#FF3B30' }]}>
+              CANCELLED
+            </Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
