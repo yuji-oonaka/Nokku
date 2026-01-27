@@ -222,4 +222,20 @@ class User extends Authenticatable implements FilamentUser, HasName
             ->logOnlyDirty() // 変更があった場合のみ記録
             ->dontSubmitEmptyLogs();
     }
+
+    /**
+     * ガチャ実行ログ
+     */
+    public function gachaLogs(): HasMany
+    {
+        return $this->hasMany(UserGachaLog::class);
+    }
+
+    /**
+     * チャット送信ログ
+     */
+    public function chatLogs(): HasMany
+    {
+        return $this->hasMany(UserChatLog::class);
+    }
 }

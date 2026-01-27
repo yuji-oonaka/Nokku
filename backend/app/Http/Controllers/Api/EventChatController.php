@@ -4,11 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use App\Models\UserChatLog;
-use App\Services\PointService;
 use App\Services\ChatService;
-use Carbon\Carbon;
+use Exception;
 
 class EventChatController extends Controller
 {
@@ -24,10 +21,11 @@ class EventChatController extends Controller
         $request->validate(['event_id' => 'required', 'room_id' => 'required']);
 
         try {
+            // ポイント: 引数を (int) でキャストして、型の不一致を防ぐ
             $log = $this->chatService->consumeMessage(
-                $request->user()->id,
-                $request->event_id,
-                $request->room_id
+                (int) $request->user()->id,
+                (int) $request->event_id,
+                (int) $request->room_id
             );
 
             return response()->json([
@@ -35,7 +33,8 @@ class EventChatController extends Controller
                 'consumed' => $log->consumed_points,
                 'is_free' => $log->is_free,
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
+            // エラーメッセージに基づいた適切なステータスコードを返却
             $code = $e->getMessage() === 'SPAM_DETECTED' ? 429 : 402;
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], $code);
         }
