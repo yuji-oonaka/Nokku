@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
-  SafeAreaView,
 } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +19,7 @@ import { useHeaderHeight } from '@react-navigation/elements'; // ナビゲーシ
 import { useAuth } from '../../context/AuthContext';
 import { useEventChat } from './hooks/useEventChat';
 import { EventChatBubble } from './components/EventChatBubble';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 型定義 (必要に応じてナビゲーション型定義ファイルからインポート)
 type RouteParams = {
