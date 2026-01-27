@@ -2,25 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // 共通関数: 認証済みかチェック
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // --- イベントチャット (Event Chat) ---
+    // 共通関数: ドキュメントの所有者かチェック (NOKKUセキュリティの核心)
+    function isOwner(resourceData) {
+      return resourceData.owner_uid == request.auth.uid;
+    }
+
+    // --- イベントチャット (既存機能を維持) ---
     match /event_chat_rooms/{roomId} {
-      // 読み込み: OK
       allow read: if isAuthenticated();
-      
-      // 作成(create)のみ許可
       allow create: if isAuthenticated()
                     && request.resource.data.name.size() > 0
                     && request.resource.data.name.size() <= 30
                     && request.resource.data.eventId is string
                     && request.resource.data.createdBy == request.auth.uid;
-      
       allow update, delete: if false;
 
-      // メッセージ
       match /messages/{messageId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated()
@@ -31,12 +32,22 @@ service cloud.firestore {
       }
     }
 
-    // ▼▼▼ ★ 追加: 注文ステータス監視用 (Order Status) ▼▼▼
-    match /order_status/{orderId} {
-      // 認証済みユーザーなら読み取り(監視)を許可
-      allow read: if isAuthenticated();
+    // ▼▼▼ 黄金サイクル: チケットステータス監視用 (Ticket Status) ▼▼▼
+    match /ticket_status/{qrCodeId} {
+      // 本人だけが自分のチケットの「使用済み」への変化をリッスンできる
+      allow read: if isAuthenticated() && isOwner(resource.data);
       
-      // 書き込みはバックエンド(Admin SDK)からのみ行うため、クライアントからは禁止
+      // 書き込みはバックエンドの TicketAdmissionService のみ
+      allow write: if false;
+    }
+
+    // ▼▼▼ 黄金サイクル: 注文ステータス監視用 (Order Status) ▼▼▼
+    match /order_status/{qrCodeId} {
+      // 本人だけが自分の注文の「引換完了」への変化をリッスンできる
+      // ※ orderId ではなく QRコードIDをドキュメントIDにしている設計に合わせる
+      allow read: if isAuthenticated() && isOwner(resource.data);
+      
+      // 書き込みはバックエンドのみ
       allow write: if false;
     }
   }
