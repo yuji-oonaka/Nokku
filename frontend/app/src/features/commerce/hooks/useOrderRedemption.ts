@@ -9,51 +9,55 @@ export const useOrderRedemption = (initialOrder: Order) => {
   const [order, setOrder] = useState<Order>(initialOrder);
   const queryClient = useQueryClient();
   
-  // 無限ループ・多重処理防止用 Ref
+  // 多重処理防止用 Ref
   const isProcessedRef = useRef(false);
 
   useEffect(() => {
-    // 監視条件のチェック
+    /**
+     * 監視条件のチェック
+     * ステータスを 'completed' (バックエンドの完了状態) に同期
+     */
     if (
-      initialOrder.status === 'redeemed' ||
+      initialOrder.status === 'completed' || // ★ 'redeemed' から修正
       initialOrder.delivery_method !== 'venue' ||
       !initialOrder.qr_code_id
     ) {
       return;
     }
 
-    console.log('Firestore監視開始:', initialOrder.qr_code_id);
+    console.log('Firestore監視開始 (Order):', initialOrder.qr_code_id);
 
     const unsubscribe = firestore()
       .collection('order_status')
       .doc(initialOrder.qr_code_id)
       .onSnapshot(
         (snapshot) => {
+          if (!snapshot.exists) return;
           const data = snapshot.data();
 
           if (isProcessedRef.current) return;
 
-          if (data?.status === 'redeemed') {
-            console.log('受取検知: 処理を開始します');
+          /**
+           * 受取完了の検知
+           * バックエンドの TicketAdmissionService.processOrderRedemption と同期
+           */
+          if (data?.status === 'completed') { // ★ 'redeemed' から修正
+            console.log('グッズ引換検知: 処理を開始します');
             
-            // 1. フラグを立てる
             isProcessedRef.current = true;
-
-            // 2. 音を鳴らす
             SoundService.playSuccess();
 
-            // 3. 画面更新
-            setOrder((prev) => ({ ...prev, status: 'redeemed' }));
+            // ローカルステートを 'completed' に更新
+            setOrder((prev) => ({ ...prev, status: 'completed' }));
 
-            // 4. キャッシュ更新
+            // React Query のキャッシュを更新して一覧画面等にも反映
             queryClient.invalidateQueries({ queryKey: ['myOrders'] });
 
-            // 5. 通知
             Alert.alert('受取完了', 'グッズのお渡しが完了しました！');
           }
         },
         (error) => {
-          console.error('Firestore監視エラー:', error);
+          console.error('Firestore Order Sync Error:', error);
         }
       );
 

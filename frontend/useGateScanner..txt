@@ -56,13 +56,11 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
     
     // チケットモードの場合、statusが'used'になったことを確認できる情報を出す
     if (mode === 'ticket' && data.ticket) {
-    const t = data.ticket;
-    // ★ オプショナルチェイニング (?.) または 存在チェックを追加してクラッシュを防ぐ
-    const typeName = t.ticket_type?.name || '不明な券種'; 
-    setTicketInfo(`${typeName}\n${t.seat_number}`);
-  } else if (mode === 'order') {
-    setTicketInfo('商品を確認して渡してください');
-  }
+      const t = data.ticket;
+      setTicketInfo(`${t.ticket_type.name}\n${t.seat_number}`);
+    } else if (mode === 'order') {
+      setTicketInfo('商品を確認して渡してください');
+    }
 
     // 2秒後に自動リセット
     setTimeout(resetScanner, 2000);

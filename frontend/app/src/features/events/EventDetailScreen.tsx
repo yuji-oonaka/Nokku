@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -38,6 +39,11 @@ const EventDetailScreen: React.FC = () => {
 
   const [buyingTicketId, setBuyingTicketId] = useState<number | null>(null);
   const [isManualRefetching, setIsManualRefetching] = useState(false);
+
+  // ▼▼▼ 購入フロー用ステート追加 ▼▼▼
+  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
+  const [purchaseQuantity, setPurchaseQuantity] = useState(1);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ['eventDetail', eventId],
@@ -93,24 +99,43 @@ const EventDetailScreen: React.FC = () => {
     },
   });
 
-  const handleBuyTicket = async (ticket: TicketType) => {
-    setBuyingTicketId(ticket.id);
+  /**
+   * 1. チケット選択時 (モーダルを表示)
+   */
+  const handleSelectTicket = (ticket: TicketType) => {
+    setSelectedTicket(ticket);
+    setPurchaseQuantity(1);
+    setShowConfirmModal(true);
+    SoundService.triggerHaptic('impactLight');
+  };
+
+  const handleConfirmPurchase = async () => {
+    if (!selectedTicket) return;
+
+    setShowConfirmModal(false); // モーダルを閉じる
+    setBuyingTicketId(selectedTicket.id);
     SoundService.triggerHaptic('impactMedium');
 
     try {
-      const response = await api.post('/create-ticket-payment-intent', {
-        ticket_id: ticket.id,
-        quantity: 1,
+      // ★ 重要: 旧 create-ticket-payment-intent ではなく /orders を使用
+      const response = await api.post('/orders', {
+        ticket_type_id: selectedTicket.id, // ★ ticket_id から修正
+        quantity: purchaseQuantity,
+        payment_method: 'stripe',
+        delivery_method: 'venue', // チケットは会場入場のため venue 固定
       });
+
       const { clientSecret } = response.data;
       if (!clientSecret) throw new Error('決済の準備に失敗しました');
 
+      // Stripe Payment Sheet の初期化 [cite: 256]
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: 'NOKKU, Inc.',
         paymentIntentClientSecret: clientSecret,
       });
       if (initError) throw new Error(initError.message);
 
+      // 決済の実行 [cite: 257]
       const { error: presentError } = await presentPaymentSheet({});
       if (presentError) {
         if (presentError.code !== 'Canceled')
@@ -119,25 +144,22 @@ const EventDetailScreen: React.FC = () => {
         return;
       }
 
-      await api.post('/confirm-ticket-purchase', {
-        ticket_type_id: ticket.id,
-        quantity: 1,
-        stripe_payment_id: clientSecret,
-      });
-
+      // ★ 修正: Webhook側で UserTicket を発行するため、フロントからの confirm-ticket-purchase は不要。
       SoundService.playSuccess();
       queryClient.invalidateQueries({ queryKey: ['myTickets'] });
+      queryClient.invalidateQueries({ queryKey: ['eventDetail', eventId] });
       setBuyingTicketId(null);
 
       Alert.alert(
-        '購入確定！',
-        `「${ticket.name}」のチケットを購入しました！`,
+        '注文完了',
+        `「${selectedTicket.name}」を ${purchaseQuantity} 枚注文しました。\n決済完了後、マイチケットに発行されます。`,
         [
           {
-            text: 'OK',
+            text: 'マイチケットを見る',
             onPress: () =>
               navigation.navigate('MyPageStack', { screen: 'MyTickets' }),
           },
+          { text: '閉じる', style: 'cancel' },
         ],
       );
     } catch (error: any) {
@@ -145,7 +167,7 @@ const EventDetailScreen: React.FC = () => {
       const message =
         error.response?.data?.message ||
         error.message ||
-        '決済に失敗しました。';
+        '購入処理に失敗しました。';
       Alert.alert('エラー', message);
       setBuyingTicketId(null);
     }
@@ -296,7 +318,7 @@ const EventDetailScreen: React.FC = () => {
               tickets={tickets}
               isAdminOrOwner={isAdminOrOwner}
               buyingTicketId={buyingTicketId}
-              onBuy={handleBuyTicket}
+              onBuy={handleSelectTicket} // ★ 修正: handleBuyTicket から handleSelectTicket へ
               onDelete={handleDeleteTicketType}
             />
           </>
@@ -313,6 +335,63 @@ const EventDetailScreen: React.FC = () => {
           />
         )}
       </ScrollView>
+      {/* ▼▼▼ 追加: 購入確認・枚数選択モーダル ▼▼▼ */}
+      <Modal visible={showConfirmModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{selectedTicket?.name}</Text>
+            <Text style={styles.modalPrice}>
+              単価: ¥{selectedTicket?.price.toLocaleString()}
+            </Text>
+
+            <View style={styles.quantityRow}>
+              <Text style={styles.modalLabel}>購入枚数 (最大10枚):</Text>
+              <View style={styles.qtyControls}>
+                <TouchableOpacity
+                  onPress={() =>
+                    setPurchaseQuantity(Math.max(1, purchaseQuantity - 1))
+                  }
+                  style={styles.qtyBtn}
+                >
+                  <Text style={styles.qtyBtnText}>-</Text>
+                </TouchableOpacity>
+                <Text style={styles.qtyText}>{purchaseQuantity}</Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    setPurchaseQuantity(Math.min(10, purchaseQuantity + 1))
+                  }
+                  style={styles.qtyBtn}
+                >
+                  <Text style={styles.qtyBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>合計金額:</Text>
+              <Text style={styles.totalValue}>
+                ¥
+                {(
+                  (selectedTicket?.price || 0) * purchaseQuantity
+                ).toLocaleString()}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={handleConfirmPurchase}
+            >
+              <Text style={styles.confirmBtnText}>決済へ進む</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setShowConfirmModal(false)}
+            >
+              <Text style={styles.cancelBtnText}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -424,6 +503,69 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1C1C1E',
+    padding: 25,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalTitle: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  modalPrice: {
+    color: '#4CAF50',
+    fontSize: 18,
+    marginBottom: 20,
+    fontWeight: 'bold',
+  },
+  quantityRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
+  modalLabel: { color: '#AAA', flex: 1, fontSize: 16 },
+  qtyControls: { flexDirection: 'row', alignItems: 'center' },
+  qtyBtn: {
+    width: 44,
+    height: 44,
+    backgroundColor: '#333',
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyBtnText: { color: '#FFF', fontSize: 24 },
+  qtyText: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginHorizontal: 20,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderColor: '#333',
+    paddingTop: 20,
+    marginBottom: 30,
+  },
+  totalLabel: { color: '#FFF', fontSize: 18 },
+  totalValue: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
+  confirmBtn: {
+    backgroundColor: '#0A84FF',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  confirmBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 18 },
+  cancelBtn: { padding: 10, alignItems: 'center' },
+  cancelBtnText: { color: '#888', fontSize: 16 },
 });
 
 export default EventDetailScreen;

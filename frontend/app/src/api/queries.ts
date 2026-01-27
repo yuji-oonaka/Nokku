@@ -65,6 +65,7 @@ export interface TicketType {
   name: string;
   price: number;
   capacity: number;
+  remaining_count: number;
   seating_type: 'random' | 'free';
 }
 
@@ -191,7 +192,7 @@ export interface UserTicket {
   id: number;
   seat_number: string;
   qr_code_id: string;
-  is_used: boolean;
+  status: 'valid' | 'used' | 'cancelled';
   event: {
     title: string;
     venue: string;
@@ -202,7 +203,12 @@ export interface UserTicket {
     name: string;
   };
 }
+/**
+ * 自分のチケット一覧を取得 (Assetとしての取得)
+ */
 export const fetchMyTickets = async (): Promise<UserTicket[]> => {
+  // バックエンドの UserTicketController@index は
+  // $user->userTickets()->with(...) を返しているためこれで正しい 
   const response = await api.get<UserTicket[]>('/my-tickets');
   return response.data;
 };
@@ -227,7 +233,7 @@ export interface Order {
   id: number;
   user_id: number;
   total_price: number;
-  status: 'pending' | 'paid' | 'shipped' | 'redeemed';
+  status: 'pending' | 'paid' | 'completed' | 'shipped' | 'cancelled';
   payment_method: 'cash' | 'stripe';
   delivery_method: 'venue' | 'mail';
   qr_code_id: string | null;
