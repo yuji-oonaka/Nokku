@@ -3,123 +3,120 @@
 namespace App\Services;
 
 use App\Models\Gacha;
-use App\Models\GachaItem;
-use App\Models\User;
 use App\Models\PointTransaction;
-use App\Models\UserGachaLog; // ログ用モデル(後述)
+use App\Models\UserGachaLog;
+use App\Models\GachaItem;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Exception;
 
 class GachaService
 {
     protected PointService $pointService;
 
-    // PointServiceを依存注入
     public function __construct(PointService $pointService)
     {
         $this->pointService = $pointService;
     }
 
-    /**
-     * ガチャを1回回す
-     * * @param int $userId ユーザーID
-     * @param int $gachaId ガチャID
-     * @return array 結果データ
-     */
     public function spin(int $userId, int $gachaId): array
     {
-        // 1. ガチャ情報の取得とバリデーション
-        $gacha = Gacha::active()->find($gachaId); // activeスコープ利用
-        if (!$gacha) {
-            throw new Exception('現在開催されていない、または存在しないガチャです。');
-        }
+        // 1. バリデーション (GachaItemとその先のProfileItemをロード)
+        $gacha = Gacha::active()->with('items.profileItem')->find($gachaId);
+        if (!$gacha) throw new Exception('現在開催されていないガチャです。');
+        if ($gacha->items->isEmpty()) throw new Exception('アイテムが設定されていません。');
 
-        // 2. 排出アイテムがない場合はエラー
-        $items = $gacha->items;
-        if ($items->isEmpty()) {
-            throw new Exception('このガチャにはアイテムが設定されていません。');
-        }
+        try {
+            return DB::transaction(function () use ($userId, $gacha) {
+                // A. ポイント消費
+                $user = $this->pointService->consumePoints(
+                    $userId,
+                    $gacha->consumption_point,
+                    PointTransaction::TYPE_GACHA,
+                    "ガチャプレイ: {$gacha->name}",
+                    ['gacha_id' => $gacha->id]
+                );
 
-        // --- トランザクション開始 (Golden Cycle) ---
-        return DB::transaction(function () use ($userId, $gacha, $items) {
+                // B. 抽選 (得られるのは GachaItem モデル)
+                $winnerGachaItem = $this->lottery($gacha->items);
+                $winnerProfileItem = $winnerGachaItem->profileItem; // 景品の実体
 
-            // A. ポイント消費 (PointService内でlockForUpdateされるため安全)
-            $user = $this->pointService->consumePoints(
-                $userId,
-                $gacha->consumption_point,
-                PointTransaction::TYPE_GACHA,
-                "ガチャプレイ: {$gacha->name}",
-                ['gacha_id' => $gacha->id]
-            );
+                // C. アイテム付与 or 重複変換
+                // 判定は「景品ID(profile_item_id)」で行う
+                $isDuplicate = $user->profileItems()
+                    ->where('profile_item_id', $winnerProfileItem->id)
+                    ->exists();
 
-            // B. 抽選ロジック (重み付きランダム)
-            $winnerItem = $this->lottery($items);
+                $refundAmount = 0;
 
-            // C. アイテム付与 or 重複変換
-            $isDuplicate = false;
-            $refundAmount = 0;
-
-            // すでに持っているかチェック (exists)
-            $hasItem = $user->profileItems()
-                ->where('profile_item_id', $winnerItem->profile_item_id)
-                ->exists();
-
-            if ($hasItem) {
-                // 重複: ポイント還元 (例: 消費ポイントの20%を還元)
-                $isDuplicate = true;
-                $refundAmount = (int) floor($gacha->consumption_point * 0.2);
-
-                if ($refundAmount > 0) {
-                    $this->pointService->addPoints(
-                        $userId,
-                        $refundAmount,
-                        PointTransaction::TYPE_GACHA_REFUND,
-                        "ガチャ重複変換: {$winnerItem->profileItem->name}",
-                        ['original_gacha_id' => $gacha->id]
-                    );
+                if ($isDuplicate) {
+                    $refundAmount = (int) floor($gacha->consumption_point * 0.5);
+                    if ($refundAmount > 0) {
+                        $this->pointService->addPoints(
+                            $userId,
+                            $refundAmount,
+                            PointTransaction::TYPE_GACHA_REFUND,
+                            "ガチャ重複還元: {$winnerProfileItem->name}",
+                            ['original_gacha_id' => $gacha->id]
+                        );
+                    }
+                } else {
+                    // 新規獲得: ProfileItemをユーザーに紐付ける
+                    $user->profileItems()->attach($winnerProfileItem->id, ['obtained_at' => now()]);
                 }
-            } else {
-                // 新規獲得: user_profile_items に追加
-                $user->profileItems()->attach($winnerItem->profile_item_id);
-            }
 
-            // D. ログ保存 (証跡)
-            DB::table('user_gacha_logs')->insert([
-                'user_id' => $userId,
-                'gacha_id' => $gacha->id,
-                'gacha_item_id' => $winnerItem->id,
-                'consumed_points' => $gacha->consumption_point,
-                'created_at' => now(),
-            ]);
+                // D. 成功ログの保存 (gacha_item_id には GachaItemのIDを渡す) 
+                UserGachaLog::create([
+                    'user_id' => $userId,
+                    'gacha_id' => $gacha->id,
+                    'gacha_item_id' => $winnerGachaItem->id, // これで外部キー制約をクリア
+                    'consumed_points' => $gacha->consumption_point,
+                    'status' => UserGachaLog::STATUS_SUCCESS,
+                    'is_duplicate' => $isDuplicate,
+                    'refund_amount' => $refundAmount,
+                ]);
 
-            // 結果を返却
-            return [
-                'user_id' => $userId,
-                'item' => $winnerItem->profileItem, // プロフィールアイテム詳細
-                'is_duplicate' => $isDuplicate,
-                'refund_amount' => $refundAmount,
-                'remaining_points' => $user->fresh()->points, // 最新のポイント
-            ];
-        });
+                return [
+                    'item' => $winnerProfileItem,
+                    'is_duplicate' => $isDuplicate,
+                    'refund_amount' => $refundAmount,
+                    'remaining_points' => $user->fresh()->points,
+                ];
+            });
+        } catch (Exception $e) {
+            $this->logGachaFailure($userId, $gachaId, $e->getMessage(), $gacha->consumption_point);
+            throw $e;
+        }
     }
 
     /**
-     * 重み付き抽選アルゴリズム
+     * 重み付き抽選 (GachaItemモデルの probability_weight を使用) 
      */
     private function lottery($items)
     {
         $totalWeight = $items->sum('probability_weight');
-        $random = rand(1, $totalWeight);
+        $random = mt_rand(1, $totalWeight);
         $currentWeight = 0;
 
         foreach ($items as $item) {
             $currentWeight += $item->probability_weight;
-            if ($random <= $currentWeight) {
-                return $item;
-            }
+            if ($random <= $currentWeight) return $item;
         }
-
-        // 理論上ここには来ないが、念のため最後のアイテムを返す
         return $items->last();
+    }
+
+    private function logGachaFailure($userId, $gachaId, $errorCode, $points)
+    {
+        try {
+            UserGachaLog::create([
+                'user_id' => $userId,
+                'gacha_id' => $gachaId,
+                'consumed_points' => $points,
+                'status' => UserGachaLog::STATUS_FAILED,
+                'error_code' => $errorCode,
+            ]);
+        } catch (Exception $e) {
+            Log::error("Gacha Log Failure: " . $e->getMessage());
+        }
     }
 }

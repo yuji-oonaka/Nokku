@@ -11,6 +11,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth; // Facadeを使用
+use App\Filament\Resources\UserResource\RelationManagers;
 
 class UserResource extends Resource
 {
@@ -204,7 +205,11 @@ class UserResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            RelationManagers\PointTransactionsRelationManager::class,
+            RelationManagers\GachaLogsRelationManager::class,
+            RelationManagers\ChatLogsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

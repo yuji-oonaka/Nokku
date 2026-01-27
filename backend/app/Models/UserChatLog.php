@@ -9,20 +9,20 @@ class UserChatLog extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'event_id', 'room_id'];
+    protected $fillable = [
+        'user_id',
+        'event_id',
+        'room_id',
+        'status',
+        'error_code',
+        'is_free',
+        'consumed_points'
+    ];
 
-    // update_at は不要なので無効化
-    public $timestamps = false;
+    // ステータス定数
+    public const STATUS_SUCCESS = 'success';
+    public const STATUS_FAILED = 'failed';
 
-    // created_at は自動で入れたいので boot で設定または $timestamps=trueにしてupdated_atだけ外すなど
-    // 今回はシンプルに timestamps = false にして手動またはDBデフォルトに任せます
-    // が、Laravel標準に合わせるなら以下推奨
-
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(function ($model) {
-            $model->created_at = $model->freshTimestamp();
-        });
-    }
+    // 標準の timestamps を有効化 (updated_at も追加したため)
+    public $timestamps = true;
 }

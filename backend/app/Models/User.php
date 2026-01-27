@@ -19,6 +19,8 @@ use Filament\Models\Contracts\HasName;
 use Filament\Panel;
 use App\Models\PointTransaction;
 use Laravel\Cashier\Billable;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class User extends Authenticatable implements FilamentUser, HasName
 {
@@ -26,6 +28,7 @@ class User extends Authenticatable implements FilamentUser, HasName
     // 例: $user->newSubscription(...) が使えるようになる
     use HasApiTokens, HasFactory, Notifiable, Billable;
     use TwoFactorAuthenticatable;
+    use LogsActivity;
 
     protected $fillable = [
         'real_name',
@@ -210,5 +213,29 @@ class User extends Authenticatable implements FilamentUser, HasName
 
         if (str_starts_with($value, 'http')) return $value;
         return asset(Storage::url($value));
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'email', 'points', 'role']) // 監視するカラム
+            ->logOnlyDirty() // 変更があった場合のみ記録
+            ->dontSubmitEmptyLogs();
+    }
+
+    /**
+     * ガチャ実行ログ
+     */
+    public function gachaLogs(): HasMany
+    {
+        return $this->hasMany(UserGachaLog::class);
+    }
+
+    /**
+     * チャット送信ログ
+     */
+    public function chatLogs(): HasMany
+    {
+        return $this->hasMany(UserChatLog::class);
     }
 }

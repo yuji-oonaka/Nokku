@@ -8,13 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 use App\Models\User;
-
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Event extends Model
 {
     use HasFactory;
+    use LogsActivity;
 
-    // ↓↓↓ この行を追記 ↓↓↓
     protected $fillable = [
         'title',
         'description',
@@ -48,5 +49,13 @@ class Event extends Model
                 return asset(Storage::url($value));
             }
         );
+    }
+
+    public function getActivitylogOptions(): LogOptions // 3. 【ここ】メソッドは最後の方でOK
+    {
+        return LogOptions::defaults()
+            ->logOnly(['title', 'description', 'event_date', 'venue', 'status'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 }

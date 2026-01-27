@@ -13,7 +13,10 @@ class PointTransaction extends Model
     protected $fillable = [
         'user_id',
         'amount',
+        'balance_after', // 追加
         'type',
+        'status',        // 追加
+        'error_code',    // 追加
         'description',
         'metadata',
     ];
@@ -34,6 +37,10 @@ class PointTransaction extends Model
     public const TYPE_BONUS = 'bonus';
     public const TYPE_LOGIN_BONUS = 'login_bonus';
     public const TYPE_SUBSCRIPTION = 'subscription';
+
+    // ステータス定数
+    public const STATUS_SUCCESS = 'success';
+    public const STATUS_FAILED  = 'failed';
 
     public function user(): BelongsTo
     {
