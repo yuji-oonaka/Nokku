@@ -203,7 +203,12 @@ export interface UserTicket {
     name: string;
   };
 }
+/**
+ * 自分のチケット一覧を取得 (Assetとしての取得)
+ */
 export const fetchMyTickets = async (): Promise<UserTicket[]> => {
+  // バックエンドの UserTicketController@index は
+  // $user->userTickets()->with(...) を返しているためこれで正しい 
   const response = await api.get<UserTicket[]>('/my-tickets');
   return response.data;
 };

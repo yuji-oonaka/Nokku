@@ -8,11 +8,10 @@ interface Props {
 }
 
 const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
-  // デバッグ用: コンソールにデータが出ているか確認してください
-  console.log('Ticket Item:', item);
-
+  // ★ status フィールドを唯一の判定基準にする
   const isUsed = item.status === 'used';
   const isCancelled = item.status === 'cancelled';
+
   const dateObj = new Date(item.event.event_date);
   const day = dateObj.getDate();
   const month = dateObj
@@ -21,11 +20,11 @@ const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
 
   return (
     <TouchableOpacity
-      // キャンセル済みの場合もグレーアウトさせるなどの考慮が可能
+      // 使用済み、またはキャンセル済みの場合はカード全体を半透明にする
       style={[styles.card, isUsed || isCancelled ? styles.cardUsed : null]}
       onPress={() => onPress(item)}
       activeOpacity={0.8}
-      disabled={isCancelled} // キャンセル済みの場合は詳細不可にする等のガード
+      disabled={isCancelled} // キャンセル済みは詳細不可
     >
       <View
         style={[
@@ -53,6 +52,7 @@ const TicketListItem: React.FC<Props> = ({ item, onPress }) => {
           <Text style={styles.idValue}>#{item.id}</Text>
         </View>
 
+        {/* ステータスバッジの表示 */}
         {isUsed && (
           <View style={styles.usedBadge}>
             <Text style={styles.usedText}>USED</Text>

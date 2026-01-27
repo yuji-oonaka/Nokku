@@ -25,8 +25,11 @@ export const TicketStatusSection: React.FC<Props> = ({
     );
   }
 
-  // B: 入場済み
-  if (ticket.is_used) {
+  /**
+   * B: 入場済み
+   *  ticket.is_used を廃止し、status で判定するように修正
+   */
+  if (ticket.status === 'used') {
     return (
       <View style={styles.statusContainer}>
         <View style={styles.checkCircle}>
@@ -41,7 +44,7 @@ export const TicketStatusSection: React.FC<Props> = ({
     );
   }
 
-  // C: 入場前 (QR表示)
+  // C: 入場前 (QR表示) - status が 'valid' の状態
   return (
     <View style={styles.qrContainer}>
       <Text style={styles.qrLabel}>入場用QRコード</Text>
