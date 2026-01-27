@@ -27,30 +27,26 @@ class TicketTypeController extends Controller
      */
     public function store(Request $request)
     {
-        // 1. バリデーション
         $validatedData = $request->validate([
             'event_id' => 'required|integer|exists:events,id',
             'name' => 'required|string|max:255',
             'price' => 'required|integer|min:0',
             'capacity' => 'required|integer|min:1',
-            'seating_type' => 'required|in:random,free', // 'random' か 'free' のみ許可
+            'seating_type' => 'required|in:random,free',
         ]);
+
+        // ★ 重要：新規作成時は「残り在庫 = 定員」とする
+        $validatedData['remaining_count'] = $validatedData['capacity'];
 
         $user = Auth::user();
         $event = Event::findOrFail($validatedData['event_id']);
 
-        // 2. ★重要★ 権限チェック
-        // ログイン中のユーザーが、このイベントの主催者(artist_id)と一致するか？
-        // (または管理(admin)か？)
         if ($user->id !== $event->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'このイベントの券種を作成する権限がありません'], 403);
         }
 
-        // 3. DBに保存
         $ticketType = TicketType::create($validatedData);
-
-        // 4. 作成した券種情報をJSONで返す
-        return response()->json($ticketType, 201); // 201 Created
+        return response()->json($ticketType, 201);
     }
 
     /**
@@ -71,17 +67,14 @@ class TicketTypeController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, TicketType $ticketType) // ★ 修正： string $id から TicketType $ticketType に変更
+    public function update(Request $request, TicketType $ticketType)
     {
-        // ★ 実装： 権限チェック (destroy と同じ)
         $user = Auth::user();
-        $event = $ticketType->event; // 親イベントを取得
+        $event = $ticketType->event;
         if ($user->id !== $event->artist_id && $user->role !== 'admin') {
             return response()->json(['message' => 'この券種を編集する権限がありません'], 403);
         }
 
-        // ★ 実装： バリデーション (store とほぼ同じ)
-        // ※ event_id は更新対象外（券種が別のイベントに移動することはない）
         $validatedData = $request->validate([
             'name' => 'required|string|max:255',
             'price' => 'required|integer|min:0',
@@ -89,10 +82,22 @@ class TicketTypeController extends Controller
             'seating_type' => 'required|in:random,free',
         ]);
 
-        // ★ 実装： データ更新
-        $ticketType->update($validatedData);
+        // ★ 重要：定員（capacity）が変更される場合の在庫調整ロジック
+        $diff = $validatedData['capacity'] - $ticketType->capacity;
+        if ($diff !== 0) {
+            // 新しい在庫数 = 現在の在庫数 + 定員の増減分
+            $newRemaining = $ticketType->remaining_count + $diff;
 
-        // ★ 実装： 更新後のデータを返す
+            // ガード：既に売れすぎていて、定員をそれ以下に減らせない場合
+            if ($newRemaining < 0) {
+                return response()->json([
+                    'message' => '既に販売済みの枚数が多いため、指定された定員まで減らすことはできません。'
+                ], 422);
+            }
+            $validatedData['remaining_count'] = $newRemaining;
+        }
+
+        $ticketType->update($validatedData);
         return response()->json($ticketType);
     }
 

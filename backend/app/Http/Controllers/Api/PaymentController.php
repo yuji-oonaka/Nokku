@@ -4,84 +4,49 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Product;
-use App\Models\TicketType;
-use App\Models\UserTicket;
+use App\Models\Order;
 use Illuminate\Support\Facades\Auth;
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
-use App\Http\Requests\Payment\CreateTicketPaymentRequest;
-use App\Http\Requests\Payment\ConfirmTicketPurchaseRequest;
-use App\Services\TicketService; // ★ 追加
+use Illuminate\Http\JsonResponse;
 
 class PaymentController extends Controller
 {
-    // ★ Serviceをコンストラクタ注入、またはメソッド注入で利用可能にする
-    // 今回はメソッド注入を使います。
-
     /**
-     * グッズのPaymentIntentを作成 (維持)
+     * 【統合版】注文(Order)に対するStripe決済インテントを作成
+     * チケット・グッズを問わず、一つのOrderに対して一括決済を行う。
      */
-    public function createPaymentIntent(Request $request)
+    public function createPaymentIntent(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'product_id' => 'required|integer|exists:products,id',
-            'quantity' => 'required|integer|min:1',
+            'order_id' => 'required|integer|exists:orders,id',
         ]);
 
-        $product = Product::findOrFail($validated['product_id']);
-        $amount = $product->price * $validated['quantity'];
+        // 1. 注文情報の取得と整合性チェック
+        $order = Order::where('id', $validated['order_id'])
+            ->where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->firstOrFail();
 
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
+
+            // 2. Stripe PaymentIntent の作成
+            // メタデータに order_id を含めることで、Webhook側が特定できるようにする
             $paymentIntent = PaymentIntent::create([
-                'amount' => $amount,
+                'amount' => (int) $order->total_price, // Orderテーブルの合計金額を使用
                 'currency' => 'jpy',
                 'automatic_payment_methods' => ['enabled' => true],
                 'metadata' => [
-                    'type' => 'product',
-                    'product_id' => $product->id,
-                    'quantity' => $validated['quantity'],
+                    'order_id' => $order->id, // ★ Webhookとの紐付けに必須
                     'user_id' => Auth::id(),
                 ],
             ]);
 
             return response()->json([
                 'clientSecret' => $paymentIntent->client_secret,
-                'amount' => $amount,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * チケットのPaymentIntentを作成 (維持)
-     */
-    public function createTicketPaymentIntent(CreateTicketPaymentRequest $request)
-    {
-        $validated = $request->validated();
-        $ticket = TicketType::findOrFail($validated['ticket_id']);
-        $amount = $ticket->price * $validated['quantity'];
-
-        try {
-            Stripe::setApiKey(config('services.stripe.secret'));
-            $paymentIntent = PaymentIntent::create([
-                'amount' => $amount,
-                'currency' => 'jpy',
-                'automatic_payment_methods' => ['enabled' => true],
-                'metadata' => [
-                    'type' => 'ticket',
-                    'ticket_type_id' => $ticket->id,
-                    'quantity' => $validated['quantity'],
-                    'event_id' => $ticket->event_id,
-                    'user_id' => Auth::id(),
-                ]
-            ]);
-
-            return response()->json([
-                'clientSecret' => $paymentIntent->client_secret,
-                'amount' => $amount,
+                'amount' => $order->total_price,
+                'order_id' => $order->id,
             ]);
         } catch (\Exception $e) {
             return response()->json(['message' => '決済の準備に失敗しました: ' . $e->getMessage()], 500);
@@ -89,42 +54,8 @@ class PaymentController extends Controller
     }
 
     /**
-     * チケット購入を確定し、UserTicketを作成する (★ Service利用へ変更)
+     * 【重要】confirmTicketPurchase() は廃止します。
+     * 理由は、決済完了後の発券処理を Webhook (StripeWebhookController) に一本化するためです。
+     * これにより「支払い済みだが発券されない」不整合を物理的に排除します。
      */
-    public function confirmTicketPurchase(ConfirmTicketPurchaseRequest $request, TicketService $ticketService)
-    {
-        // 1. バリデーション
-        $validated = $request->validated();
-
-        // 2. 二重作成チェック (ここはControllerの責務: HTTPリクエストの制御)
-        $existingTickets = UserTicket::where('stripe_payment_id', $validated['stripe_payment_id'])->get();
-        if ($existingTickets->isNotEmpty()) {
-            return response()->json([
-                'message' => 'チケットは既に作成されています',
-                'tickets' => $existingTickets
-            ], 200);
-        }
-
-        try {
-            /** @var \App\Models\User $user */
-            $user = Auth::user();
-
-            // 3. Service層でビジネスロジック実行 (トランザクション・在庫処理など)
-            $createdUserTickets = $ticketService->purchaseTickets(
-                $user,
-                $validated['ticket_type_id'],
-                $validated['quantity'],
-                $validated['stripe_payment_id']
-            );
-
-            return response()->json([
-                'message' => 'チケットの購入が完了しました！',
-                'tickets' => $createdUserTickets
-            ], 201);
-        } catch (\Exception $e) {
-            // Serviceから投げられたエラー(売り切れ等)をキャッチしてレスポンス
-            // エラーログを残すなら Log::error($e); をここに入れる
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
-    }
 }

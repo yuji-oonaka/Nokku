@@ -17,6 +17,25 @@ class OrderItem extends Model
     protected $guarded = ['id'];
 
     /**
+     * NOKKU憲法: 商品とチケットの排他バリデーション
+     */
+    protected static function booted()
+    {
+        static::saving(function ($item) {
+            $hasProduct = !empty($item->product_id);
+            $hasTicket = !empty($item->ticket_type_id);
+
+            // 商品とチケットのいずれか一方が必須
+            if ($hasProduct && $hasTicket) {
+                throw new \LogicException('OrderItemは「商品」か「チケット」のいずれか一方でなければなりません。');
+            }
+            if (!$hasProduct && !$hasTicket) {
+                throw new \LogicException('OrderItemには「商品」または「チケット」の指定が必須です。');
+            }
+        });
+    }
+
+    /**
      * このアイテムが属する注文 (Orderモデルとのリレーション)
      * (多対1: 多くのアイテムは、1つの注文に属する)
      */
@@ -34,9 +53,11 @@ class OrderItem extends Model
         return $this->belongsTo(Product::class);
     }
 
-    // ★ 補足 ★
-    // order_items テーブルには 'product_name' や 'price_at_purchase' 
-    // というカラムも持たせているため、
-    // もし紐付いた Product が削除されても ($this->product が null になっても)、
-    // 注文履歴には名前と価格を表示し続けることができます。
+    /**
+     * ★追加: チケット種別へのリレーション
+     */
+    public function ticketType(): BelongsTo
+    {
+        return $this->belongsTo(TicketType::class);
+    }
 }

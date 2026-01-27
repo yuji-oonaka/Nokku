@@ -4,42 +4,57 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo; // ★ 追加
 
 class UserTicket extends Model
 {
     use HasFactory;
 
+    // ★ ステータスの定数定義 (タイポ防止と可読性のため)
+    const STATUS_VALID = 'valid';
+    const STATUS_USED = 'used';
+    const STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'user_id',
+        'order_id',
         'ticket_type_id',
         'event_id',
         'stripe_payment_id',
         'seat_number',
         'qr_code_id',
-        'is_used',
-        'used_at', // 使用日時も記録できるように追加しておくと便利です
+        'status',
+        'used_at',
     ];
 
     /**
-     * このチケットが属するイベント（Event）を取得 (多対1)
+     * このチケットが属する注文 (Order) を取得
      */
-    public function event()
+    public function order(): BelongsTo // ★ 追加
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    /**
+     * このチケットが属するイベント (Event) を取得
+     */
+    public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
     }
 
     /**
-     * このチケットの券種（TicketType）を取得 (多対1)
+     * このチケットの券種 (TicketType) を取得
      */
-    public function ticketType()
+    public function ticketType(): BelongsTo
     {
         return $this->belongsTo(TicketType::class);
     }
 
     /**
-     * チケットの持ち主（User）を取得 (多対1)
+     * チケットの持ち主 (User) を取得
      */
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }

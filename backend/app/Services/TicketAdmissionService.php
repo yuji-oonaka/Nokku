@@ -13,101 +13,106 @@ use Exception;
 class TicketAdmissionService
 {
     /**
-     * チケットの入場処理を行う
-     *
-     * @param User $scannerUser スキャン実行者
-     * @param string|int $identifier 検索キー (qr_code_id または id)
-     * @param string $type 検索タイプ ('qr' または 'manual')
-     * @return array 結果データ
-     * @throws Exception
+     * チケット入場処理
      */
     public function processAdmission(User $scannerUser, $identifier, string $type = 'qr'): array
     {
-        // 1. 権限チェック
-        if ($scannerUser->role !== 'admin' && $scannerUser->role !== 'artist') {
+        if (!in_array($scannerUser->role, ['admin', 'artist', 'staff'])) {
             throw new Exception('権限がありません。', 403);
         }
 
-        // トランザクション処理
         $ticket = DB::transaction(function () use ($scannerUser, $identifier, $type) {
-
-            // 2. チケット検索 & ロック
-            $query = UserTicket::with('event', 'ticketType')->lockForUpdate();
-
-            if ($type === 'qr') {
-                $query->where('qr_code_id', $identifier);
-            } else {
-                $query->where('id', $identifier);
-            }
-
+            $query = UserTicket::with(['event', 'ticketType'])->lockForUpdate();
+            $type === 'qr' ? $query->where('qr_code_id', $identifier) : $query->where('id', $identifier);
             $ticket = $query->first();
 
-            // 3. 存在チェック
             if (!$ticket) {
-                // QRの場合、グッズ引換券と間違えてないかチェック
-                if ($type === 'qr') {
-                    $isOrder = Order::where('qr_code_id', $identifier)->exists();
-                    if ($isOrder) {
-                        throw new Exception('これはグッズ引換用のQRコードです。「グッズ引換」モードに切り替えてください。', 400);
-                    }
+                if ($type === 'qr' && Order::where('qr_code_id', $identifier)->exists()) {
+                    throw new Exception('これはグッズ引換用QRです。「グッズ引換」モードにしてください。', 400);
                 }
                 throw new Exception('チケットが見つかりません', 404);
             }
 
-            // 4. イベント所有権チェック
+            // アーティスト・スタッフの所属チェック
             if ($scannerUser->role !== 'admin') {
-                // $ticket->event が null の可能性も考慮すべきだが、外部キー制約があればOK
-                if ($ticket->event->artist_id !== $scannerUser->id) {
-                    throw new Exception('権限がありません。他者のイベントのチケットは操作できません。', 403);
+                $ownerId = ($scannerUser->role === 'staff') ? $scannerUser->employer_id : $scannerUser->id;
+                if ($ticket->event->artist_id !== $ownerId) {
+                    throw new Exception('担当外のイベントチケットです。', 403);
                 }
             }
 
-            // 5. 使用済みチェック
-            if ($ticket->is_used) {
-                // 例外コード 409 (Conflict) を使用
+            if ($ticket->status === UserTicket::STATUS_USED) {
                 throw new Exception('このチケットは既に使用済みです。', 409);
             }
 
-            // 6. 更新実行
-            $ticket->is_used = true;
-            $ticket->used_at = now();
-            $ticket->save();
-
+            $ticket->update(['status' => UserTicket::STATUS_USED, 'used_at' => now()]);
             return $ticket;
         });
 
-        // 7. Firestore同期 (トランザクション成功後)
-        $this->syncToFirestore($ticket, $scannerUser);
+        $this->syncToFirestore($ticket->qr_code_id, UserTicket::STATUS_USED, $ticket->user_id, $ticket->seat_number, $scannerUser->id);
 
         return [
-            'message' => "認証成功！\n{$ticket->event->title} / {$ticket->seat_number}",
+            'message' => "認証成功！\n{$ticket->seat_number}",
             'ticket'  => $ticket
         ];
     }
 
     /**
-     * Firestoreへの同期
+     * グッズ引換処理 (Order用)
      */
-    private function syncToFirestore(UserTicket $ticket, User $scannerUser): void
+    public function processOrderRedemption(User $scannerUser, string $qrCodeId): array
     {
-        if (!$ticket->qr_code_id) return;
+        if (!in_array($scannerUser->role, ['admin', 'artist', 'staff'])) {
+            throw new Exception('権限がありません。', 403);
+        }
 
+        $order = DB::transaction(function () use ($qrCodeId, $scannerUser) {
+            $order = Order::where('qr_code_id', $qrCodeId)->lockForUpdate()->first();
+
+            if (!$order) throw new Exception('注文が見つかりません。', 404);
+            if ($order->status === 'completed') throw new Exception('この注文は既に引換済みです。', 409);
+            if ($order->status !== 'paid') throw new Exception('未決済の注文です。', 400);
+
+            $order->update(['status' => 'completed', 'completed_at' => now()]);
+            return $order;
+        });
+
+        $this->syncToFirestore($order->qr_code_id, 'completed', $order->user_id, 'グッズ引換', $scannerUser->id, 'order_status');
+
+        return [
+            'message' => "引き換え完了！",
+            'order'   => $order->load('items')
+        ];
+    }
+
+    /**
+     * Firestore同期 (共通)
+     */
+    public function syncToFirestore($qrCodeId, $status, $userId, $seatNumber, $scannerId = null, $collection = 'ticket_status'): void
+    {
         try {
-            $firestore = Firebase::firestore();
-            $database = $firestore->database();
+            $owner = User::find($userId);
+            if (!$owner || !$owner->firebase_uid) {
+                Log::warning("Firestore Sync: Owner or Firebase UID not found for user {$userId}");
+                return;
+            }
 
-            $database->collection('ticket_status')
-                ->document($ticket->qr_code_id)
-                ->set([
-                    'status' => 'used',
-                    'is_used' => true,
-                    'scanned_at' => new \DateTime(),
-                    'scanner_id' => $scannerUser->id,
-                    'ticket_id' => $ticket->id,
-                ]);
+            $data = [
+                'status'      => $status,
+                'owner_uid'   => $owner->firebase_uid,
+                'updated_at'  => new \DateTime(),
+                'seat_number' => $seatNumber,
+            ];
+
+            // スキャン時のみスキャナーIDをセット
+            if ($scannerId) {
+                $data['scanner_id'] = $scannerId;
+            }
+
+            Firebase::firestore()->database()->collection($collection)
+                ->document($qrCodeId)->set($data, ['merge' => true]);
         } catch (\Exception $e) {
-            Log::error('Firestore write failed: ' . $e->getMessage());
-            // FirestoreのエラーでHTTPレスポンスを止めないよう、例外は握りつぶす
+            Log::error("Firestore Sync Failed ($collection): " . $e->getMessage());
         }
     }
 }

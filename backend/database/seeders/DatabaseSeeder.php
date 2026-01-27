@@ -152,9 +152,30 @@ class DatabaseSeeder extends Seeder
             );
 
             if ($event->wasRecentlyCreated) {
-                TicketType::create(['event_id' => $event->id, 'name' => 'S席', 'price' => 8000, 'capacity' => 100, 'seating_type' => 'random']);
-                TicketType::create(['event_id' => $event->id, 'name' => 'A席', 'price' => 6000, 'capacity' => 300, 'seating_type' => 'random']);
-                TicketType::create(['event_id' => $event->id, 'name' => '自由席', 'price' => 4000, 'capacity' => 500, 'seating_type' => 'free']);
+                TicketType::create([
+                    'event_id' => $event->id,
+                    'name' => 'S席',
+                    'price' => 8000,
+                    'capacity' => 100,
+                    'remaining_count' => 100, // ★ 追加
+                    'seating_type' => 'random'
+                ]);
+                TicketType::create([
+                    'event_id' => $event->id,
+                    'name' => 'A席',
+                    'price' => 6000,
+                    'capacity' => 300,
+                    'remaining_count' => 300, // ★ 追加
+                    'seating_type' => 'random'
+                ]);
+                TicketType::create([
+                    'event_id' => $event->id,
+                    'name' => '自由席',
+                    'price' => 4000,
+                    'capacity' => 500,
+                    'remaining_count' => 500, // ★ 追加
+                    'seating_type' => 'free'
+                ]);
             }
             $this->command->info("Main Event created.");
         }
@@ -195,6 +216,7 @@ class DatabaseSeeder extends Seeder
                         'name' => $ticketData['name'],
                         'price' => $ticketData['base_price'] + (rand(-5, 5) * 100),
                         'capacity' => $ticketData['capacity'],
+                        'remaining_count' => $ticketData['capacity'],
                         'seating_type' => $ticketData['type'],
                     ]);
                 }
