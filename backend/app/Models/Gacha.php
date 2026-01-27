@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany; // 1. インポートを追加
 
 class Gacha extends Model
 {
@@ -25,15 +26,17 @@ class Gacha extends Model
         'is_active' => 'boolean',
     ];
 
-    // 排出アイテム設定
-    public function items()
+    /**
+     * 排出アイテム設定
+     * belongsToMany から HasMany(GachaItem::class) に変更
+     */
+    public function items(): HasMany
     {
-        return $this->belongsToMany(ProfileItem::class, 'gacha_profile_item')
-            ->withPivot('weight')
-            ->withTimestamps();
+        // 修正：gacha_items テーブルを管理する GachaItem モデルと紐付ける
+        return $this->hasMany(GachaItem::class);
     }
 
-    // 有効なガチャのみ取得するスコープ
+    // 有効なガチャのみ取得するスコープ（ここは変更なし）
     public function scopeActive(Builder $query)
     {
         $now = now();

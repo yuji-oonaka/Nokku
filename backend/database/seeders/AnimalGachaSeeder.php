@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\Gacha;
 use App\Models\ProfileItem;
+use App\Models\GachaItem; // 追加
 use Illuminate\Support\Facades\DB;
 
 class AnimalGachaSeeder extends Seeder
@@ -19,14 +20,11 @@ class AnimalGachaSeeder extends Seeder
                 'consumption_point' => 100,
                 'description' => 'かわいい動物たちのアイコンが登場！ペンギンやブタさんをゲットしよう。',
                 'is_active' => true,
-                'start_at' => now(), // すぐ開始
-                'end_at' => null,    // 無期限（恒常）
+                'start_at' => now(),
+                'end_at' => null,
             ]);
 
             // 2. アイテムを作成
-            // 画像パスは storage/app/public/gacha_items/penguin.jpg を指します
-            // DBには 'gacha_items/penguin.jpg' と保存するのが一般的です
-
             $penguin = ProfileItem::create([
                 'name' => 'ハッピーペンギン',
                 'image_url' => 'gacha_items/penguin.png',
@@ -43,11 +41,30 @@ class AnimalGachaSeeder extends Seeder
                 'is_default' => false,
             ]);
 
-            // 3. ガチャにアイテムを登録し、確率(weight)を設定！
-            // 合計 100 になるように設定してみます (50:50)
+            $robot = ProfileItem::create([
+                'name' => 'ぼろっとさん',
+                'image_url' => 'gacha_items/robot.png',
+                'rarity' => 'R',
+                'type' => 'icon',
+                'is_default' => false,
+            ]);
 
-            $gacha->items()->attach($penguin->id, ['weight' => 50]);
-            $gacha->items()->attach($pig->id,     ['weight' => 50]);
+            // 3. ガチャにアイテムを登録 (createを使用)
+            // カラム名を probability_weight に修正
+            $gacha->items()->create([
+                'profile_item_id' => $penguin->id,
+                'probability_weight' => 40
+            ]);
+
+            $gacha->items()->create([
+                'profile_item_id' => $pig->id,
+                'probability_weight' => 40
+            ]);
+
+            $gacha->items()->create([
+                'profile_item_id' => $robot->id,
+                'probability_weight' => 20
+            ]);
 
             // ログ出力
             echo "動物ガチャ「{$gacha->name}」を作成しました！\n";

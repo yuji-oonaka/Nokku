@@ -70,78 +70,34 @@ class GachaController extends Controller
     {
         $request->validate([
             'gacha_id' => 'required|exists:gachas,id',
-            'count' => 'nullable|integer|min:1',
         ]);
 
-        $user = $request->user();
+        $userId = Auth::id();
         $gachaId = $request->input('gacha_id');
 
-        // ★重要修正: 実行時も active() であることを厳守（不正防止）
-        $gacha = Gacha::active()->with('items')->find($gachaId);
+        try {
+            // ロジックはすべて Service に任せる
+            // これにより PointService やログ記録が確実に実行される
+            $result = $this->gachaService->spin($userId, $gachaId);
 
-        if (!$gacha) {
-            return response()->json(['message' => 'このガチャは現在終了しているか、無効になっています。'], 403);
-        }
-
-        // ポイント不足チェック
-        if ($user->points < $gacha->consumption_point) {
-            return response()->json(['message' => 'ポイントが足りません'], 400);
-        }
-
-        return DB::transaction(function () use ($user, $gacha) {
-            // 1. ポイント消費 (再取得してロックをかけるのが理想だが、まずはデクリメント)
-            $user->decrement('points', $gacha->consumption_point);
-
-            // 2. 抽選ロジック
-            if ($gacha->items->isEmpty()) {
-                throw new \Exception('ガチャの中身が設定されていません。');
-            }
-
-            $totalWeight = $gacha->items->sum('pivot.weight');
-            $random = mt_rand(1, $totalWeight);
-
-            $currentWeight = 0;
-            $selectedItem = null;
-
-            foreach ($gacha->items as $item) {
-                $currentWeight += $item->pivot->weight;
-                if ($random <= $currentWeight) {
-                    $selectedItem = $item;
-                    break;
-                }
-            }
-
-            if (!$selectedItem) {
-                throw new \Exception('抽選システムエラー');
-            }
-
-            // 3. 所持チェック & 付与
-            $hasItem = $user->profileItems()->where('profile_item_id', $selectedItem->id)->exists();
-            $isDuplicate = false;
-            $refundAmount = 0;
-
-            if ($hasItem) {
-                $isDuplicate = true;
-                $refundAmount = floor($gacha->consumption_point / 2);
-                $user->increment('points', $refundAmount);
-            } else {
-                $user->profileItems()->attach($selectedItem->id, ['obtained_at' => now()]);
-            }
-
-            // 4. 結果を返す
             return response()->json([
                 'result' => [
                     'item' => [
-                        'id' => $selectedItem->id,
-                        'name' => $selectedItem->name,
-                        'image_url' => $selectedItem->image_url,
-                        'rarity' => $selectedItem->rarity,
+                        'id' => $result['item']->id,
+                        'name' => $result['item']->name,
+                        'image_url' => $result['item']->image_url,
+                        'rarity' => $result['item']->rarity,
                     ],
-                    'is_duplicate' => $isDuplicate,
-                    'refund_amount' => $refundAmount,
+                    'is_duplicate' => $result['is_duplicate'],
+                    'refund_amount' => $result['refund_amount'],
                 ],
-                'user_points' => $user->fresh()->points, // 最新のポイントを返す
+                'user_points' => $result['remaining_points'],
             ]);
-        });
+        } catch (Exception $e) {
+            // サービス層で投げられた例外を適切にエラーレスポンスとして返す
+            return response()->json([
+                'message' => $e->getMessage() ?: 'ガチャ実行中にエラーが発生しました。'
+            ], 400);
+        }
     }
 }
