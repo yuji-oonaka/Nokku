@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView, // standard SafeAreaView for layout control
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import {
@@ -22,6 +21,7 @@ import {
   InquiryResponse, // 追加
 } from '../../api/queries';
 import { MyPageStackParamList } from '../../navigators/MyPageStackNavigator';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../services/api';
 
 type InquiryDetailRouteProp = RouteProp<MyPageStackParamList, 'InquiryDetail'>;
@@ -54,8 +54,24 @@ const InquiryDetailScreen = () => {
   };
 
   useEffect(() => {
+    // 🛡️ ヘッダーのタイトルと戻るボタンを定義
+    navigation.setOptions({
+      headerTitle: inquiry ? inquiry.subject : '読み込み中...',
+      headerShown: true,
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => navigation.goBack()} // 👈 これで直前の画面(イベント等)に戻る
+          style={{ marginLeft: 15, padding: 5 }}
+        >
+          <Text style={{ color: '#0A84FF', fontSize: 17, fontWeight: '500' }}>
+            戻る
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
+
     loadData();
-  }, [inquiryId]);
+  }, [navigation, inquiryId, inquiry?.subject]); // 依存配列にinquiryの情報を追加
 
   // 送信ハンドラー
   const handleSend = async () => {
@@ -194,21 +210,6 @@ const InquiryDetailScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
       >
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={[styles.badge, badgeStyle]}>
-              <Text style={styles.badgeText}>
-                {inquiry.status.toUpperCase()}
-              </Text>
-            </View>
-            <Text style={styles.date}>
-              {new Date(inquiry.created_at).toLocaleString()}
-            </Text>
-          </View>
-          <Text style={styles.title}>{inquiry.subject}</Text>
-          {renderTargetInfo()}
-        </View>
-
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
@@ -216,6 +217,14 @@ const InquiryDetailScreen = () => {
             scrollViewRef.current?.scrollToEnd({ animated: true })
           }
         >
+          <View style={styles.infoSection}>
+            <View style={[styles.badge, badgeStyle]}>
+              <Text style={styles.badgeText}>
+                {inquiry.status.toUpperCase()}
+              </Text>
+            </View>
+            {renderTargetInfo()}
+          </View>
           {/* 1. 最初の問い合わせ（右側・自分） */}
           <View style={[styles.messageRow, styles.myMessageRow]}>
             <View style={[styles.bubble, styles.myBubble]}>
@@ -335,15 +344,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
+  infoSection: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1C1C1E',
+    backgroundColor: '#000000',
+    marginBottom: 10,
+  },
   center: {
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  header: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-    backgroundColor: '#1C1C1E',
   },
   headerTop: {
     flexDirection: 'row',

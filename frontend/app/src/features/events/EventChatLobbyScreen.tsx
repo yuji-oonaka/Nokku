@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,6 +15,7 @@ import { EventChatRoom } from './types';
 import { CreateRoomModal } from './components/CreateRoomModal';
 // ★ useEventChatApi が未実装の場合は、api.post を直接呼ぶ形に修正も可能です
 import { useEventChatApi } from './hooks/useEventChatApi';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // 固定ルーム定義
 const SYSTEM_ROOMS = [
