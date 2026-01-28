@@ -39,4 +39,28 @@ class EventChatController extends Controller
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], $code);
         }
     }
+
+    /**
+     * ★ 追加：ルーム作成時のポイント消費エンドポイント
+     */
+    public function consumeRoomCreate(Request $request)
+    {
+        $request->validate(['event_id' => 'required|integer']);
+
+        try {
+            $log = $this->chatService->consumeRoomCreate(
+                (int)$request->user()->id,
+                (int)$request->event_id
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'consumed' => $log->consumed_points,
+                'points' => $request->user()->fresh()->points, //
+            ]);
+        } catch (\Exception $e) {
+            $code = $e->getMessage() === 'INSUFFICIENT_POINTS' ? 402 : 500;
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], $code);
+        }
+    }
 }
