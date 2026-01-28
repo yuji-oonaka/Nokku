@@ -81,35 +81,51 @@ export const EventChatLobbyScreen = () => {
   // ★ ルーム作成処理（ポイント消費 + Firestore作成）
   const handleCreateRoom = async (roomName: string) => {
     if (!user) return;
+    if (!roomName.trim()) {
+      Alert.alert('エラー', 'ルーム名を入力してください');
+      return;
+    }
 
     try {
-      // 1. ポイント消費 API コール (50pt)
-      // バックエンド: EventChatController@consumeRoomCreate
-      await consumeForRoomCreate(String(eventId));
+      // Step 1: ポイント消費 API (Laravel)
+      // 文字列の eventId を数値に変換して送信
+      await consumeForRoomCreate(String(eventId)); //
 
-      // 2. Firestoreにルーム作成
-      await firestore()
+      // Step 2: Firestore への書き込み
+      // ★重要: createdBy に firebase_uid を設定することでセキュリティルールをパスさせる
+      const docRef = await firestore()
         .collection('event_chat_rooms')
         .add({
           eventId: String(eventId),
           name: roomName.trim(),
-          createdBy: String(user.id),
+          createdBy: user.firebase_uid, // ★ ここを id から firebase_uid に修正
           status: 'open',
           createdAt: firestore.FieldValue.serverTimestamp(),
           participantCount: 0,
         });
 
-      // 3. 成功後の処理
-      await refreshUser(); // ポイント表示を更新
+      // Step 3: 完了処理
+      await refreshUser(); // AuthContext のポイント残高を更新
       setModalVisible(false);
 
-      Alert.alert('完了', '新しいルームを作成しました！');
+      // 自動遷移
+      navigation.navigate('EventChat', {
+        eventId: String(eventId),
+        roomId: docRef.id,
+        roomName: roomName.trim(),
+      });
     } catch (error: any) {
-      console.error(error);
+      console.error('Room creation failed:', error);
+
       if (error.response?.status === 402) {
-        Alert.alert('ポイント不足', 'ルーム作成に必要なポイントが足りません。');
+        Alert.alert('ポイント不足', 'ルーム作成には50pt必要です。');
+      } else if (error.message?.includes('permission-denied')) {
+        Alert.alert(
+          '権限エラー',
+          'Firestoreへの書き込み権限がありません。ログイン状態を確認してください。',
+        );
       } else {
-        Alert.alert('エラー', 'ルーム作成に失敗しました。');
+        Alert.alert('エラー', 'ルーム作成中に問題が発生しました。');
       }
     }
   };
@@ -190,7 +206,8 @@ export const EventChatLobbyScreen = () => {
         onClose={() => setModalVisible(false)}
         onSubmit={handleCreateRoom}
         isLoading={isConsuming}
-        currentPoints={user?.points || 0} // ポイント残高を渡す
+        // DbUser インターフェースに従い points を参照
+        currentPoints={user?.points || 0}
       />
     </SafeAreaView>
   );
