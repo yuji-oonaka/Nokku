@@ -16,6 +16,7 @@ class ChatService
     // 定数管理
     public const FREE_LIMIT = 10;
     public const MESSAGE_COST = 5;
+    public const ROOM_CREATION_COST = 50;
     public const SPAM_INTERVAL = 5;
 
     public function __construct(PointService $pointService)
@@ -70,6 +71,33 @@ class ChatService
             $this->logChatFailure($userId, $eventId, $roomId, $e->getMessage(), $isFree);
             throw $e;
         }
+    }
+
+    /**
+     * ルーム作成時のポイント消費処理
+     */
+    public function consumeRoomCreate(int $userId, int $eventId)
+    {
+        return DB::transaction(function () use ($userId, $eventId) {
+            // 1. ポイント消費 (PointTransaction::TYPE_ROOM_CREATE)
+            $this->pointService->consumePoints(
+                $userId,
+                self::ROOM_CREATION_COST,
+                PointTransaction::TYPE_ROOM_CREATE, //
+                "チャットルーム作成: Event {$eventId}",
+                ['event_id' => $eventId]
+            );
+
+            // 2. 実行ログを SUCCESS で保存
+            return UserChatLog::create([
+                'user_id' => $userId,
+                'event_id' => $eventId,
+                'room_id' => 0,
+                'status' => UserChatLog::STATUS_SUCCESS,
+                'is_free' => false,
+                'consumed_points' => self::ROOM_CREATION_COST,
+            ]);
+        });
     }
 
     private function logChatFailure($userId, $eventId, $roomId, $errorCode, $isFree)
