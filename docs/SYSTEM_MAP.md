@@ -6,19 +6,33 @@
 * [🔐 認証・認可](modules/auth.md) - Firebase連携・Operator排除
 * [📦 商取引 (Commerce)](modules/commerce.md) - 在庫減算・Stripe予約
 * [💳 決済連携 (Webhook)](modules/webhook.md) - ステータス確定・チケット発行
-* [🔍 スキャンシステム (Scanning)](modules/scanning_system.md) - **QR自動判別・定員/在庫の減算不整合注意**
+* [🔍 スキャンシステム (Scanning)](modules/scanning-system.md) - **QR自動判別・定員/在庫の減算不整合注意**
 * [🖼️ ストレージ・物流](modules/storage.md) - 画像フォルダ振分・保存
 * [📦 グッズ管理 (Merchandise)](modules/merchandise.md) - カタログ・権限ガード
 * [🎟️ 入場・発券 (Admission)](modules/admission.md) - **重大な在庫不整合警告あり**
 * [💎 サブスクリプション](modules/subscription.md) - おかわり課金・サイクルリセット
 * [📢 お知らせ・タイムライン](modules/Announcements.md) - 公開日時・権限別表示フィルタ
-* [🎁 ログインボーナス](modules/login_bonus.md) - Staff除外・5pt・重複ガード
+* [🎁 ログインボーナス](modules/login-bonus.md) - Staff除外・5pt・重複ガード
 * [⭐ お気に入り](modules/favorites.md) - トグル登録・いいね数カウント
-* [💎 ポイント・ガシャ](modules/points_gacha.md) - 50%返金・残高監査
+* [💎 ポイント・ガシャ](modules/points-gacha.md) - 50%返金・残高監査
 * [💬 チャット](modules/chat.md) - 50ptルーム作成・スパムガード
 * [👤 ユーザー](modules/user.md) - 所持アイテムチェック
-* [🎟️ イベント・アーティスト](modules/event_management.md) - 表示最適化
+* [🎟️ イベント・アーティスト](modules/event-management.md) - 表示最適化
 * [📩 問い合わせ](modules/inquiry.md) - 自動解決・ライフサイクル
+
+---
+
+## 🚨 横断監査・警告ドキュメント（必読・修正前提）
+
+* [🧪 在庫・数量ロジック 精密監査（報告）](audit/inventory-audit-report.md)  
+  - チケット在庫消失・定員破壊の原因を**コードレベルで確定**
+  - backend / frontend 両方に影響あり
+  - **修正・仕様変更前に必読**
+
+  ↳ 調査ログ・根拠資料：  
+  [inventory-audit-raw.md](audit/inventory-audit-raw.md)
+
+---
 
 ---
 
