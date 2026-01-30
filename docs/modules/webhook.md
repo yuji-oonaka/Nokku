@@ -11,6 +11,6 @@
 * 注文ステータスを `pending` から `paid` へ更新する。
 * 更新直後に `TicketService@issueTicketsFromOrder` を呼び出し、デジタルチケットの実体を発行する。
 
-### 🚩 地雷注意
-* **在庫の先行減算:** 在庫は `OrderController@store`（pending作成時）で既に減らされている。Webhook側で再度在庫を減らさないよう厳守。
-* **チケット二重発行:** `TicketService` 呼び出しが `DB::transaction` 内にあることを確認せよ。失敗時は注文ステータス更新もロールバックされる。
+### ✅ 解決済みの「地雷」
+* **在庫の二重減算防止**: 以前は `TicketService` 側での減算リスクがあったが、現在は `StripeWebhookController` および `TicketService` 共に数量操作を排除。在庫操作は `OrderController` の一箇所に集約された。
+* **トランザクションの原子性**: `DB::transaction` および `lockForUpdate` により、決済確定と発券処理は完全に不可分（Atomic）であることが確認済み。
