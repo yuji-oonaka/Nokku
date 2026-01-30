@@ -1,17 +1,17 @@
 # 📦 商取引 (Commerce) モジュール詳細
 
 ## 核心ロジック: `OrderController@store`
- に基づく実装事実。
 
-### 1. 在庫の二重管理
-* 商品(`Product`)とチケット(`TicketType`)を同一の `store` メソッドで処理。
-* 在庫チェックには `lockForUpdate()` を使用し、悲観的ロックをかけている。
+### 1. 在庫の統合管理
+* 商品(`Product`)とチケット(`TicketType`)を同一の `store` メソッドで排他制御。
+* 在庫チェックには `lockForUpdate()` を使用し、オーバーセルを物理的に防止。
 
-### 2. 処理シーケンス（重要）
-1. Stripe `PaymentIntent` 作成（決済予約）
-2. **在庫減算 (`decrement`)** ← ここで在庫を確保
-3. `Order` および `OrderItem` レコード作成
-4. 完了レスポンス
+### 2. トランザクション・シークエンス
+1. **悲観的ロックによる在庫確保**: `remaining_count` または `stock` を `decrement`。
+2. **注文レコードの永続化**: `Order` および `OrderItem` を作成。
+3. **決済予約**: Stripe `PaymentIntent` を作成し、`clientSecret` を返却。
+* ※ 全工程を `DB::transaction` で包んでいるため、不完全な注文データは発生しない。
 
-### 🚩 地雷注意
-* 在庫減算が `Order::create` より先に行われるため、途中で例外が発生すると在庫だけ減って注文がない状態になる（トランザクションで保護されているが、Webhook側で二重減算しないよう注意）。
+### ✅ 解決済みの「ねじれ」
+* **Webhookとの整合性**: 以前は発券処理（Webhook側）での二重減算リスクがあったが、`TicketService` のロジックを修正し、数量操作を `OrderController` に集約したことで解決済み。
+* **在庫復元の保証**: 期限切れキャンセル時に `CancelExpiredOrders` が正しく在庫を戻すようになり、在庫の「蒸発」も解消された。
