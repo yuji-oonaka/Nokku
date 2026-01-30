@@ -52,6 +52,5 @@ class TicketService
                 $userTicket->seat_number
             );
         }
-        $ticketType->decrement('capacity', $quantity);
     }
 }
