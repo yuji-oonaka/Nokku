@@ -48,9 +48,19 @@ class CancelExpiredOrders extends Command
             try {
                 // 3. 在庫を戻す
                 foreach ($order->items as $item) {
+                    // --- グッズ在庫の復元 ---
                     if ($item->product) {
                         $item->product->increment('stock', $item->quantity);
                         $this->line("Order ID: {$order->id} - 商品: {$item->product->name} の在庫を {$item->quantity} 戻しました。");
+                    }
+
+                    // --- ★【追加】チケット在庫の復元 ---
+                    if ($item->ticket_type_id) {
+                        $ticketType = \App\Models\TicketType::find($item->ticket_type_id);
+                        if ($ticketType) {
+                            $ticketType->increment('remaining_count', $item->quantity);
+                            $this->line("Order ID: {$order->id} - 券種: {$ticketType->name} の在庫を {$item->quantity} 戻しました。");
+                        }
                     }
                 }
 
