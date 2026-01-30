@@ -6,10 +6,10 @@
 * [🔐 認証・認可](modules/auth.md) - Firebase連携・Operator排除
 * [📦 商取引 (Commerce)](modules/commerce.md) - 在庫減算・Stripe予約
 * [💳 決済連携 (Webhook)](modules/webhook.md) - ステータス確定・チケット発行
-* [🔍 スキャンシステム (Scanning)](modules/scanning-system.md) - **QR自動判別・定員/在庫の減算不整合注意**
+* [🔍 スキャンシステム (Scanning)](modules/scanning-system.md) - **整合性確保済み・在庫管理憲法準拠**
 * [🖼️ ストレージ・物流](modules/storage.md) - 画像フォルダ振分・保存
 * [📦 グッズ管理 (Merchandise)](modules/merchandise.md) - カタログ・権限ガード
-* [🎟️ 入場・発券 (Admission)](modules/admission.md) - **重大な在庫不整合警告あり**
+* [🎟️ 入場・発券 (Admission)](modules/admission.md) - **整合性確保済み**
 * [💎 サブスクリプション](modules/subscription.md) - おかわり課金・サイクルリセット
 * [📢 お知らせ・タイムライン](modules/Announcements.md) - 公開日時・権限別表示フィルタ
 * [🎁 ログインボーナス](modules/login-bonus.md) - Staff除外・5pt・重複ガード
@@ -22,17 +22,14 @@
 
 ---
 
-## 🚨 横断監査・警告ドキュメント（必読・修正前提）
+## ✅ 横断監査・完了報告
 
-* [🧪 在庫・数量ロジック 精密監査（報告）](audit/inventory-audit-report.md)  
-  - チケット在庫消失・定員破壊の原因を**コードレベルで確定**
-  - backend / frontend 両方に影響あり
-  - **修正・仕様変更前に必読**
+* [🧪 在庫・数量ロジック 精密監査（報告）](audit/inventory-audit-report.md)
+  - **解決済み**: チケット在庫消失・定員破壊の修正を完了。
+  - **適用済み**: backend (Order/Ticket/Cron) のロジックを憲法に基づき統一。
 
-  ↳ 調査ログ・根拠資料：  
+  ↳ 調査ログ・根拠資料：
   [inventory-audit-raw.md](audit/inventory-audit-raw.md)
-
----
 
 ---
 
@@ -64,18 +61,8 @@
 
 * **鉄則:** `LoginBonus` 等の還元機能では、必ず `staff`, `operator` ロールを除外するガードを入れること。
 
----
-
-### 🚨 修正が必要な「現行のねじれ」について (最重要)
-
-本ドキュメント化プロジェクトによって発見された、NOKKUにおける**最大の論理バグ**です。
-
-| 処理場所 | 操作対象カラム | 実装されている内容 | 判定 |
-| --- | --- | --- | --- |
-| `OrderController` | `remaining_count` | 注文時に「残り枚数」を減算 | **正解** ✅ |
-| `TicketService` | **`capacity`** | 発券時に **「総定員」** を減算 | **バグ** ❌ |
-
-> **緊急のアドバイス:** > 現在の実装では、チケットが売れるたびに「イベントの総定員」そのものが減っていきます。これにより、後から定員を増やしたり、販売状況を正確に把握することが困難になります。
-> **対策:** `TicketService.php` 内の減算対象を `remaining_count` に修正するか、もしくは `OrderController` での減算に一本化し、`TicketService` では減算を行わない設計へ変更せよ。
+### 5. 在庫・定員の完全分離義務
+* **鉄則:** `capacity` はイベント作成時以外、自動で変動させてはならない。
+* **鉄則:** 在庫の増減は `remaining_count` に対してのみ行い、「注文（減）」と「キャンセル（戻し）」で一対のサイクルを形成すること。
 
 ---

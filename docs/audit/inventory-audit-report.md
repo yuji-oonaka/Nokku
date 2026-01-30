@@ -1,5 +1,10 @@
 # NOKKU 在庫・数量ロジック 調査報告
 
+## 🏁 最終ステータス: 修正完了 (2026/01/30)
+- **TicketService.php**: `decrement('capacity')` を削除。
+- **CancelExpiredOrders.php**: チケット在庫の `increment` を実装。
+- **検証**: `migrate:fresh --seed` により、全券種で `capacity` と `remaining_count` の整合性が保たれることを確認。
+
 ## 1. 調査の目的
 NOKKUにおいて発生していた
 「在庫が減り続ける」「定員そのものが壊れる」
