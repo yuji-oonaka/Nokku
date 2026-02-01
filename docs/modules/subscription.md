@@ -1,16 +1,15 @@
-# 💳 サブスクリプション (Subscription) モジュール詳細
+# 💎 サブスクリプション (Subscription) モジュール詳細
 
-## 核心ロジック: `SubscriptionController`
- に基づく実装事実。
+## 核心ロジック: `SubscriptionController`, `GrantSubscriptionPoints`
 
-### 1. 「おかわり (Renew)」と「アップグレード (Upgrade)」
-* **即時決済ロジック:** 同一プランまたは上位プランへの `swapAndInvoice` を実行。
-* **サイクルリセット:** `billing_cycle_anchor => 'now'` を指定することで、次回更新日を今日にリセットし、即時満額請求＋ポイント付与（Listener経由）を誘発させる。
-* **日割りなし:** `proration_behavior => 'none'` により、差額返金などが発生しない「払い直し」仕様。
+### 1. おかわり・アップグレードの挙動
+* **仕様**: サイクルを強制リセットし即時満額請求を行う (`swapAndInvoice`)。※期間のロスは仕様であり、NOKKUでは問題としない
+* **意図**: 日割り計算によるポイント付与の複雑化を避け、ユーザーが「支払った瞬間に満額ポイントを得る」体験を優先。
 
-### 2. ステータス同期
-* **Stripe同期:** `status` メソッドで `asStripeSubscription()` を呼び出し、Stripe側の最新の次回更新日(`current_period_end`)をアプリへ返す。
+### 2. ポイント付与の信頼性
+* **仕様**: Stripeの `invoice.payment_succeeded` Webhookに同期して `PointService` を実行。
+* **安全性**: `invoice_id` による冪等性チェックを実装済み。二重付与を防止。
 
-### 🚩 地雷注意
-* **ポイント付与タイミング:** このController内には「ポイント付与」のロジックは存在しない。Stripeの支払い完了イベントを `GrantSubscriptionPoints` リスナーがキャッチして付与する非同期フローを忘れるな。
-* **二重契約ガード:** `subscribed('default')` チェックにより、Checkout Sessionの重複作成を防いでいる。
+### 🚨 運用上の「地雷」 (重要)
+* **メタデータ同期**: 付与ポイント数は Stripe Price 側の `monthly_points` メタデータに依存する。
+* **鉄則**: 新しいプランを Stripe に作成する際は、必ず `subscriptionData.ts` の定義とメタデータを一致させること。
