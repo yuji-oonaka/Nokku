@@ -21,24 +21,19 @@ export default function GateScannerScreen() {
     device,
     hasPermission,
     scanState,
-    scanMode,
+    scanMode, // 内部的には常に 'ticket' となる
     resultMessage,
     ticketInfo,
-    setScanMode,
     resetScanner,
     openSettings,
     codeScanner,
-  } = useGateScanner({ initialMode: route.params?.scanMode });
+  } = useGateScanner({ initialMode: 'ticket' });
 
   // 画面テキスト定義
   const uiTexts = {
     ticket: {
       instruction: '入場チケットのQRコードを\n枠内に合わせてください',
       successHeader: '入場OK',
-    },
-    order: {
-      instruction: '注文詳細のQRコードを\n枠内に合わせてください',
-      successHeader: '引換完了',
     },
   };
 
@@ -73,24 +68,17 @@ export default function GateScannerScreen() {
 
       {/* 2. UIオーバーレイレイヤー */}
       <View style={styles.overlay}>
-        {/* モード切替タブ */}
-        <ScannerModeSelector
-          currentMode={scanMode}
-          onModeChange={setScanMode}
-          disabled={scanState !== 'idle'}
-        />
-
         {/* スキャン枠 (アイドル時のみ) */}
         {scanState === 'idle' && (
-          <ScannerGuide instruction={uiTexts[scanMode].instruction} />
+          <ScannerGuide instruction={uiTexts.ticket.instruction} />
         )}
 
         {/* 結果表示オーバーレイ (処理中/成功/エラー) */}
         <ScanResultOverlay
           state={scanState}
-          headerText={uiTexts[scanMode].successHeader}
-          message={resultMessage} // エラー文言 or 成功メッセージ
-          subMessage={ticketInfo} // チケット情報
+          headerText={uiTexts.ticket.successHeader}
+          message={resultMessage}
+          subMessage={ticketInfo}
           onReset={resetScanner}
         />
       </View>
