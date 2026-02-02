@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo; // 1. ★ BelongsTo を use
 use Illuminate\Database\Eloquent\Relations\HasMany; // 2. ★ HasMany を use
 use Illuminate\Database\Eloquent\Builder; // 3. ★ Builder を use
+use App\Models\User;
 
 class Order extends Model
 {
@@ -83,5 +84,14 @@ class Order extends Model
         $this->platform_fee = $fee;
         $this->payout_amount = $payout;
         $this->save();
+    }
+
+    /**
+     * 現金受領・引換を確定したスタッフ
+     */
+    public function cashConfirmer()
+    {
+        // cash_confirmed_by カラムに保存されている ID を元に User を取得
+        return $this->belongsTo(User::class, 'cash_confirmed_by');
     }
 }

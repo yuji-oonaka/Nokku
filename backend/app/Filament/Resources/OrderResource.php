@@ -120,6 +120,13 @@ class OrderResource extends Resource
                     })
                     ->label('状態'),
 
+                Tables\Columns\TextColumn::make('cashConfirmer.nickname')
+                    ->label('対応スタッフ')
+                    ->badge()
+                    ->color('success')
+                    ->placeholder('未決済（Stripe等）')
+                    ->icon('heroicon-o-check-circle'),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime('Y/m/d H:i')
                     ->sortable()
@@ -186,6 +193,23 @@ class OrderResource extends Resource
                                 ]),
                         ]),
                 ]),
+            ]);
+    }
+
+    public static function infolist(\Filament\Infolists\Infolist $infolist): \Filament\Infolists\Infolist
+    {
+        return $infolist
+            ->schema([
+                \Filament\Infolists\Components\Section::make('決済・引換ログ')
+                    ->schema([
+                        \Filament\Infolists\Components\TextEntry::make('cashConfirmer.nickname')
+                            ->label('最終対応スタッフ')
+                            ->placeholder('システム自動（またはオンライン決済）'),
+                        \Filament\Infolists\Components\TextEntry::make('updated_at')
+                            ->label('対応日時')
+                            ->dateTime('Y/m/d H:i')
+                            ->visible(fn($record) => $record->status === 'completed'),
+                    ])->columns(2),
             ]);
     }
 
