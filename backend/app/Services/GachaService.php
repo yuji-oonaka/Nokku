@@ -50,14 +50,20 @@ class GachaService
                 $refundAmount = 0;
 
                 if ($isDuplicate) {
-                    $refundAmount = (int) floor($gacha->consumption_point * 0.5);
+                    /**
+                     * [NOKKU Rounding Policy]
+                     * ポイント還元時は、ユーザーへの過剰付与を防ぐため常に切り捨て(floor)を採用する。
+                     * 計算式: 消費ポイント × ガシャ別還元率
+                     */
+                    $refundAmount = (int) floor($gacha->consumption_point * $gacha->refund_rate);
+
                     if ($refundAmount > 0) {
                         $this->pointService->addPoints(
                             $userId,
                             $refundAmount,
                             PointTransaction::TYPE_GACHA_REFUND,
-                            "ガチャ重複還元: {$winnerProfileItem->name}",
-                            ['original_gacha_id' => $gacha->id]
+                            "ガチャ重複還元: {$winnerProfileItem->name} (還元率: " . ($gacha->refund_rate * 100) . "%)",
+                            ['original_gacha_id' => $gacha->id, 'applied_rate' => $gacha->refund_rate]
                         );
                     }
                 } else {
