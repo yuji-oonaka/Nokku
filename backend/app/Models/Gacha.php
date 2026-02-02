@@ -15,12 +15,14 @@ class Gacha extends Model
         'name',
         'description',
         'consumption_point',
+        'refund_rate',
         'start_at',
         'end_at',
         'is_active',
     ];
 
     protected $casts = [
+        'refund_rate' => 'decimal:2',
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'is_active' => 'boolean',

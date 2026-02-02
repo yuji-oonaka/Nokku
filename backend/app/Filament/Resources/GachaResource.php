@@ -56,10 +56,20 @@ class GachaResource extends Resource
                         ->prefix('pt')
                         ->required()
                         ->default(100),
+                    // ★追加: 重複還元率の設定
+                    Forms\Components\TextInput::make('refund_rate')
+                        ->label('重複還元率')
+                        ->numeric()
+                        ->step(0.01)
+                        ->minValue(0)
+                        ->maxValue(1)
+                        ->default(0.50)
+                        ->required()
+                        ->helperText('重複時のポイント還元率（0.00〜1.00）。0.50で50%還元。'),
                     Forms\Components\Textarea::make('description')
                         ->label('説明文')
                         ->columnSpanFull(),
-                ])->columns(2),
+                ])->columns(3),
 
                 Forms\Components\Section::make('公開設定')->schema([
                     Forms\Components\DateTimePicker::make('start_at')
@@ -87,6 +97,11 @@ class GachaResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('consumption_point')
                     ->label('消費pt')
+                    ->sortable(),
+                // ★追加: 一覧での還元率表示
+                Tables\Columns\TextColumn::make('refund_rate')
+                    ->label('還元率')
+                    ->formatStateUsing(fn($state) => (float)$state * 100 . '%')
                     ->sortable(),
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('公開中')
