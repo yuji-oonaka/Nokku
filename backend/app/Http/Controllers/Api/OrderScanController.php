@@ -35,4 +35,16 @@ class OrderScanController extends Controller
             return response()->json(['message' => $e->getMessage()], $status);
         }
     }
+
+    public function confirmCash(Request $request): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            $qrCodeId = $request->input('qr_code_id');
+            $result = $this->service->confirmCashPayment($user, $qrCodeId);
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+    }
 }

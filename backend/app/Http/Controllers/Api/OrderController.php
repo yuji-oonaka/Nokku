@@ -188,6 +188,17 @@ class OrderController extends Controller
                     'qr_code_id' => $qrCodeId,
                 ]);
 
+                if ($qrCodeId) {
+                    app(\App\Services\TicketAdmissionService::class)->syncToFirestore(
+                        $qrCodeId,
+                        'paid',
+                        $user->id,
+                        '未引換',
+                        null,
+                        'order_status'
+                    );
+                }
+
                 $order->items()->create([
                     'product_id' => $productId,
                     'ticket_type_id' => $ticketTypeId, // ★ Step 1-3で追加したカラム

@@ -45,7 +45,7 @@ service cloud.firestore {
     match /order_status/{qrCodeId} {
       // 本人だけが自分の注文の「引換完了」への変化をリッスンできる
       // ※ orderId ではなく QRコードIDをドキュメントIDにしている設計に合わせる
-      allow read: if isAuthenticated() && isOwner(resource.data);
+      allow read: if isAuthenticated() && (resource == null || isOwner(resource.data));
       
       // 書き込みはバックエンドのみ
       allow write: if false;
