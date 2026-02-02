@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Exceptions\IncompletePayment;
+use App\Models\SubscriptionPlan;
 
 class SubscriptionController extends Controller
 {
@@ -138,6 +139,23 @@ class SubscriptionController extends Controller
             'ends_at' => $subscription->ends_at,
             'current_period_end' => date('Y-m-d', $stripeSub->current_period_end), // 次回更新日
         ]);
+    }
+
+    /**
+     * 6. プラン一覧（カタログ）の取得
+     * DBから最新のプラン情報を取得してフロントに返す
+     */
+    public function getPlans()
+    {
+        try {
+            // 安い順（rankの昇順）に全てのプランを取得
+            $plans = SubscriptionPlan::orderBy('rank', 'asc')->get();
+
+            return response()->json($plans);
+        } catch (\Exception $e) {
+            Log::error('GetPlans Error: ' . $e->getMessage());
+            return response()->json(['message' => 'プラン情報の取得に失敗しました'], 500);
+        }
     }
 
     // success(), cancel() メソッドは既存のままでOK
