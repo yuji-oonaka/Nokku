@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Vibration, Linking } from 'react-native';
+import { Vibration, Linking, Alert } from 'react-native'; // ★ Alert を追加
 import {
   useCameraDevice,
   useCameraPermission,
@@ -13,10 +13,13 @@ import { UserTicket } from '../api/queries';
 export type ScanMode = 'ticket' | 'order';
 export type ScanState = 'idle' | 'processing' | 'success' | 'error';
 
-// APIレスポンスの型定義 (any排除)
+// APIレスポンスの型定義 (整合性確保)
 interface ScanResponse {
   message: string;
   ticket?: UserTicket;
+  order?: any;
+  summary?: string;
+  requires_payment?: boolean; // ★ 追加: 現金受領が必要かどうかのフラグ
 }
 
 interface UseGateScannerProps {
@@ -35,6 +38,10 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
   const [scanMode, setScanMode] = useState<ScanMode>(initialMode);
   const [resultMessage, setResultMessage] = useState('');
   const [ticketInfo, setTicketInfo] = useState('');
+
+  // ★ 追加: 現金決済フロー用の State
+  const [isCashPaymentRequired, setIsCashPaymentRequired] = useState(false);
+  const [currentQrCode, setCurrentQrCode] = useState<string | null>(null);
   
   const lastScanned = useRef<{ code: string; time: number } | null>(null);
 
@@ -42,30 +49,40 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
     setScanState('idle');
     setResultMessage('');
     setTicketInfo('');
+    // ★ リセット時に現金決済状態もクリア
+    setIsCashPaymentRequired(false);
+    setCurrentQrCode(null);
   }, []);
 
   /**
-   * 共通のレスポンス処理 (status一本化対応)
+   * 共通のレスポンス処理 (現金決済対応版)
    */
-  const handleResponse = useCallback((data: ScanResponse, mode: ScanMode) => {
+  const handleResponse = useCallback((data: ScanResponse, mode: ScanMode, code?: string) => {
     SoundService.playSuccess();
     Vibration.vibrate(50);
 
     setScanState('success');
     setResultMessage(data.message);
     
-    // チケットモードの場合、statusが'used'になったことを確認できる情報を出す
     if (mode === 'ticket' && data.ticket) {
-    const t = data.ticket;
-    // ★ オプショナルチェイニング (?.) または 存在チェックを追加してクラッシュを防ぐ
-    const typeName = t.ticket_type?.name || '不明な券種'; 
-    setTicketInfo(`${typeName}\n${t.seat_number}`);
-  } else if (mode === 'order') {
-    setTicketInfo('商品を確認して渡してください');
-  }
+      const t = data.ticket;
+      const typeName = t.ticket_type?.name || '不明な券種'; 
+      setTicketInfo(`${typeName}\n${t.seat_number}`);
+      setTimeout(resetScanner, 3000); // チケットは自動リセット
+    } 
+    else if (mode === 'order') {
+      // バックエンドからの真実（商品・合計金額）を表示
+      setTicketInfo(data.summary || '商品を確認してください');
 
-    // 2秒後に自動リセット
-    setTimeout(resetScanner, 2000);
+      if (data.requires_payment) {
+        // ★ 現金決済が必要な場合、自動リセットをせずボタン表示フラグを立てる
+        setIsCashPaymentRequired(true);
+        setCurrentQrCode(code || null);
+      } else {
+        // 既に決済済みの場合は自動リセット
+        setTimeout(resetScanner, 3000);
+      }
+    }
   }, [resetScanner]);
 
   /**
@@ -82,15 +99,46 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
       const data = error.response.data as ScanResponse;
       errorMessage = data.message;
       
-      // すでに使用済み(409等)の場合、以前の情報を表示
       if (data.ticket) {
         const t = data.ticket;
-        // statusがusedであることを明示
         setTicketInfo(`[${t.status === 'used' ? '使用済み' : '無効'}]\n${t.seat_number}`);
       }
     }
     setResultMessage(errorMessage);
   }, []);
+
+  /**
+   * ★ 新規追加: 現金決済の受領確定関数
+   * 監査ログを残すためバックエンドに確定リクエストを送る
+   */
+  const confirmCashPayment = async () => {
+    if (!currentQrCode || !ticketInfo) return;
+
+    // UXはセキュリティ。現場で「金額を声に出して確認」させるための二段確認
+    Alert.alert(
+      '【最終確認】現金受領',
+      `${ticketInfo}\n\n上記金額を正しく受領しましたか？`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { 
+          text: '受領して引換完了', 
+          style: 'destructive',
+          onPress: async () => {
+            setScanState('processing');
+            try {
+              await api.post('/orders/confirm-cash', { qr_code_id: currentQrCode });
+              SoundService.playSuccess();
+              setResultMessage('引換完了！');
+              setIsCashPaymentRequired(false);
+              setTimeout(resetScanner, 2000);
+            } catch (error: any) {
+              handleError(error);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   // 手入力実行関数 (ScannerScreen用)
   const executeManualEntry = useCallback(async (ticketId: string) => {
@@ -132,7 +180,8 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
     try {
       const endpoint = scanMode === 'ticket' ? '/tickets/scan' : '/orders/redeem';
       const response = await api.post<ScanResponse>(endpoint, { qr_code_id: codeValue });
-      handleResponse(response.data, scanMode);
+      // ★ スキャンしたコード（codeValue）も渡すように修正
+      handleResponse(response.data, scanMode, codeValue);
     } catch (error: any) {
       handleError(error);
     }
@@ -150,6 +199,8 @@ export const useGateScanner = ({ initialMode = 'ticket' }: UseGateScannerProps) 
     scanMode,
     resultMessage,
     ticketInfo,
+    isCashPaymentRequired, // ★ 追加
+    confirmCashPayment,    // ★ 追加
     setScanMode,
     resetScanner,
     openSettings: () => Linking.openSettings(),

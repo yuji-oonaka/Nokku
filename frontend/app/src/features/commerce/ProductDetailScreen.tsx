@@ -102,13 +102,19 @@ const ProductDetailScreen: React.FC = () => {
     setIsManualRefetching(false);
   }, [refetch]);
 
-  // 3. 購入ボタン押下時の処理
+  // 3. 購入ボタン押下時の処理 (修正版)
   const handlePressBuy = () => {
     if (!product) return;
     SoundService.triggerHaptic('impactMedium');
-    navigation.navigate('Payment', {
-      product: product,
-      quantity: quantity,
+
+    // ★修正: 単なる 'Payment' ではなく、スタック名を指定して呼び出す
+    // これにより、MyPageStack や SearchStack にいる状態からでも ProductsStack へ飛ばせます
+    navigation.navigate('ProductsStack', {
+      screen: 'Payment',
+      params: {
+        product: product,
+        quantity: quantity,
+      },
     });
   };
 

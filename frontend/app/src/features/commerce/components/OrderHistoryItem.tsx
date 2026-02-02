@@ -40,7 +40,7 @@ const OrderHistoryItem: React.FC<OrderHistoryItemProps> = ({
   } else if (item.status === 'paid' || item.status === 'shipped') {
     statusText = '支払い完了';
     statusStyle = styles.orderStatusPaid;
-  } else if (item.status === 'redeemed') {
+  } else if (item.status === 'completed') {
     statusText = '受取済み';
     statusStyle = styles.orderStatusRedeemed;
   }

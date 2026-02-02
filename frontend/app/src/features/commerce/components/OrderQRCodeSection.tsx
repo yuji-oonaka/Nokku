@@ -16,7 +16,7 @@ const OrderQRCodeSection: React.FC<Props> = ({ order }) => {
       <Text style={styles.groupTitle}>会場受取り用 QRコード</Text>
 
       <View style={styles.qrContainer}>
-        {order.status === 'redeemed' ? (
+        {order.status === 'completed' ? (
           <View style={styles.redeemedContainer}>
             <Text style={styles.checkIcon}>✅</Text>
             <Text style={styles.redeemedText}>受取済み</Text>
@@ -32,7 +32,7 @@ const OrderQRCodeSection: React.FC<Props> = ({ order }) => {
       </View>
 
       <Text style={styles.infoText}>
-        {order.status === 'redeemed'
+        {order.status === 'completed'
           ? 'この注文は受け取り済みです。'
           : 'このQRコードを会場のスタッフに提示してください。'}
       </Text>
