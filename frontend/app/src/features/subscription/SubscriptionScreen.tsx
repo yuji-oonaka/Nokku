@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,21 +9,28 @@ import {
   Linking,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import {
+  getSubscriptionPlans,
+  getSubscriptionStatus,
   createCheckoutSession,
   createPortalSession,
   renewSubscription,
   upgradeSubscription,
-  getSubscriptionStatus,
 } from '../../api/subscription';
-import { SUBSCRIPTION_PLANS, SubscriptionPlan } from './subscriptionData';
+import { SubscriptionPlan } from './subscriptionData';
 
 const SubscriptionScreen = () => {
   const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
   const [currentPriceId, setCurrentPriceId] = useState<string | null>(null);
-  const [currentRank, setCurrentRank] = useState<number>(0); // 現在のランク(未加入=0)
   const [nextPaymentDate, setNextPaymentDate] = useState<string>('');
+
+  // 1. プラン一覧をDBから取得
+  const { data: plans, isLoading: isPlansLoading } = useQuery({
+    queryKey: ['subscriptionPlans'],
+    queryFn: getSubscriptionPlans,
+    staleTime: 1000 * 60 * 60,
+  });
 
   useEffect(() => {
     fetchStatus();
@@ -34,42 +41,42 @@ const SubscriptionScreen = () => {
       const data = await getSubscriptionStatus();
       if (data.status === 'active') {
         setCurrentPriceId(data.price_id);
-        setNextPaymentDate(data.current_period_end); // 次回更新日
-
-        // 現在のランクを特定して保存
-        const currentPlan = SUBSCRIPTION_PLANS.find(
-          p => p.priceId === data.price_id,
-        );
-        setCurrentRank(currentPlan ? currentPlan.rank : 0);
+        setNextPaymentDate(data.current_period_end);
       } else {
         setCurrentPriceId(null);
-        setCurrentRank(0);
       }
     } catch (e) {
       console.log('Status fetch error', e);
     }
   };
 
+  // 2. 現在のランクを動的に特定 (stripe_price_id を使用)
+  const currentRank = useMemo(() => {
+    if (!plans || !currentPriceId) return 0;
+    const current = plans.find(p => p.stripe_price_id === currentPriceId);
+    return current ? current.rank : 0;
+  }, [plans, currentPriceId]);
+
+  // 3. 表示用の整形ヘルパー
+  const formatPrice = (price: number) => `¥${price.toLocaleString()} / 月`;
+  const formatPoints = (points: number) => `${points.toLocaleString()} pt`;
+
   const handleAction = async (plan: SubscriptionPlan) => {
-    setProcessingPlanId(plan.id);
+    setProcessingPlanId(plan.plan_id); // plan_id を使用
     try {
-      // ---------------------------------------------------
-      // パターンA: 新規契約 (未加入)
-      // ---------------------------------------------------
       if (!currentPriceId) {
-        const url = await createCheckoutSession(plan.priceId);
+        const url = await createCheckoutSession(plan.stripe_price_id);
         const supported = await Linking.canOpenURL(url);
         if (supported) await Linking.openURL(url);
         return;
       }
 
-      // ---------------------------------------------------
-      // パターンB: 同プラン更新 (おかわり)
-      // ---------------------------------------------------
-      if (plan.priceId === currentPriceId) {
+      if (plan.stripe_price_id === currentPriceId) {
         Alert.alert(
           'ポイント補充（即時更新）',
-          `今のプランを更新して、すぐに${plan.points}を受け取りますか？\n\n・${plan.price}が即時決済されます\n・次回更新日は今日から1ヶ月後に変わります`,
+          `今のプランを更新して、すぐに ${formatPoints(
+            plan.monthly_points,
+          )} を受け取りますか？`,
           [
             {
               text: 'キャンセル',
@@ -89,13 +96,14 @@ const SubscriptionScreen = () => {
         return;
       }
 
-      // ---------------------------------------------------
-      // パターンC: アップグレード (上位へ)
-      // ---------------------------------------------------
       if (plan.rank > currentRank) {
         Alert.alert(
           'プランのアップグレード',
-          `【重要】すぐにVIP特典が有効になります。\n\n・${plan.price}が即時決済されます\n・ポイント(${plan.points})も即時付与されます\n・これまでのプラン料金の日割り返金はありません`,
+          `・${formatPrice(
+            plan.price_yen,
+          )} が即時決済されます\n・${formatPoints(
+            plan.monthly_points,
+          )} が付与されます`,
           [
             {
               text: 'キャンセル',
@@ -105,11 +113,8 @@ const SubscriptionScreen = () => {
             {
               text: '今すぐアップグレード',
               onPress: async () => {
-                await upgradeSubscription(plan.priceId);
-                Alert.alert(
-                  'おめでとうございます！',
-                  'プラン変更が完了しました。VIP特典をお楽しみください！',
-                );
+                await upgradeSubscription(plan.stripe_price_id);
+                Alert.alert('完了', 'アップグレードが完了しました！');
                 fetchStatus();
               },
             },
@@ -118,13 +123,10 @@ const SubscriptionScreen = () => {
         return;
       }
 
-      // ---------------------------------------------------
-      // パターンD: ダウングレード (下位へ) -> ポータルへ
-      // ---------------------------------------------------
       if (plan.rank < currentRank) {
         Alert.alert(
-          'プランの変更（ダウン）',
-          '安いプランへの変更は、Web管理画面から行います。\n変更は「来月から」適用されます。',
+          'プラン変更',
+          '安いプランへの変更はWeb管理画面から行います。',
           [
             { text: 'キャンセル', style: 'cancel' },
             {
@@ -138,105 +140,72 @@ const SubscriptionScreen = () => {
         );
       }
     } catch (error) {
-      Alert.alert(
-        'エラー',
-        '処理に失敗しました。時間をおいて再度お試しください。',
-      );
+      Alert.alert('エラー', '処理に失敗しました。');
     } finally {
       setProcessingPlanId(null);
     }
   };
 
-  // ボタンの文言決定ロジック
-  const getButtonLabel = (plan: SubscriptionPlan) => {
-    if (!currentPriceId) return '申し込む';
-    if (plan.priceId === currentPriceId) return '今すぐ更新 (ポイント補充)';
-    if (plan.rank > currentRank) return '今すぐアップグレード';
-    return 'プラン変更 (Webへ)';
-  };
-
-  // ボタンのスタイル決定 (色を変えるなど視覚的な誘導)
-  const getButtonStyle = (plan: SubscriptionPlan) => {
-    if (!currentPriceId) return { backgroundColor: plan.color };
-    if (plan.priceId === currentPriceId)
-      return {
-        backgroundColor: '#333',
-        borderColor: plan.color,
-        borderWidth: 1,
-      }; // 更新は少し落ち着いた色
-    if (plan.rank > currentRank) return { backgroundColor: '#E0245E' }; // アップグレードは目立つ色
-    return { backgroundColor: '#999' }; // ダウングレードは地味な色
-  };
+  if (isPlansLoading)
+    return <ActivityIndicator size="large" style={{ marginTop: 50 }} />;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.headerTitle}>プラン選択</Text>
-
-      {/* 契約中なら次回更新日を表示してあげる */}
       {nextPaymentDate && (
         <Text style={styles.statusText}>次回更新日: {nextPaymentDate}</Text>
       )}
 
-      {SUBSCRIPTION_PLANS.map(plan => {
-        const isProcessing = processingPlanId !== null;
-        const isLoading = processingPlanId === plan.id;
+      {plans?.map(plan => {
+        const isCurrentPlan = plan.stripe_price_id === currentPriceId;
+        const isLoading = processingPlanId === plan.plan_id;
 
         return (
           <View
-            key={plan.id}
-            style={[styles.card, plan.recommended && styles.recommendedCard]}
+            key={plan.plan_id}
+            style={[styles.card, plan.is_recommended && styles.recommendedCard]}
           >
             <View style={styles.cardHeader}>
-              <Text style={[styles.planName, { color: plan.color }]}>
+              <Text style={[styles.planName, { color: plan.color_code }]}>
                 {plan.name}
               </Text>
-              <Text style={styles.planPoints}>{plan.points}</Text>
+              <Text style={styles.planPoints}>
+                {formatPoints(plan.monthly_points)}
+              </Text>
             </View>
-            <Text style={styles.planPrice}>{plan.price}</Text>
+            <Text style={styles.planPrice}>{formatPrice(plan.price_yen)}</Text>
             <Text style={styles.planDesc}>{plan.description}</Text>
 
             <TouchableOpacity
               style={[
                 styles.button,
-                getButtonStyle(plan),
-                isProcessing && !isLoading && { opacity: 0.5 },
+                { backgroundColor: isCurrentPlan ? '#333' : plan.color_code },
+                processingPlanId !== null && !isLoading && { opacity: 0.5 },
               ]}
               onPress={() => handleAction(plan)}
-              disabled={isProcessing}
+              disabled={processingPlanId !== null}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>{getButtonLabel(plan)}</Text>
+                <Text style={styles.buttonText}>
+                  {isCurrentPlan
+                    ? '今すぐ更新 (ポイント補充)'
+                    : plan.rank > currentRank
+                    ? 'アップグレード'
+                    : '申し込む'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
         );
       })}
-
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.portalButton}
-          onPress={async () => {
-            const url = await createPortalSession();
-            Linking.openURL(url);
-          }}
-        >
-          <Text style={styles.portalButtonText}>
-            契約内容の確認・解約はこちら
-          </Text>
-        </TouchableOpacity>
-        <Text style={styles.note}>
-          ※ 決済はStripeの安全なページで行われます。
-        </Text>
-      </View>
     </ScrollView>
   );
 };
 
-// スタイル (変更分のみ抜粋、他は以前と同じ)
+// スタイルは以前のものを使用
 const styles = StyleSheet.create({
-  // ... existing styles ...
   container: { flex: 1, backgroundColor: '#f8f9fa' },
   content: { padding: 20, paddingBottom: 40 },
   headerTitle: {
@@ -272,16 +241,6 @@ const styles = StyleSheet.create({
   planDesc: { fontSize: 14, color: '#555', lineHeight: 22, marginBottom: 20 },
   button: { paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
-  footer: { marginTop: 20 },
-  portalButton: {
-    backgroundColor: '#f0f0f0',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  portalButtonText: { color: '#666', fontWeight: 'bold' },
-  note: { fontSize: 12, color: '#999', textAlign: 'center' },
 });
 
 export default SubscriptionScreen;
