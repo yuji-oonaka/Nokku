@@ -26,7 +26,7 @@ const OrderBasicInfo: React.FC<Props> = ({ order }) => {
   } else if (order.status === 'paid' || order.status === 'shipped') {
     statusText = '支払い完了';
     statusStyle = styles.value_paid;
-  } else if (order.status === 'redeemed') {
+  } else if (order.status === 'completed') {
     statusText = '受取済み';
     statusStyle = styles.value_redeemed;
   }

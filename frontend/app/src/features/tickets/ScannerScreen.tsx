@@ -26,6 +26,8 @@ export default function ScannerScreen() {
     scanMode,
     resultMessage,
     ticketInfo,
+    isCashPaymentRequired,
+    confirmCashPayment,
     setScanMode,
     resetScanner,
     openSettings,
@@ -98,10 +100,18 @@ export default function ScannerScreen() {
 
         <ScanResultOverlay
           state={scanState}
-          headerText={uiTexts[scanMode].successHeader}
+          // ★ 修正: 現金払いの場合はヘッダーを「現金決済待ち」に変更
+          headerText={
+            isCashPaymentRequired
+              ? '現金決済待ち'
+              : uiTexts[scanMode].successHeader
+          }
           message={resultMessage}
           subMessage={ticketInfo}
           onReset={resetScanner}
+          // ★ 追加: Overlayにプロップスを渡す
+          isCashPayment={isCashPaymentRequired}
+          onConfirmCash={confirmCashPayment}
         />
 
         {/* ★ 追加: モーダル */}
