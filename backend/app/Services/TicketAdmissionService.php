@@ -62,29 +62,93 @@ class TicketAdmissionService
      */
     public function processOrderRedemption(User $scannerUser, string $qrCodeId): array
     {
+        // 1. 基本権限チェック
         if (!in_array($scannerUser->role, ['admin', 'artist', 'staff'])) {
             throw new Exception('権限がありません。', 403);
         }
 
-        $order = DB::transaction(function () use ($qrCodeId, $scannerUser) {
-            $order = Order::where('qr_code_id', $qrCodeId)->lockForUpdate()->first();
+        // 2. 注文をロックして取得。まず存在確認を行う（磨きポイント②）
+        $order = Order::with('items.product')->where('qr_code_id', $qrCodeId)->lockForUpdate()->first();
+        if (!$order) throw new Exception('注文が見つかりません。', 404);
 
-            if (!$order) throw new Exception('注文が見つかりません。', 404);
-            if ($order->status === 'completed') throw new Exception('この注文は既に引換済みです。', 409);
-            if ($order->status !== 'paid') throw new Exception('未決済の注文です。', 400);
+        // 3. 権限チェック（アーティスト/スタッフの一致） 
+        if ($scannerUser->role !== 'admin') {
+            $ownerId = ($scannerUser->role === 'staff') ? $scannerUser->employer_id : $scannerUser->id;
+            $isUnauthorized = $order->items->contains(fn($item) => $item->product && $item->product->artist_id !== $ownerId);
+            if ($isUnauthorized) throw new Exception('担当外の商品の注文です。', 403);
+        }
 
+        // 4. ステータスチェック
+        if ($order->status === 'completed') throw new Exception('この注文は既に引換済みです。', 409);
+
+        // 現金払いの「未決済（pending）」は許容し、それ以外の未決済はエラーにする 
+        $isCashPending = ($order->payment_method === 'cash' && $order->status === 'pending');
+        if (!$isCashPending && $order->status !== 'paid') {
+            throw new Exception('未決済の注文です。', 400);
+        }
+
+        // 5. サマリー生成
+        $order->load(['items', 'user']);
+        $userName = $order->user->nickname ?? 'ゲスト';
+        $itemsSummary = $order->items->map(fn($i) => "・{$i->product_name} × {$i->quantity}")->implode("\n");
+        $priceText = "合計: ¥" . number_format($order->total_price);
+        $fullSummary = "【{$userName} 様】\n{$itemsSummary}\n{$priceText}";
+
+        // 6. ステータスに応じた分岐
+        if ($order->status === 'paid') {
+            // カード決済済みの場合は即座に完了 
             $order->update(['status' => 'completed', 'completed_at' => now()]);
-            return $order;
-        });
+            $this->syncToFirestore($order->qr_code_id, 'completed', $order->user_id, $fullSummary, $scannerUser->id, 'order_status');
 
-        $this->syncToFirestore($order->qr_code_id, 'completed', $order->user_id, 'グッズ引換', $scannerUser->id, 'order_status');
+            return [
+                'message' => "引き換え完了！",
+                'summary' => $fullSummary,
+                'requires_payment' => false
+            ];
+        }
 
+        // 現金払いの場合は、フロントに「requires_payment」フラグを返して一旦止める
         return [
-            'message' => "引き換え完了！",
-            'order'   => $order->load('items')
+            'message' => "【現金払い】代金を受領してください",
+            'summary' => $fullSummary,
+            'requires_payment' => true
         ];
     }
 
+    /**
+     * 現金払いの確定処理（監査ログ対応版）
+     */
+    public function confirmCashPayment(User $scannerUser, string $qrCodeId): array
+    {
+        return DB::transaction(function () use ($qrCodeId, $scannerUser) {
+            $order = Order::with('items.product')->where('qr_code_id', $qrCodeId)->lockForUpdate()->first();
+
+            if (!$order) throw new Exception('注文が見つかりません', 404);
+
+            // 権限チェックを再実施（不正防止）
+            if ($scannerUser->role !== 'admin') {
+                $ownerId = ($scannerUser->role === 'staff') ? $scannerUser->employer_id : $scannerUser->id;
+                $isUnauthorized = $order->items->contains(fn($item) => $item->product && $item->product->artist_id !== $ownerId);
+                if ($isUnauthorized) throw new Exception('確定権限がありません。', 403);
+            }
+
+            if ($order->payment_method !== 'cash' || $order->status !== 'pending') {
+                throw new Exception('無効な注文状態です。', 400);
+            }
+
+            // ステータス更新と監査ログ（cash_confirmed_by）の記録
+            $order->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+                'cash_confirmed_by' => $scannerUser->id, // 誰が確定したかを墓標として刻む
+            ]);
+
+            $this->syncToFirestore($order->qr_code_id, 'completed', $order->user_id, "【現金決済完了】\n担当: {$scannerUser->nickname}", $scannerUser->id, 'order_status');
+
+            return ['message' => '支払い・引換を完了しました'];
+        });
+    }
+    
     /**
      * Firestore同期 (共通)
      */

@@ -70,6 +70,7 @@ Route::middleware('firebase.auth')->group(function () {
     Route::post('/orders/redeem', [OrderScanController::class, 'redeem']);
 
     Route::get('/orders/{order}', [OrderController::class, 'show']);   // ★ 詳細取得 (リロード用)
+    Route::post('/orders/confirm-cash', [OrderScanController::class, 'confirmCash']); // ★ 現金確認 (軽量コントローラー)
     // --- 投稿 (お知らせ) ---
     Route::apiResource('posts', PostController::class);
 
