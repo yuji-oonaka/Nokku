@@ -1,6 +1,10 @@
 import api from '../services/api';
+import { SubscriptionPlan } from '../features/subscription/subscriptionData';
 
-// ... existing interfaces
+export const getSubscriptionPlans = async (): Promise<SubscriptionPlan[]> => {
+  const response = await api.get<SubscriptionPlan[]>('/subscription/plans');
+  return response.data;
+};
 
 // 既存の Checkout (新規)
 export const createCheckoutSession = async (priceId: string): Promise<string> => {
