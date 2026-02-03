@@ -1,4 +1,8 @@
-# 📱 NOKKU (ノック) - ライブイベント・グッズ販売プラットフォーム
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/05ab7ff0-22b9-4373-ab42-119c910f1217" width="160" height="160" style="border-radius: 24px;">
+  <h1>NOKKU (ノック)</h1>
+  <p><b>ライブイベント・グッズ販売プラットフォーム</b></p>
+</div>
 
 ![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 
@@ -51,8 +55,8 @@ NOKKUは、アーティストとファンをシームレスに繋ぐ、ライブ
 
 ## 📖 ドキュメント
 
-* [詳細機能一覧 / 設計仕様書 (Feature List)](https://www.google.com/search?q=docs/features.md)
-* [システムマップ / 技術地雷原マップ (System Map)](https://www.google.com/search?q=docs/SYSTEM_MAP.md)
+* [詳細機能一覧 / 設計仕様書 (Feature List)](docs/features.md)
+* [システムマップ / 技術地雷原マップ (System Map)](docs/SYSTEM_MAP.md)
 * ※ 実コードを全件精査した「真実」に基づく技術リファレンスです。
 
 
