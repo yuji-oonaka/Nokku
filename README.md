@@ -23,7 +23,7 @@
 運営スタッフは、**Laravel Filament** で構築された管理画面から、売上分析やイベント・グッズのCMS管理を行えます。
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/e2f549ab-adf2-4ed2-982d-f9125cb98758" width="100%" alt="Filament Dashboard" style="border-radius: 8px;">
+  <img src="https://github.com/user-attachments/assets/8e22f027-b434-40f6-8419-494f8aba34fc" width="100%" alt="Filament Dashboard" style="border-radius: 8px;">
 </div>
 
 
@@ -302,19 +302,41 @@ Admin/Artist/OperatorはWeb管理画面を使用し、Staff/Userはアプリ側�
 > * **Artist:** 自身が主催するイベント・売上データのみにスコープ（絞り込み）されます。
 > * **Operator:** 「お問い合わせ対応」のみ可能です。売上情報やイベント編集にはアクセスできません。また、アプリへのログインは制限されています。
 > * **Staff:** アプリでのチケットスキャン専用です。管理画面（Web）にはログインできません。
+
 ---
 
+```markdown
 ## 📱 実機テストの手順 (USB Debugging)
 
 WSL2環境でのネットワーク接続を安定させるため、**USB接続 (adb reverse)** による実機テストを行っています。
 
 1. **USB接続**: PCとAndroid端末をケーブルで接続し、USBデバッグをONにします。
 2. **ポートフォワード設定**:
-Android端末からPC(WSL2)のサーバーへアクセスするため、ポートを転送します。
-```powershell
-# Laravel Sail (Port 8000) と Metro Bundler (Port 8081) を転送
-adb reverse tcp:8000 tcp:8000
-adb reverse tcp:8081 tcp:8081
+   Android端末内の `localhost` リクエストを PC(WSL2) 側のサーバーへ転送します。
+   ```powershell
+   # Laravel Sail (Port 8000) と Metro Bundler (Port 8081) を転送
+   adb reverse tcp:8000 tcp:8000
+   adb reverse tcp:8081 tcp:8081
+
+```
+
+> [!TIP]
+> **💡 複数台のデバイスで同時に検証する場合**
+> 2台以上の実機（例：購入者用とスタッフ用）を接続して検証する際は、シリアル番号を指定してそれぞれのデバイスにリバース設定を送る必要があります。
+> 1. **デバイスIDを確認**: `adb devices` を実行してシリアル番号を確認します。
+> 2. **個別に転送設定を実行**:
+> 
+> 
+
+> ```powershell
+> # 特定のデバイスを指定して実行
+> adb -s <SERIAL_NUMBER> reverse tcp:8000 tcp:8000
+> adb -s <SERIAL_NUMBER> reverse tcp:8081 tcp:8081
+> 
+> ```
+> 
+> 
+> これにより、複数端末間でリアルタイムチャットや決済ステータスの同期確認が可能になります。
 
 ```
 
