@@ -7,27 +7,29 @@ import { useNavigation } from '@react-navigation/native';
 export const useLoginBonus = () => {
   const queryClient = useQueryClient();
   const navigation = useNavigation();
-  // 連打防止・重複リクエスト防止
+  // 連打防止・重複リクエスト防止（セッション内キャッシュ）
   const processedToday = useRef<string | null>(null);
 
   useEffect(() => {
     const checkBonus = async () => {
-      const today = new Date().toISOString().split('T')[0];
+      // ★地雷撤去：ISOString(UTC)ではなく、ローカルの日付(YYYY-MM-DD)を取得
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-      // 既に今日チェック済みならAPIを叩かない
+      // 既にこのセッションで今日チェック済みならAPIを叩かない
       if (processedToday.current === today) return;
 
       try {
         const result = await claimLoginBonus();
 
-        // ★ ここが重要: claimed が true の時だけ動く
-        // Staffの場合は false が返るので、ifの中には絶対に入らない
+        // バックエンドが claimed: true (付与成功) を返した時のみアラートを出す
+        // スタッフアカウントや取得済みの場合は false が返るので表示されない
         if (result.claimed) {
-            
-          // ポイント表示を即座に更新 ('user' ではなく 'profile' に修正済み)
+          // ポイント表示を即座に更新 ('profile' クエリを無効化して再取得)
           await queryClient.invalidateQueries({ queryKey: ['profile'] });
 
-          // User/Artist にだけ出る
+          // ★真実の同期：バックエンドから届いた dynamic なメッセージを表示
+          // 運営が Filament でポイントを変えれば、ここも自動で「10pt獲得！」等に変わる
           Alert.alert(
             '🎁 ログインボーナス',
             result.message,
@@ -35,16 +37,16 @@ export const useLoginBonus = () => {
           );
         }
 
-        // 成功しても失敗しても「今日はもうチェックした」とマークする
+        // 成功（付与）または「取得済み」の正常レスポンスが来たらマーク
         processedToday.current = today;
 
       } catch (error) {
-        // ネットワークエラー等も静かに無視
+        // ネットワークエラー等はログに留め、ユーザー体験を損なわないよう静かに処理
         console.log('Bonus check silent fail:', error);
       }
     };
 
-    // 画面が表示されるたびにチェック
+    // 画面にフォーカスが当たるたびに実行（一日一度の判定は内部で行う）
     const unsubscribe = navigation.addListener('focus', () => {
       checkBonus();
     });
