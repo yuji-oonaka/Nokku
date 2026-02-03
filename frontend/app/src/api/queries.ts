@@ -241,8 +241,13 @@ export interface Order {
   items: OrderItem[];
   shipping_address: ShippingAddress | null;
 }
-export const fetchMyOrders = async (): Promise<Order[]> => {
-  const response = await api.get<Order[]>('/my-orders');
+/**
+ * 自分の注文履歴を取得 (type パラメータに対応)
+ */
+export const fetchMyOrders = async (type?: 'product' | 'ticket'): Promise<Order[]> => {
+  const response = await api.get<Order[]>('/my-orders', {
+    params: { type } // バックエンドに type を伝える
+  });
   return response.data;
 };
 
