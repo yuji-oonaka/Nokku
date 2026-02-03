@@ -305,7 +305,6 @@ Admin/Artist/OperatorはWeb管理画面を使用し、Staff/Userはアプリ側�
 
 ---
 
-```markdown
 ## 📱 実機テストの手順 (USB Debugging)
 
 WSL2環境でのネットワーク接続を安定させるため、**USB接続 (adb reverse)** による実機テストを行っています。
@@ -318,7 +317,6 @@ WSL2環境でのネットワーク接続を安定させるため、**USB接続 (
    adb reverse tcp:8000 tcp:8000
    adb reverse tcp:8081 tcp:8081
 
-```
 
 > [!TIP]
 > **💡 複数台のデバイスで同時に検証する場合**
@@ -338,15 +336,11 @@ WSL2環境でのネットワーク接続を安定させるため、**USB接続 (
 > 
 > これにより、複数端末間でリアルタイムチャットや決済ステータスの同期確認が可能になります。
 
-```
 
-
-3. **アプリ起動 (初回ビルド)**:
-```powershell
-cd frontend
-npm run android
-
-```
+**3. アプリ起動 (初回ビルド)**:
+> ```powershell
+> cd frontend
+> npm run android
 
 > [!TIP]
 > **💡 日々の開発フロー (Hot Reload)**
