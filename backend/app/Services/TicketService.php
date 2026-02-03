@@ -44,13 +44,16 @@ class TicketService
                 'status'            => UserTicket::STATUS_VALID,
             ]);
 
-            // ★ 修正: 引数の数と順序を TicketAdmissionService に合わせる
-            app(TicketAdmissionService::class)->syncToFirestore(
-                $userTicket->qr_code_id,
-                UserTicket::STATUS_VALID,
-                $userTicket->user_id,
-                $userTicket->seat_number
-            );
+            // ★ 修正: DBのコミットが完全に確定した後に Firestore と同期する
+            // 外部通信の遅延やエラーが、DBのチケット発行処理を邪魔しないようにします
+            DB::afterCommit(function () use ($userTicket) {
+                app(TicketAdmissionService::class)->syncToFirestore(
+                    $userTicket->qr_code_id,
+                    UserTicket::STATUS_VALID,
+                    $userTicket->user_id,
+                    $userTicket->seat_number
+                );
+            });
         }
     }
 }

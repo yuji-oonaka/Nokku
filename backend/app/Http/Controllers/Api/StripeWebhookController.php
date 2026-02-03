@@ -30,6 +30,10 @@ class StripeWebhookController extends Controller
         if ($event->type === 'payment_intent.succeeded') {
             $this->handlePaymentIntentSucceeded($event->data->object);
         }
+        // ★決済失敗・キャンセル時の即時在庫復元
+        elseif (in_array($event->type, ['payment_intent.payment_failed', 'payment_intent.canceled'])) {
+            $this->handlePaymentIntentFailed($event->data->object);
+        }
 
         return response('Webhook Handled', 200);
     }
@@ -57,6 +61,28 @@ class StripeWebhookController extends Controller
             app(TicketService::class)->issueTicketsFromOrder($order, $paymentIntent->id);
 
             Log::info("Order #{$orderId} marked as paid and tickets issued.");
+        });
+    }
+
+    private function handlePaymentIntentFailed($paymentIntent)
+    {
+        $orderId = $paymentIntent->metadata->order_id ?? null;
+        if (!$orderId) return;
+
+        DB::transaction(function () use ($orderId) {
+            $order = Order::with('items')->lockForUpdate()->find($orderId);
+
+            if (!$order || $order->status !== 'pending') return;
+
+            foreach ($order->items as $item) {
+                if ($item->product_id) {
+                    $item->product()->increment('stock', $item->quantity);
+                } elseif ($item->ticket_type_id) {
+                    $item->ticketType()->increment('remaining_count', $item->quantity);
+                }
+            }
+            $order->update(['status' => 'cancelled']);
+            Log::info("Order #{$orderId} was cancelled and inventory restored.");
         });
     }
 }

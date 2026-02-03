@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
 class OrderController extends Controller
 {
     /**
-     * 注文一覧を取得 (Roleに応じてスコープを切り替え)
+     * 注文一覧を取得 (種類によるフィルタリングを追加)
      */
     public function index(Request $request)
     {
@@ -28,15 +28,25 @@ class OrderController extends Controller
 
         $query = Order::query();
 
+        // ★追加: 種類のフィルター実装
+        // リクエストに ?type=product があれば商品のみ、?type=ticket があればチケットのみを返す
+        $type = $request->query('type');
+        if ($type === 'product') {
+            // order_items テーブルに product_id が入っているレコードを持つ注文に絞る
+            $query->whereHas('items', fn($q) => $q->whereNotNull('product_id'));
+        } elseif ($type === 'ticket') {
+            // order_items テーブルに ticket_type_id が入っているレコードを持つ注文に絞る
+            $query->whereHas('items', fn($q) => $q->whereNotNull('ticket_type_id'));
+        }
+
         if ($user->isArtist()) {
-            // ★販売者として：自分の商品が含まれる注文をすべて取得
             $query->forArtist($user->id);
         } else {
-            // ★購入者として：自分が注文したもののみ取得
             $query->where('user_id', $user->id);
         }
 
-        $orders = $query->with('items.product.artist')
+        // ticketType.event も load しておくことでチケット情報の表示に対応
+        $orders = $query->with('items.product.artist', 'items.ticketType.event')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -187,17 +197,6 @@ class OrderController extends Controller
                     'stripe_payment_intent_id' => $stripePaymentIntentId,
                     'qr_code_id' => $qrCodeId,
                 ]);
-
-                if ($qrCodeId) {
-                    app(\App\Services\TicketAdmissionService::class)->syncToFirestore(
-                        $qrCodeId,
-                        'paid',
-                        $user->id,
-                        '未引換',
-                        null,
-                        'order_status'
-                    );
-                }
 
                 $order->items()->create([
                     'product_id' => $productId,
