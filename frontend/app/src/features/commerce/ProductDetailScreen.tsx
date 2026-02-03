@@ -19,7 +19,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product, fetchProductById } from '../../api/queries';
 import SoundService from '../../services/SoundService';
-// ★追加: 作成したコンポーネントをインポート
 import ProductAdminControls from './components/ProductAdminControls';
 
 type ProductDetailRouteProp = RouteProp<ProductStackParamList, 'ProductDetail'>;
@@ -47,7 +46,7 @@ const ProductDetailScreen: React.FC = () => {
     enabled: !!productId,
   });
 
-  // --- ★追加: 権限チェックロジック ---
+  // 権限チェックロジック ---
   const isOwner =
     user?.id !== undefined &&
     product?.artist?.id !== undefined &&
@@ -57,7 +56,7 @@ const ProductDetailScreen: React.FC = () => {
   const canEdit = isAdmin || isOwner;
   // -----------------------------------
 
-  // 2. お気に入り切り替え
+  // お気に入り切り替え
   const toggleFavoriteMutation = useMutation({
     mutationFn: () => api.post(`/products/${productId}/favorite`),
     onMutate: async () => {
@@ -102,7 +101,7 @@ const ProductDetailScreen: React.FC = () => {
     setIsManualRefetching(false);
   }, [refetch]);
 
-  // 3. 購入ボタン押下時の処理 (修正版)
+  // 購入ボタン押下時の処理 (修正版)
   const handlePressBuy = () => {
     if (!product) return;
     SoundService.triggerHaptic('impactMedium');
@@ -142,7 +141,7 @@ const ProductDetailScreen: React.FC = () => {
     toggleFavoriteMutation.mutate();
   };
 
-  // --- ★追加: 編集・削除ハンドラー ---
+  // 編集・削除ハンドラー ---
   const handleEdit = () => {
     navigation.navigate('ProductEdit', { productId });
   };
@@ -256,7 +255,7 @@ const ProductDetailScreen: React.FC = () => {
           <Text style={styles.productDescription}>{product.description}</Text>
         </View>
 
-        {/* --- ★修正: 購入UIの表示制御 --- */}
+        {/* --- 購入UIの表示制御 --- */}
         {!isOwner && (
           <>
             {/* 数量選択エリア */}
@@ -296,7 +295,7 @@ const ProductDetailScreen: React.FC = () => {
           </>
         )}
 
-        {/* ▼▼▼ 追加: お問い合わせボタン (購入ボタンの下) ▼▼▼ */}
+        {/* ▼▼▼ お問い合わせボタン (購入ボタンの下) ▼▼▼ */}
         <View style={styles.inquiryContainer}>
           <TouchableOpacity
             style={styles.inquiryButton}
@@ -325,9 +324,8 @@ const ProductDetailScreen: React.FC = () => {
             <Text style={styles.inquiryButtonText}>📩 出品者に質問する</Text>
           </TouchableOpacity>
         </View>
-        {/* ▲▲▲ 追加ここまで ▲▲▲ */}
 
-        {/* --- ★修正: コンポーネント化した管理者メニュー --- */}
+        {/* --- コンポーネント化した管理者メニュー --- */}
         <ProductAdminControls
           visible={canEdit}
           onEdit={handleEdit}

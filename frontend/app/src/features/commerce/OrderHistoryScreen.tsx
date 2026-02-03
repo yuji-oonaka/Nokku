@@ -33,8 +33,8 @@ const OrderHistoryScreen: React.FC = () => {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['myOrders'],
-    queryFn: fetchMyOrders,
+    queryKey: ['myOrders', 'product'], // queryKey も分けておくのが定石
+    queryFn: () => fetchMyOrders('product'), // ★ 'product' を指定して呼び出す
     staleTime: 1000 * 60 * 3,
   });
 
