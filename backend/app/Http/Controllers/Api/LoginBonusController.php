@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LoginBonusHistory;
 use App\Models\PointTransaction;
+use App\Models\LoginBonusConfig;
 use App\Services\PointService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,8 +38,9 @@ class LoginBonusController extends Controller
             ]);
         }
 
+        $config = LoginBonusConfig::where('is_active', true)->first();
+        $bonusPoints = $config ? $config->amount : 5;
         $today = Carbon::today()->format('Y-m-d');
-        $bonusPoints = 5; // 付与ポイント数
 
         // 1. 簡易チェック (Read)
         // 既に今日取得済みなら早期リターンしてDB負荷を下げる
